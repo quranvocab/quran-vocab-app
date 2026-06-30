@@ -1090,7 +1090,154 @@ h2{font-family:'Cinzel',serif;font-size:28px;font-weight:400;margin-bottom:7px;}
   margin-top:-4px;margin-bottom:8px;
 }
 
-@media(max-width:600px){.srow{grid-template-columns:repeat(2,1fr);}.opts{grid-template-columns:1fr;}.wrow{grid-template-columns:1fr 2fr;}.wtr{display:none;}.qq{font-size:46px;}.donate-strip{flex-direction:column;text-align:center;}}
+/* ── MOBILE BOTTOM NAV BAR ── */
+.mobile-nav{display:none;}
+@media(max-width:600px){
+  .mobile-nav{
+    display:flex;
+    position:fixed;bottom:0;left:0;right:0;z-index:200;
+    background:rgba(12,18,25,.97);backdrop-filter:blur(14px);
+    border-top:1px solid rgba(180,134,11,.18);
+    padding:6px 0 env(safe-area-inset-bottom,6px);
+    justify-content:space-around;align-items:center;
+  }
+  .mnav-btn{
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    background:none;border:none;color:var(--muted);
+    font-family:'Spectral',serif;font-size:10px;cursor:pointer;
+    padding:4px 10px;border-radius:8px;transition:color .18s;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .mnav-btn.on{color:var(--gold2);}
+  .mnav-btn:active{color:var(--gold3);}
+  .mnav-icon{font-size:18px;line-height:1;}
+  /* Push page content above bottom nav */
+  .app{padding-bottom:60px;}
+}
+
+/* ── Tablet ≤768px ── */
+@media(max-width:768px){
+  .nav{padding:10px 16px;}
+  .ntext span{display:none;}
+  .ntext h1{font-size:14px;}
+  h2{font-size:24px;}
+  .page{padding:28px 16px;}
+  .hero{padding:36px 14px 26px;}
+  .bism{font-size:38px;}
+  .hero h2{font-size:26px;}
+  .chart-row{grid-template-columns:1fr;}
+  .qcard{padding:28px 20px;}
+  .modal-body{padding:18px 20px 22px;}
+}
+
+/* ── Mobile ≤600px ── */
+@media(max-width:600px){
+
+  /* NAV — hide secondary nav links; keep user chip, donate, CTA */
+  .nav{padding:9px 12px;}
+  .ntext h1{font-size:13px;}
+  .ntext span{display:none;}
+  .nbtn{display:none;}
+  .ndonate{padding:4px 10px;font-size:11px;}
+  .ncta{padding:5px 12px;font-size:10px;letter-spacing:.02em;}
+  .nuser{font-size:11px;padding:4px 8px;}
+  .nright{gap:5px;}
+
+  /* PAGE & HERO */
+  .page{padding:18px 12px;}
+  .hero{padding:24px 12px 18px;}
+  .bism{font-size:28px;}
+  .hero h2{font-size:20px;}
+  .hero .sub{font-size:14px;margin-bottom:20px;}
+  h2{font-size:20px;}
+  .sub{font-size:14px;}
+  .lbl{font-size:9px;}
+  .card{padding:16px 14px;}
+
+  /* STATS GRID — 2 columns */
+  .srow{grid-template-columns:repeat(2,1fr);gap:8px;}
+  .sn{font-size:22px;}
+  .sl{font-size:9px;}
+  .sbox{padding:12px 10px;}
+
+  /* WORD CARD — reflow to 3-col 2-row grid */
+  .word-card-main{
+    grid-template-columns:auto 1fr auto;
+    grid-template-rows:auto auto;
+    gap:4px 10px;
+  }
+  .war{grid-column:1;grid-row:1/3;font-size:22px;align-self:center;padding-right:4px;}
+  .wtr{display:none;}
+  .wen{grid-column:2;grid-row:1;font-size:13px;align-self:end;}
+  .word-urdu{grid-column:2;grid-row:2;font-size:14px;align-self:start;text-align:left;}
+  .word-toggle{grid-column:3;grid-row:1;align-self:start;}
+
+  /* QUIZ */
+  .opts{grid-template-columns:1fr;}
+  .qq{font-size:42px;}
+  .qq.en{font-size:19px;}
+  .qcard{padding:20px 14px;}
+  .qtr{margin-bottom:20px;}
+  .qwrap{padding:0;}
+
+  /* QUIZ RESULTS */
+  .rring{width:108px;height:108px;}
+  .rpct{font-size:36px;}
+  .miss{grid-template-columns:auto 1fr;gap:8px;font-size:12px;}
+
+  /* MODAL — edge-to-edge */
+  .modal-overlay{padding:8px;}
+  .modal{border-radius:10px;}
+  .modal-head{padding:13px 15px 11px;}
+  .modal-body{padding:14px 15px 18px;}
+
+  /* DONATE */
+  .donate-strip{flex-direction:column;text-align:center;gap:8px;}
+  .qr-upiid{font-size:13px;word-break:break-all;}
+  .freq-row{gap:5px;}
+  .freq-pill{font-size:11px;padding:7px 6px;}
+
+  /* TABLES — horizontal scroll inside card */
+  .card{overflow-x:auto;}
+  .tbl{min-width:460px;}
+
+  /* MESSAGE CENTER */
+  .msg-item{grid-template-columns:28px 1fr;gap:8px;}
+  .msg-actions{grid-column:1/-1;flex-direction:row;justify-content:flex-start;flex-wrap:wrap;gap:6px;}
+
+  /* HISTORY */
+  .chart-row{grid-template-columns:1fr;}
+  .chart-col{height:260px;}
+  .hist-row{grid-template-columns:46px 1fr 18px;gap:10px;padding:11px 12px;}
+
+  /* LEADERBOARD */
+  .lbrow{padding:8px 10px;gap:10px;}
+  .lbname{font-size:14px;}
+  .lbbadge{display:none;}
+
+  /* MISC */
+  .wrow{grid-template-columns:1fr 2fr;}
+  .tabs{gap:2px;}
+  .tab{font-size:11px;padding:6px 7px;}
+  .btn{padding:9px 18px;font-size:13px;}
+  .bism{line-height:1.3;}
+  .streak{font-size:11px;padding:4px 10px;}
+}
+
+/* ── Small phones ≤400px ── */
+@media(max-width:400px){
+  .nicon{width:30px;height:30px;font-size:13px;}
+  .ntext h1{font-size:12px;}
+  .ndonate{display:none;}
+  .bism{font-size:24px;}
+  .hero h2{font-size:17px;}
+  .qq{font-size:36px;}
+  .sn{font-size:18px;}
+  .war{font-size:20px;}
+  .ncta{font-size:10px;padding:5px 10px;}
+  .srow{gap:6px;}
+  .card{padding:13px 11px;}
+}
 `;
 
 // ── Donation details ── replace placeholders with real values before going live
@@ -1611,6 +1758,17 @@ export default function App() {
 
   const saveCW = (w) => { setCustomWords(w); storageSet("qv_custom", w); };
 
+  // Ensure mobile viewport is set correctly (safe to call multiple times)
+  React.useEffect(() => {
+    let vp = document.querySelector('meta[name="viewport"]');
+    if (!vp) {
+      vp = document.createElement("meta");
+      vp.name = "viewport";
+      document.head.appendChild(vp);
+    }
+    vp.content = "width=device-width, initial-scale=1, maximum-scale=1";
+  }, []);
+
   return (
     <>
       <style>{CSS}</style>
@@ -1700,6 +1858,26 @@ export default function App() {
         )}
 
         {!isAdminRoute && !isFinanceRoute && showDonate && <DonateModal onClose={() => setShowDonate(false)} toast_={toast_} user={user} />}
+        {/* Mobile bottom navigation bar — visible only on small screens (CSS-controlled) */}
+        {!isAdminRoute && !isFinanceRoute && (
+          <nav className="mobile-nav">
+            <button className={`mnav-btn ${view === "home" ? "on" : ""}`} onClick={() => setView("home")}>
+              <span className="mnav-icon">🏠</span>Home
+            </button>
+            <button className={`mnav-btn ${view === "learn" ? "on" : ""}`} onClick={() => setView("learn")}>
+              <span className="mnav-icon">📚</span>Learn
+            </button>
+            <button className={`mnav-btn ${view === "history" ? "on" : ""}`} onClick={() => setView("history")}>
+              <span className="mnav-icon">📋</span>History
+            </button>
+            <button className={`mnav-btn ${view === "leaderboard" ? "on" : ""}`} onClick={() => setView("leaderboard")}>
+              <span className="mnav-icon">🏆</span>Ranks
+            </button>
+            <button className="mnav-btn" onClick={() => setShowDonate(true)}>
+              <span className="mnav-icon">🤲</span>Donate
+            </button>
+          </nav>
+        )}
         {adminProfileOpen && (
           <ChangePasswordModal
             label="Admin"
