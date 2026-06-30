@@ -1,0 +1,3752 @@
+import React, { useState, useEffect } from "react";
+
+const WORD_BANK = [
+  { arabic: "اللَّهُ", translit: "Allāh", english: "Allah / God", urdu: "اللہ", root: "أله", rootEnglish: "to worship, deity", rootUrdu: "عبادت کرنا، معبود" },
+  { arabic: "رَبُّ", translit: "Rabb", english: "Lord / Sustainer", urdu: "رب، پالنے والا", root: "ربب", rootEnglish: "to nurture, sustain", rootUrdu: "پرورش کرنا" },
+  { arabic: "الرَّحْمَنُ", translit: "Ar-Rahmān", english: "The Most Gracious", urdu: "نہایت رحم کرنے والا", root: "رحم", rootEnglish: "mercy, womb", rootUrdu: "رحم، مہربانی" },
+  { arabic: "الرَّحِيمُ", translit: "Ar-Raheem", english: "The Most Merciful", urdu: "نہایت مہربان", root: "رحم", rootEnglish: "mercy, womb", rootUrdu: "رحم، مہربانی" },
+  { arabic: "الْحَمْدُ", translit: "Al-Hamd", english: "All Praise", urdu: "تمام تعریف", root: "حمد", rootEnglish: "to praise", rootUrdu: "تعریف کرنا" },
+  { arabic: "فِي", translit: "fī", english: "in / within", urdu: "میں", root: "—", rootEnglish: "—", rootUrdu: "—" },
+  { arabic: "مِن", translit: "min", english: "from / of", urdu: "سے", root: "—", rootEnglish: "—", rootUrdu: "—" },
+  { arabic: "عَلَى", translit: "'alā", english: "on / upon / over", urdu: "پر", root: "—", rootEnglish: "—", rootUrdu: "—" },
+  { arabic: "إِلَى", translit: "ilā", english: "to / towards", urdu: "کی طرف", root: "—", rootEnglish: "—", rootUrdu: "—" },
+  { arabic: "كَانَ", translit: "kāna", english: "was / to be", urdu: "تھا، ہونا", root: "كون", rootEnglish: "to be, existence", rootUrdu: "ہونا، وجود" },
+  { arabic: "هُوَ", translit: "huwa", english: "He / It", urdu: "وہ", root: "—", rootEnglish: "—", rootUrdu: "—" },
+  { arabic: "الَّذِي", translit: "alladhī", english: "who / that / which", urdu: "جو، وہ جو", root: "—", rootEnglish: "—", rootUrdu: "—" },
+  { arabic: "مَا", translit: "mā", english: "what / that which / not", urdu: "جو، نہیں", root: "—", rootEnglish: "—", rootUrdu: "—" },
+  { arabic: "لَا", translit: "lā", english: "no / not", urdu: "نہیں", root: "—", rootEnglish: "—", rootUrdu: "—" },
+  { arabic: "قَالَ", translit: "qāla", english: "he said", urdu: "اس نے کہا", root: "قول", rootEnglish: "to say, speech", rootUrdu: "کہنا، بات" },
+  { arabic: "إِنَّ", translit: "inna", english: "verily / indeed", urdu: "بے شک", root: "—", rootEnglish: "—", rootUrdu: "—" },
+  { arabic: "آمَنَ", translit: "āmana", english: "to believe / have faith", urdu: "ایمان لانا", root: "أمن", rootEnglish: "safety, trust, faith", rootUrdu: "امن، اعتماد، ایمان" },
+  { arabic: "عَمِلَ", translit: "'amila", english: "to do / work / act", urdu: "عمل کرنا", root: "عمل", rootEnglish: "to do, work", rootUrdu: "کام کرنا، عمل" },
+  { arabic: "عَلِمَ", translit: "'alima", english: "to know", urdu: "جاننا", root: "علم", rootEnglish: "knowledge", rootUrdu: "علم، جاننا" },
+  { arabic: "نَاسٌ", translit: "nās", english: "people / mankind", urdu: "لوگ، انسان", root: "نوس", rootEnglish: "people, humankind", rootUrdu: "لوگ، انسانیت" },
+  { arabic: "قَوْمٌ", translit: "qawm", english: "people / nation / tribe", urdu: "قوم، گروہ", root: "قوم", rootEnglish: "nation, to stand/rise", rootUrdu: "قوم، کھڑا ہونا" },
+  { arabic: "يَوْمٌ", translit: "yawm", english: "day", urdu: "دن", root: "يوم", rootEnglish: "day", rootUrdu: "دن" },
+  { arabic: "أَرْضٌ", translit: "ard", english: "earth / land / ground", urdu: "زمین", root: "أرض", rootEnglish: "earth, land", rootUrdu: "زمین" },
+  { arabic: "سَمَاءٌ", translit: "samā'", english: "sky / heaven", urdu: "آسمان", root: "سمو", rootEnglish: "to be high, elevated", rootUrdu: "بلند ہونا" },
+  { arabic: "كِتَابٌ", translit: "kitāb", english: "book / scripture", urdu: "کتاب", root: "كتب", rootEnglish: "to write, book", rootUrdu: "لکھنا، کتاب" },
+  { arabic: "نَفْسٌ", translit: "nafs", english: "soul / self", urdu: "نفس، جان", root: "نفس", rootEnglish: "soul, self, breath", rootUrdu: "جان، نفس" },
+  { arabic: "قَلْبٌ", translit: "qalb", english: "heart", urdu: "دل", root: "قلب", rootEnglish: "heart, to turn/change", rootUrdu: "دل، پلٹنا" },
+  { arabic: "إِيمَانٌ", translit: "īmān", english: "faith / belief", urdu: "ایمان", root: "أمن", rootEnglish: "safety, trust, faith", rootUrdu: "امن، اعتماد، ایمان" },
+  { arabic: "تَقْوَى", translit: "taqwā", english: "piety / God-consciousness", urdu: "تقویٰ، پرہیزگاری", root: "وقي", rootEnglish: "to protect, guard", rootUrdu: "حفاظت کرنا، بچانا" },
+  { arabic: "صَلَاةٌ", translit: "salāh", english: "prayer", urdu: "نماز", root: "صلو", rootEnglish: "to pray, connection", rootUrdu: "دعا، تعلق" },
+  { arabic: "جَنَّةٌ", translit: "jannah", english: "paradise / garden", urdu: "جنت، باغ", root: "جنن", rootEnglish: "to conceal, garden", rootUrdu: "چھپانا، باغ" },
+  { arabic: "نَارٌ", translit: "nār", english: "fire / hell", urdu: "آگ، دوزخ", root: "نور", rootEnglish: "light, fire", rootUrdu: "روشنی، آگ" },
+  { arabic: "آخِرَةٌ", translit: "ākhirah", english: "the Hereafter", urdu: "آخرت", root: "أخر", rootEnglish: "to be last, end", rootUrdu: "پیچھے، آخر" },
+  { arabic: "مَوْتٌ", translit: "mawt", english: "death", urdu: "موت", root: "موت", rootEnglish: "death", rootUrdu: "موت" },
+  { arabic: "نَبِيٌّ", translit: "nabī", english: "prophet", urdu: "نبی، پیغمبر", root: "نبأ", rootEnglish: "to inform, news", rootUrdu: "خبر دینا" },
+  { arabic: "رَسُولٌ", translit: "rasūl", english: "messenger", urdu: "رسول، پیغام لانے والا", root: "رسل", rootEnglish: "to send, message", rootUrdu: "بھیجنا، پیغام" },
+  { arabic: "مَلَكٌ", translit: "malak", english: "angel", urdu: "فرشتہ", root: "ملك", rootEnglish: "to possess, dominion", rootUrdu: "مالک ہونا، بادشاہت" },
+  { arabic: "عِلْمٌ", translit: "'ilm", english: "knowledge", urdu: "علم", root: "علم", rootEnglish: "knowledge", rootUrdu: "علم، جاننا" },
+  { arabic: "حَقٌّ", translit: "haqq", english: "truth / right", urdu: "حق، سچ", root: "حقق", rootEnglish: "to be true, established", rootUrdu: "سچائی، ثابت ہونا" },
+  { arabic: "صَبْرٌ", translit: "sabr", english: "patience / perseverance", urdu: "صبر", root: "صبر", rootEnglish: "patience, to restrain", rootUrdu: "صبر، روکنا" },
+  { arabic: "رَحْمَةٌ", translit: "rahmah", english: "mercy / compassion", urdu: "رحمت", root: "رحم", rootEnglish: "mercy, womb", rootUrdu: "رحم، مہربانی" },
+  { arabic: "نُورٌ", translit: "nūr", english: "light", urdu: "نور، روشنی", root: "نور", rootEnglish: "light, fire", rootUrdu: "روشنی، آگ" },
+  { arabic: "هُدًى", translit: "hudan", english: "guidance", urdu: "ہدایت", root: "هدي", rootEnglish: "to guide", rootUrdu: "راہ دکھانا" },
+  { arabic: "تَوْبَةٌ", translit: "tawbah", english: "repentance", urdu: "توبہ", root: "توب", rootEnglish: "to return, repent", rootUrdu: "لوٹنا، توبہ کرنا" },
+  { arabic: "دُعَاءٌ", translit: "du'ā'", english: "supplication", urdu: "دعا", root: "دعو", rootEnglish: "to call, invoke", rootUrdu: "بلانا، دعا کرنا" },
+  { arabic: "سَلَامٌ", translit: "salām", english: "peace / greeting", urdu: "سلام، امن", root: "سلم", rootEnglish: "peace, safety", rootUrdu: "امن، سلامتی" },
+  { arabic: "حِكْمَةٌ", translit: "hikmah", english: "wisdom", urdu: "حکمت", root: "حكم", rootEnglish: "wisdom, judgment", rootUrdu: "حکمت، فیصلہ" },
+  { arabic: "عَدْلٌ", translit: "'adl", english: "justice / equity", urdu: "عدل، انصاف", root: "عدل", rootEnglish: "justice, fairness", rootUrdu: "انصاف، برابری" },
+  { arabic: "رِزْقٌ", translit: "rizq", english: "provision / sustenance", urdu: "رزق", root: "رزق", rootEnglish: "provision, sustenance", rootUrdu: "روزی، رزق" },
+  { arabic: "شُكْرٌ", translit: "shukr", english: "gratitude", urdu: "شکر", root: "شكر", rootEnglish: "to thank, gratitude", rootUrdu: "شکر ادا کرنا" },
+];
+
+const WORDS_PER_DAY = 10;
+const TOTAL_DAYS = Math.ceil(WORD_BANK.length / WORDS_PER_DAY);
+// A set unlocks the next one via EITHER of two paths, whichever comes first:
+//  1. Score at least PASSING_SCORE_PCT (90%) on a single quiz attempt of
+//     this set, OR
+//  2. Reach MASTERY_GATE_PCT (70%) of this set's words individually mastered
+//     (each word answered correctly MASTERY_STREAK_REQUIRED times in a row).
+// This keeps a fast path open for confident learners who ace it first try,
+// while also rewarding steady, repeated correct practice over time for
+// learners who build up mastery gradually rather than acing one attempt.
+// Doesn't apply to the All Sets Quiz, which is a review/practice mode and
+// never gates a specific set's unlock.
+const PASSING_SCORE_PCT = 90;
+const MASTERY_GATE_PCT = 70;
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Activity-based unlock: Day 1 is always available immediately on enrollment.
+// Day N+1 unlocks only once Day N has actually been completed with a quiz
+// (i.e. dayProgress[N] exists) — never just by time passing. A learner who
+// takes a 4-day break comes back to exactly where they left off, not skipped
+// ahead to whatever day the calendar would otherwise imply.
+function getUnlockedDays(enrolledAt, dayProgress = {}) {
+  let day = 1;
+  while (day < TOTAL_DAYS && dayProgress[String(day)]) {
+    day++;
+  }
+  return day;
+}
+
+function getWordsForDay(day) {
+  return WORD_BANK.slice((day - 1) * WORDS_PER_DAY, day * WORDS_PER_DAY);
+}
+
+function getUnlockedWords(enrolledAt, dayProgress = {}) {
+  return WORD_BANK.slice(0, getUnlockedDays(enrolledAt, dayProgress) * WORDS_PER_DAY);
+}
+
+function getWrongs(pool, correct, field) {
+  return shuffle(pool.filter(w => w !== correct)).slice(0, 3).map(w => w[field]);
+}
+
+function calcStreak(scores) {
+  if (!scores.length) return 0;
+  const days = [...new Set(scores.map(s => new Date(s.date).toDateString()))].reverse();
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < days.length; i++) {
+    const diff = Math.round((today - new Date(days[i])) / 86400000);
+    if (diff === i) streak++;
+    else break;
+  }
+  return streak;
+}
+
+// ── History page chart data helpers ───────────────────────────────────────────
+// Aggregates a user's score history into the shapes the bar/pie charts need.
+
+function buildAttemptScoreSeries(scores, maxBars = 10) {
+  // Most recent N sessions, oldest-to-newest left-to-right (reading order).
+  // For Set quizzes, label with the set number (S1, S2...). For All Sets Quiz
+  // attempts there's no set number to show, and the date often repeats when
+  // someone retakes it multiple times in one sitting — so label these simply
+  // by attempt order (A1, A2...) which is always unique and stays short.
+  const recent = [...scores].slice(-maxBars);
+  return recent.map((s, i) => ({
+    label: s.day ? `S${s.day}` : `A${i + 1}`,
+    pct: s.pct,
+    score: s.score,
+    total: s.total,
+    timeUsedSec: s.timeUsedSec ?? null,
+    date: s.date,
+  }));
+}
+
+function buildWordStrengthBreakdown(scores, allWords = []) {
+  // Tally every individual word attempt across all sessions that have detail.
+  // A word is "strong" if it's been answered correctly more often than not,
+  // "weak" if wrong more often than right, "even" if tied (no clear pattern yet).
+  const tally = {}; // key: arabic word -> { correct, wrong, english, translit, ...fullWordData }
+  for (const s of scores) {
+    if (!s.detail) continue;
+    for (const d of s.detail) {
+      const key = d.arabic;
+      if (!tally[key]) {
+        // Look up the full word entry (urdu, root, root meanings, ayah ref) so
+        // the breakdown can show the same level of detail as the Day Words page.
+        const full = allWords.find(w => w.arabic === d.arabic);
+        tally[key] = {
+          correct: 0, wrong: 0,
+          arabic: d.arabic, english: d.english, translit: d.translit,
+          urdu: full?.urdu, root: full?.root,
+          rootEnglish: full?.rootEnglish, rootUrdu: full?.rootUrdu,
+          ayahRef: full?.ayahRef,
+        };
+      }
+      if (d.isCorrect) tally[key].correct++; else tally[key].wrong++;
+    }
+  }
+  const words = Object.values(tally);
+  const strong = words.filter(w => w.correct > w.wrong);
+  const weak = words.filter(w => w.wrong > w.correct);
+  const even = words.filter(w => w.wrong === w.correct);
+  return { strong, weak, even, totalTracked: words.length };
+}
+
+// ── Strict word mastery (zero wrong attempts ever) ──────────────────────────────
+// Different from the "strong" classification above (which allows more right
+// than wrong) — mastery here requires every single attempt at a word to have
+// been correct, with no exceptions. A single wrong answer, even if followed
+// by many correct ones, means the word is NOT mastered yet under this rule.
+// Word mastery: requires the most recent MASTERY_STREAK_REQUIRED attempts of
+// a word to all be correct, in a row — older mistakes don't permanently block
+// mastery once that many consecutive correct answers follow. A wrong answer
+// at any point resets the streak back to zero for that word.
+const MASTERY_STREAK_REQUIRED = 3;
+
+function buildStrictMastery(scores) {
+  const streaks = {}; // key: arabic word -> current consecutive-correct streak
+  const attempted = new Set();
+  // scores is chronological (oldest first, since it's built by appending each
+  // new attempt) — process in that order so the streak reflects recency.
+  for (const s of scores) {
+    if (!s.detail) continue;
+    for (const d of s.detail) {
+      const key = d.arabic;
+      attempted.add(key);
+      if (d.isCorrect) {
+        streaks[key] = (streaks[key] || 0) + 1;
+      } else {
+        streaks[key] = 0; // any wrong answer resets the streak
+      }
+    }
+  }
+  const masteredSet = new Set(
+    Object.entries(streaks).filter(([, streak]) => streak >= MASTERY_STREAK_REQUIRED).map(([key]) => key)
+  );
+  return { masteredSet, attemptedSet: attempted };
+}
+
+// Checks whether a specific set has reached MASTERY_GATE_PCT (70%) of its
+// words individually mastered — the alternative unlock path alongside a
+// single 90%+ quiz pass. Counts attempts from both that set's own quiz and
+// the All Sets Quiz, same as the calendar page's mastery display, so this
+// check and what the learner actually sees on screen always agree.
+function hasMetMasteryGate(setDay, allScores, allWords) {
+  const setWords = getWordsForDay(setDay);
+  if (setWords.length === 0) return false;
+  const setWordArabics = new Set(setWords.map(w => w.arabic));
+  const relevantScores = allScores.filter(s => s.day === setDay || s.day == null);
+  const { masteredSet } = buildStrictMastery(relevantScores);
+  const masteredInSet = [...masteredSet].filter(arabic => setWordArabics.has(arabic)).length;
+  return (masteredInSet / setWords.length) * 100 >= MASTERY_GATE_PCT;
+}
+
+// ── Qur'an coverage estimate ────────────────────────────────────────────────────
+// Based on published research on Quranic word frequency (not a made-up curve):
+// learning the ~70-80 most frequent words covers roughly 50% of the Qur'an's
+// text, ~150-200 words covers ~65%, ~300 covers ~75%, 500 covers ~80%, and
+// beyond 1000 words approaches ~90%+. This interpolates between those known
+// milestones rather than claiming false precision.
+function estimateQuranCoverage(wordsLearned) {
+  if (wordsLearned <= 0) return 0;
+  if (wordsLearned >= 1000) return 90;
+  if (wordsLearned >= 500) return 80;
+  if (wordsLearned >= 300) return 75;
+  if (wordsLearned >= 150) return 65;
+  if (wordsLearned >= 70) return 50;
+  // Below the first published milestone (70 words ≈ 50%), interpolate linearly
+  // toward it rather than showing nothing.
+  return Math.round((wordsLearned / 70) * 50);
+}
+
+// ── Words added in the last 7 days ──────────────────────────────────────────────
+// Only counts words with a real addedAt timestamp (i.e. added via Admin after
+// this feature existed) — the original built-in word bank has no add-date, so
+// it's intentionally excluded rather than guessed at.
+function countWordsAddedLastWeek(allWords) {
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  return allWords.filter(w => w.addedAt && new Date(w.addedAt).getTime() >= weekAgo).length;
+}
+
+function storageGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
+function storageSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+function storageRemove(k) { try { localStorage.removeItem(k); } catch {} }
+
+// ── Password hashing (SHA-256 via Web Crypto API) ─────────────────────────────
+// Used for both the admin gate and per-user login (#5). This is client-side
+// hashing — reasonable for a free learning tool with no backend server, but
+// it's not a substitute for real server-side auth if this app ever handles
+// sensitive data. It at least ensures passwords are never stored in plain text.
+async function hashPassword(password) {
+  const data = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// ── Password complexity rule ───────────────────────────────────────────────────
+// Minimum 10 characters, at least 1 number, at least 1 special character.
+// Used consistently across Sign Up, the emailed reset-link flow, and Admin's
+// own password change — so the same rule applies everywhere a password is set.
+function getPasswordComplexityError(password) {
+  if (password.length < 10) return "Password must be at least 10 characters.";
+  if (!/[0-9]/.test(password)) return "Password must include at least 1 number.";
+  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) return "Password must include at least 1 special character.";
+  return null;
+}
+
+// Default admin password is "admin123" — CHANGE THIS before going live, either
+// by replacing the hash below, or (recommended) by using the in-app "Change
+// Password" option inside Admin → Settings, which stores an override in
+// localStorage that takes precedence over this default automatically.
+const ADMIN_PASSWORD_HASH = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // sha256("admin123")
+
+function getActiveAdminPasswordHash() {
+  return storageGet("qv_admin_pw_hash") || ADMIN_PASSWORD_HASH;
+}
+
+// Default finance-team password is "finance123" — separate, independent
+// password from Admin's, since finance access should only ever reach the
+// restricted receipt-issuing screen, never admin's broader capabilities
+// (word management, account editing, test-data wipe, etc). Same pattern as
+// the admin password: change it via the in-app "Change Password" screen,
+// which stores an override in localStorage taking precedence over this default.
+const FINANCE_PASSWORD_HASH = "48f7312924d74358e75294e3b3613f2319d99e944184b69550f528577ca082fb"; // sha256("finance123")
+
+function getActiveFinancePasswordHash() {
+  return storageGet("qv_finance_pw_hash") || FINANCE_PASSWORD_HASH;
+}
+
+// Admin's notification email — one-time setup in Admin → Settings, editable
+// only after re-confirming the admin password. Currently used to display
+// "where reset requests would be emailed" and to label the Message Center.
+// Wiring this up to actually SEND email (e.g. via EmailJS) is a follow-up step
+// once an EmailJS account is set up — this field is ready for that integration.
+function getAdminEmail() {
+  return storageGet("qv_admin_email") || "";
+}
+function setAdminEmail(email) {
+  storageSet("qv_admin_email", email.trim());
+}
+
+// ── Admin Message Center — password reset requests ────────────────────────────
+// Stored in localStorage like the rest of this app's data. Note: this means
+// a request is only visible to Admin if Admin opens /admin in the SAME
+// browser the learner used — consistent with how participants/scores already
+// work in this version of the app (no shared backend yet). If true cross-device
+// visibility is needed later, this and the rest of the app's data should move
+// to a shared backend (e.g. the Firebase layer built separately for this app).
+function getMessages() {
+  return storageGet("qv_messages") || [];
+}
+function addMessage(msg) {
+  const all = getMessages();
+  all.unshift({ id: Date.now() + Math.random().toString(36).slice(2), read: false, resolved: false, createdAt: new Date().toISOString(), ...msg });
+  storageSet("qv_messages", all);
+}
+function markMessageRead(id) {
+  const all = getMessages().map(m => m.id === id ? { ...m, read: true } : m);
+  storageSet("qv_messages", all);
+}
+function markMessageResolved(id) {
+  const all = getMessages().map(m => m.id === id ? { ...m, resolved: true, read: true } : m);
+  storageSet("qv_messages", all);
+}
+
+// ── Donation receipts (admin-issued, after finance team confirms payment) ──────
+// Sequential numbering per calendar year, e.g. ABM-2026-001, ABM-2026-002...
+// This is admin-issued bookkeeping, not an automated/verified payment receipt
+// — the app has no way to independently confirm a UPI payment occurred, since
+// UPI deep-links and QR scans complete entirely inside the donor's own banking
+// app with no callback to this site. The finance team confirms funds received
+// (outside the app) and tells admin, who then issues the receipt manually.
+const RECEIPT_PREFIX = "ABM";
+
+function getReceipts() {
+  return storageGet("qv_receipts") || [];
+}
+function getNextReceiptNumber() {
+  const year = new Date().getFullYear();
+  const all = getReceipts();
+  const thisYearCount = all.filter(r => r.receiptNo.includes(`-${year}-`)).length;
+  const next = String(thisYearCount + 1).padStart(3, "0");
+  return `${RECEIPT_PREFIX}-${year}-${next}`;
+}
+function addReceipt(receipt) {
+  const all = getReceipts();
+  const record = {
+    id: Date.now() + Math.random().toString(36).slice(2),
+    receiptNo: getNextReceiptNumber(),
+    issuedAt: new Date().toISOString(),
+    ...receipt,
+  };
+  all.unshift(record);
+  storageSet("qv_receipts", all);
+  return record;
+}
+
+// ── EmailJS configuration ──────────────────────────────────────────────────────
+// Sends transactional emails via Titan SMTP (support@awamibaitulmaal.org.in),
+// connected through EmailJS. No backend server needed — EmailJS's public key is
+// safe to expose client-side by design (see EmailJS docs); their free tier caps
+// abuse at 200 emails/month.
+const EMAILJS_SERVICE_ID = "service_u97pazt";
+const EMAILJS_RESET_TEMPLATE_ID = "template_hbjl6yv";
+// Free EmailJS tier allows only 2 templates total. Reset uses one slot;
+// this Verify template is reused as a GENERIC SHELL for both email
+// verification AND donation receipts (see sendVerificationEmail and
+// sendReceiptEmail below) — it needs these variables in EmailJS's dashboard:
+//   {{to_email}}, {{recipient_name}}, {{email_heading}}, {{email_body}},
+//   {{{email_body_html}}} (triple braces — unescaped HTML, used only for
+//   the receipt's invoice table), {{cta_label}}, {{cta_link}}
+// If donations become regular, upgrading EmailJS to a paid tier ($9/mo,
+// Personal plan) unlocks a dedicated receipt template — at that point,
+// give receipts their own EMAILJS_RECEIPT_TEMPLATE_ID instead of sharing
+// this one, and point sendReceiptEmail at it.
+const EMAILJS_VERIFY_TEMPLATE_ID = "template_s5mtjrc";
+const EMAILJS_PUBLIC_KEY = "lVfbS-yLSA3hkGGT5";
+
+let _emailjsLoaded = null;
+async function loadEmailJS() {
+  if (_emailjsLoaded) return _emailjsLoaded;
+  _emailjsLoaded = new Promise((resolve, reject) => {
+    if (window.emailjs) { resolve(window.emailjs); return; }
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js";
+    script.onload = () => {
+      window.emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+      resolve(window.emailjs);
+    };
+    script.onerror = () => reject(new Error("Failed to load EmailJS"));
+    document.head.appendChild(script);
+  });
+  return _emailjsLoaded;
+}
+
+async function sendResetEmail({ toEmail, learnerName, resetLink }) {
+  const emailjs = await loadEmailJS();
+  return emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_RESET_TEMPLATE_ID, {
+    to_email: toEmail,
+    learner_name: learnerName,
+    reset_link: resetLink,
+  });
+}
+
+// ── Password reset tokens ──────────────────────────────────────────────────────
+// Single-use, time-limited tokens. A reset link looks like:
+//   https://quranvocab.awamibaitulmaal.org.in/?reset=TOKEN
+// Opening that link lets the learner set their own new password directly —
+// the actual password is never written into the email itself.
+const RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function generateResetToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function getResetTokens() {
+  return storageGet("qv_reset_tokens") || {};
+}
+function createResetToken(userId, messageId = null) {
+  const tokens = getResetTokens();
+  const token = generateResetToken();
+  tokens[token] = { userId, messageId, createdAt: Date.now(), used: false };
+  storageSet("qv_reset_tokens", tokens);
+  return token;
+}
+function validateResetToken(token) {
+  const tokens = getResetTokens();
+  const entry = tokens[token];
+  if (!entry) return { valid: false, reason: "not-found" };
+  if (entry.used) return { valid: false, reason: "used" };
+  if (Date.now() - entry.createdAt > RESET_TOKEN_TTL_MS) return { valid: false, reason: "expired" };
+  return { valid: true, userId: entry.userId, messageId: entry.messageId };
+}
+function consumeResetToken(token) {
+  const tokens = getResetTokens();
+  if (tokens[token]) {
+    tokens[token].used = true;
+    storageSet("qv_reset_tokens", tokens);
+  }
+}
+
+// ── Email verification tokens ──────────────────────────────────────────────────
+// Separate token store from password-reset tokens (different purpose, should
+// never be interchangeable). A verification link looks like:
+//   https://quranvocab.awamibaitulmaal.org.in/?verify=TOKEN
+// New accounts are created with emailVerified:false and can't log in until
+// the link is opened — this catches typo'd/unreachable emails (e.g. gmail.cm)
+// at the moment of signup, instead of discovering it later when something
+// needs to be emailed to them.
+const VERIFY_TOKEN_TTL_MS = 48 * 60 * 60 * 1000; // 48 hours — longer than reset, since it's less urgent
+
+function getVerifyTokens() {
+  return storageGet("qv_verify_tokens") || {};
+}
+function createVerifyToken(userId) {
+  const tokens = getVerifyTokens();
+  const token = generateResetToken(); // same secure random generator, different store
+  tokens[token] = { userId, createdAt: Date.now(), used: false };
+  storageSet("qv_verify_tokens", tokens);
+  return token;
+}
+function validateVerifyToken(token) {
+  const tokens = getVerifyTokens();
+  const entry = tokens[token];
+  if (!entry) return { valid: false, reason: "not-found" };
+  if (entry.used) return { valid: false, reason: "used" };
+  if (Date.now() - entry.createdAt > VERIFY_TOKEN_TTL_MS) return { valid: false, reason: "expired" };
+  return { valid: true, userId: entry.userId };
+}
+function consumeVerifyToken(token) {
+  const tokens = getVerifyTokens();
+  if (tokens[token]) {
+    tokens[token].used = true;
+    storageSet("qv_verify_tokens", tokens);
+  }
+}
+
+// Verification emails and receipt emails share ONE EmailJS template slot
+// (EMAILJS_VERIFY_TEMPLATE_ID), since the free EmailJS tier only allows 2
+// templates total and Reset + Verify already use both. The shared template
+// must be built generically in EmailJS's dashboard with these variables:
+//   {{to_email}}, {{recipient_name}}, {{email_heading}}, {{email_body}},
+//   {{cta_label}}, {{cta_link}}
+// — so it can render either a "verify your email" message or a donation
+// receipt, depending on what this function passes in. If donations start
+// coming in regularly, upgrading EmailJS to a paid tier (for a dedicated
+// receipt template) is the natural next step — see DONATE comments below.
+async function sendVerificationEmail({ toEmail, learnerName, verifyLink }) {
+  const emailjs = await loadEmailJS();
+  return emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_VERIFY_TEMPLATE_ID, {
+    to_email: toEmail,
+    learner_name: learnerName,
+    verify_link: verifyLink,
+    // Generic shell variables, populated for the verification case specifically:
+    recipient_name: learnerName,
+    email_heading: "Verify Your Email",
+    email_body: `Welcome to Quranic Vocab — a daily journey into the words of the Qur'an, brought to you by Awami Baitulmaal Committee. Before you begin, please confirm this is your email address by clicking the link below. Once verified, you'll be logged in automatically and your first set of words will be ready and waiting. This link is valid for 48 hours. If you didn't create this account, you can safely ignore this email.`,
+    email_body_html: "", // unused for verification — plain email_body is used instead
+    cta_label: "Verify My Email",
+    cta_link: verifyLink,
+  });
+}
+
+async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donationDate, purpose, note }) {
+  const emailjs = await loadEmailJS();
+  // Registration details: only includes what's actually been confirmed and
+  // filled in DONATE above. Starts with just PAN; will automatically pick up
+  // 80G/12A details the moment those are filled in, with no code changes.
+  const regParts = [];
+  if (DONATE.pan && DONATE.pan !== "PASTE_TRUST_PAN_HERE") regParts.push(`PAN: ${DONATE.pan}`);
+  if (DONATE.reg12A) regParts.push(`12A Reg. No: ${DONATE.reg12A}`);
+  if (DONATE.reg80G) {
+    let line = `80G Reg. No: ${DONATE.reg80G}`;
+    if (DONATE.reg80GValidTo) line += ` (valid till ${DONATE.reg80GValidTo})`;
+    regParts.push(line);
+  }
+  const registrationLine = regParts.join(" &middot; ");
+  // Only mention tax-deduction eligibility once 80G is confirmed AND the
+  // trust has actually filed Form 10BD for the relevant year — printing this
+  // prematurely is exactly the kind of claim that needs to be accurate.
+  const taxNote = (DONATE.reg80G && DONATE.form10BDFiled)
+    ? "This donation may be eligible for tax deduction under Section 80G. Your Form 10BE certificate (if applicable) will be issued separately by the Income Tax Department portal."
+    : "";
+
+  const formattedDate = new Date(donationDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+  // Real HTML invoice table — sent as raw HTML (see {{{email_body_html}}}
+  // in the template, triple braces = unescaped) rather than plain text, so
+  // it actually looks like a structured receipt/invoice instead of a list
+  // of lines. A row only appears if its value exists.
+  const row = (label, value) => value
+    ? `<tr><td style="padding:9px 14px;border-bottom:1px solid #f0e3d3;color:#777;font-size:13px;">${label}</td><td style="padding:9px 14px;border-bottom:1px solid #f0e3d3;color:#222;font-size:14px;text-align:right;font-weight:600;">${value}</td></tr>`
+    : "";
+
+  const tableRows = [
+    row("Receipt No.", `<span style="font-family:monospace;color:#0eab23;">${receiptNo}</span>`),
+    row("Donor Name", donorName),
+    row("Amount", `&#8377;${amount}`),
+    row("Date Received", formattedDate),
+    row("Purpose", purpose),
+    note ? row("Note", note) : "",
+  ].join("");
+
+  const emailBodyHtml = `
+    <p style="margin:0 0 16px;">Thank you for your generous contribution to <strong>${DONATE.charityName}</strong> (Quranic Vocab &mdash; Awami Baitulmaal Committee).</p>
+    <table style="width:100%;border-collapse:collapse;background:#fffdfa;border:1px solid #f0e3d3;border-radius:8px;overflow:hidden;margin-bottom:16px;">
+      <tbody>${tableRows}</tbody>
+    </table>
+    ${registrationLine ? `<p style="margin:0 0 10px;font-size:12px;color:#888;">${registrationLine}</p>` : ""}
+    ${taxNote ? `<p style="margin:0 0 16px;font-size:13px;color:#0eab23;">${taxNote}</p>` : ""}
+    <p style="margin:0;">This receipt confirms funds received as reported by our finance team. May Allah accept your contribution and reward you abundantly.</p>
+  `;
+
+  // Shares the same EmailJS template slot as verification emails (see note
+  // above sendVerificationEmail) — uses the same generic shell variables,
+  // plus email_body_html specifically for this invoice-style table.
+  return emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_VERIFY_TEMPLATE_ID, {
+    to_email: toEmail,
+    // Generic shell variables, populated for the receipt case specifically:
+    recipient_name: donorName,
+    email_heading: `Donation Receipt — ${receiptNo}`,
+    email_body: "", // unused for receipts — real content is in email_body_html
+    email_body_html: emailBodyHtml,
+    cta_label: "",
+    cta_link: "",
+  });
+}
+
+// ── Email domain validation ──────────────────────────────────────────────────
+// Checks whether the email's domain actually has mail servers (MX records),
+// using Google's free public DNS-over-HTTPS API. Catches typos and made-up
+// domains (e.g. gmial.com, fake123.com) without sending any email or requiring
+// the user to click a confirmation link — fully silent and frictionless.
+
+const KNOWN_DISPOSABLE_DOMAINS = new Set([
+  "mailinator.com", "tempmail.com", "10minutemail.com", "guerrillamail.com",
+  "throwawaymail.com", "yopmail.com", "trashmail.com", "fakeinbox.com",
+  "getnada.com", "maildrop.cc", "discard.email", "sharklasers.com",
+]);
+
+// Major providers to check near-misses against. A typo domain (e.g. gmail.cm,
+// gmial.com) can sometimes have its own real, working mail servers — especially
+// typo-squatted domains set up deliberately — so the MX check alone won't catch
+// it. This catches it by spelling distance instead, and just warns rather than
+// blocking, since it can't be 100% certain the user made a mistake.
+const COMMON_PROVIDERS = [
+  "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
+  "live.com", "aol.com", "protonmail.com", "rediffmail.com", "yandex.com",
+];
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function findLikelyTypoOf(domain) {
+  if (COMMON_PROVIDERS.includes(domain)) return null; // exact match — no warning
+  for (const provider of COMMON_PROVIDERS) {
+    const dist = levenshtein(domain, provider);
+    // Close enough to be a likely typo (1-2 character difference) but not identical
+    if (dist > 0 && dist <= 2) return provider;
+  }
+  return null;
+}
+
+async function isEmailDomainValid(email) {
+  const parts = email.split("@");
+  if (parts.length !== 2 || !parts[1].includes(".")) {
+    return { valid: false, reason: "format" };
+  }
+  const domain = parts[1].toLowerCase().trim();
+
+  if (KNOWN_DISPOSABLE_DOMAINS.has(domain)) {
+    return { valid: false, reason: "disposable" };
+  }
+
+  // Soft warning for likely typos of major providers (e.g. gmail.cm, gmial.com,
+  // outlok.com) — surfaced even if the domain technically has MX records, since
+  // typo-squatted domains can be deliberately configured to look functional.
+  const typoOf = findLikelyTypoOf(domain);
+
+  try {
+    const res = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`, {
+      signal: AbortSignal.timeout(4000),
+    });
+    const data = await res.json();
+    // Status 0 = NOERROR, and at least one MX/Answer record present
+    const hasMx = data.Status === 0 && Array.isArray(data.Answer) && data.Answer.length > 0;
+    if (!hasMx) return { valid: false, reason: "no-mx" };
+    if (typoOf) return { valid: true, reason: "likely-typo", suggestion: typoOf };
+    return { valid: true, reason: "ok" };
+  } catch (err) {
+    // If the DNS check itself fails (offline, blocked, timeout), don't block
+    // enrollment — fail open so a real user is never locked out by a network hiccup.
+    if (typoOf) return { valid: true, reason: "likely-typo", suggestion: typoOf };
+    return { valid: true, reason: "check-unavailable" };
+  }
+}
+
+const GEO = `<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><g fill='none' stroke='rgba(180,134,11,0.07)' stroke-width='.7'><polygon points='90,8 108,62 164,62 118,96 136,150 90,116 44,150 62,96 16,62 72,62'/><circle cx='90' cy='90' r='65'/><line x1='90' y1='0' x2='90' y2='180'/><line x1='0' y1='90' x2='180' y2='90'/></g></svg>`;
+const bgUrl = `data:image/svg+xml;base64,${btoa(GEO)}`;
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Scheherazade+New:wght@400;600;700&family=Spectral:ital,wght@0,300;0,400;0,500;1,300&family=Cinzel:wght@400;500&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0c1219;--s1:#1a2535;--s2:#243040;--s3:#2e3d52;
+  --gold:#b8860b;--gold2:#d4a017;--gold3:#f0c040;
+  --teal:#1a6b5a;--teal2:#228b70;
+  --text:#e8e0d0;--muted:#8a9ab0;
+  --ok:#4a9e5c;--err:#c0504a;
+}
+body{background:var(--bg);color:var(--text);font-family:'Spectral',Georgia,serif;min-height:100vh;}
+.app{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 20% -5%,rgba(180,134,11,.07),transparent),radial-gradient(ellipse 60% 70% at 80% 110%,rgba(26,107,90,.06),transparent),var(--bg);}
+.nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:13px 28px;background:rgba(12,18,25,.93);backdrop-filter:blur(14px);border-bottom:1px solid rgba(180,134,11,.18);}
+.nlogo{display:flex;align-items:center;gap:10px;cursor:pointer;}
+.nicon{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold2));display:flex;align-items:center;justify-content:center;font-size:17px;}
+.ntext h1{font-family:'Cinzel',serif;font-size:16px;color:var(--gold2);letter-spacing:.05em;}
+.ntext span{font-size:10px;color:var(--muted);}
+.nright{display:flex;align-items:center;gap:8px;}
+.nuser-wrap{position:relative;}
+.admin-mode-badge{
+  font-family:'Cinzel',serif;font-size:11px;letter-spacing:.06em;
+  color:var(--gold3);background:rgba(180,134,11,.12);
+  border:1px solid rgba(180,134,11,.3);border-radius:14px;
+  padding:5px 14px;
+}
+.admin-msg-badge{
+  font-family:'Cinzel',serif;font-size:11px;letter-spacing:.04em;
+  color:#fff;background:var(--err);
+  border-radius:14px;padding:5px 12px;
+  animation:msgPulse 2s ease-in-out infinite;
+}
+@keyframes msgPulse{0%,100%{box-shadow:0 0 0 0 rgba(192,80,74,.5);}50%{box-shadow:0 0 0 6px rgba(192,80,74,0);}}
+.nuser{font-size:12px;color:var(--teal2);padding:4px 11px;border-radius:16px;background:rgba(26,107,90,.1);border:1px solid rgba(34,139,112,.18);cursor:pointer;font-family:'Spectral',serif;transition:all .18s;}
+.nuser:hover{background:rgba(26,107,90,.18);border-color:rgba(34,139,112,.35);}
+.nuser-menu{
+  position:absolute;top:calc(100% + 8px);right:0;
+  background:var(--s2);border:1px solid var(--border);
+  border-radius:10px;min-width:200px;
+  box-shadow:0 12px 32px rgba(0,0,0,.5);
+  z-index:300;overflow:hidden;
+  animation:menuIn .16s ease;
+}
+@keyframes menuIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.nuser-menu-email{padding:10px 14px;font-size:11px;color:var(--muted);border-bottom:1px solid rgba(255,255,255,.06);word-break:break-all;}
+.nuser-menu-item{
+  display:block;width:100%;text-align:left;
+  background:none;border:none;color:var(--text);
+  padding:10px 14px;font-size:13px;cursor:pointer;
+  font-family:'Spectral',serif;transition:background .15s;
+}
+.nuser-menu-item:hover{background:rgba(180,134,11,.08);color:var(--gold2);}
+.nuser-menu-item.logout{color:#d08075;}
+.nuser-menu-item.logout:hover{background:rgba(192,80,74,.1);color:#f0a8a0;}
+.nbtn{background:transparent;border:1px solid rgba(180,134,11,.22);color:var(--muted);padding:5px 14px;border-radius:16px;font-family:'Spectral',serif;font-size:12px;cursor:pointer;transition:all .18s;}
+.nbtn:hover,.nbtn.on{border-color:var(--gold2);color:var(--gold2);}
+.ncta{background:linear-gradient(135deg,var(--gold),var(--gold2));border:none;color:var(--bg);padding:6px 16px;border-radius:16px;font-family:'Cinzel',serif;font-size:11px;cursor:pointer;font-weight:500;transition:all .2s;}
+.ncta:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(180,134,11,.35);}
+.page{max-width:860px;margin:0 auto;padding:44px 22px;animation:fu .32s ease;}
+.pmd{max-width:680px;}.psm{max-width:520px;}
+@keyframes fu{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:none}}
+.lbl{font-family:'Cinzel',serif;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);display:flex;align-items:center;gap:9px;margin-bottom:13px;}
+.lbl::before{content:'';width:26px;height:1px;background:var(--gold);}
+h2{font-family:'Cinzel',serif;font-size:28px;font-weight:400;margin-bottom:7px;}
+.sub{color:var(--muted);font-size:15px;font-weight:300;line-height:1.7;}
+.arabic{font-family:'Scheherazade New',serif;direction:rtl;}
+.card{background:var(--s1);border:1px solid rgba(180,134,11,.13);border-radius:10px;padding:26px;box-shadow:0 8px 36px rgba(0,0,0,.55);}
+.card+.card{margin-top:16px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;letter-spacing:.06em;font-family:'Cinzel',serif;}
+.field input{width:100%;background:var(--s2);border:1px solid rgba(180,134,11,.14);color:var(--text);padding:9px 13px;border-radius:7px;font-family:'Spectral',serif;font-size:14px;outline:none;transition:border-color .2s;}
+.field input:focus{border-color:var(--gold);}
+
+/* ── ENROLLMENT — VALIDATION ERROR ── */
+.enroll-error{
+  font-size:12.5px;color:#e0a098;background:rgba(192,80,74,.08);
+  border:1px solid rgba(192,80,74,.25);border-radius:7px;
+  padding:9px 13px;margin:-4px 0 14px;line-height:1.5;
+}
+
+/* ── ENROLLMENT — LOGIN HINT ── */
+.enroll-hint{
+  font-size:11.5px;color:var(--muted);text-align:center;
+  margin-top:12px;line-height:1.5;
+}
+.forgot-link{color:var(--teal2);cursor:pointer;text-decoration:underline;text-decoration-color:rgba(34,139,112,.4);}
+.forgot-link:hover{color:var(--gold3);}
+
+/* ── ENROLLMENT — AUTH MODE TABS (Login / Sign Up / Upgrade) ── */
+.auth-mode-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
+.auth-mode-tab{
+  flex:1;min-width:90px;padding:9px 10px;border-radius:8px;
+  background:var(--s2);border:1px solid rgba(180,134,11,.14);
+  color:var(--muted);font-family:'Cinzel',serif;font-size:11.5px;
+  letter-spacing:.03em;cursor:pointer;transition:all .18s;
+}
+.auth-mode-tab:hover{border-color:rgba(180,134,11,.3);color:var(--gold3);}
+.auth-mode-tab.on{background:rgba(180,134,11,.14);border-color:var(--gold);color:var(--gold3);}
+@keyframes tagIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
+/* ── ENROLLMENT — TYPO WARNING ── */
+.enroll-typo-warning{
+  background:rgba(212,147,10,.08);border:1px solid rgba(212,147,10,.28);
+  border-radius:8px;padding:12px 14px;margin:-4px 0 14px;
+  font-size:13px;color:#e0b050;line-height:1.5;
+  animation:tagIn .2s ease;
+}
+.enroll-typo-warning strong{color:var(--gold3);}
+.enroll-typo-actions{display:flex;gap:8px;margin-top:10px;}
+.enroll-typo-actions .btn{flex:1;}
+
+/* ── ENROLLMENT — SINCERITY MESSAGE ── */
+.enroll-sincerity{
+  margin-top:22px;padding:20px 22px;text-align:center;
+  background:linear-gradient(135deg,rgba(180,134,11,.05),rgba(26,107,90,.04));
+  border:1px solid rgba(180,134,11,.15);border-radius:10px;
+}
+.enroll-sincerity .arabic{
+  font-family:'Scheherazade New',serif;font-size:24px;color:var(--gold2);
+  direction:rtl;margin-bottom:10px;
+}
+.enroll-sincerity p{
+  font-size:13px;color:var(--muted);line-height:1.75;font-style:italic;
+  max-width:420px;margin:0 auto;
+}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 24px;border-radius:7px;font-family:'Spectral',serif;font-size:14px;cursor:pointer;transition:all .18s;border:none;font-weight:500;}
+.bg{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--bg);}
+.bg:hover{transform:translateY(-1px);box-shadow:0 5px 18px rgba(180,134,11,.3);}
+.bt{background:var(--teal);color:#fff;}.bt:hover{background:var(--teal2);}
+.bh{background:transparent;border:1px solid rgba(180,134,11,.22);color:var(--muted);}.bh:hover{border-color:var(--gold2);color:var(--gold2);}
+.bsm{padding:6px 14px;font-size:12px;}.bfw{width:100%;}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important;}
+.srow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px;}
+.sbox{background:var(--s2);border:1px solid rgba(180,134,11,.1);border-radius:9px;padding:16px;text-align:center;}
+.sn{font-family:'Cinzel',serif;font-size:26px;color:var(--gold2);}
+.sl{font-size:10px;color:var(--muted);letter-spacing:.06em;margin-top:3px;}
+.cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:5px;}
+.cc{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;transition:all .14s;border:1px solid transparent;}
+.cc.locked{background:rgba(255,255,255,.025);color:rgba(255,255,255,.12);cursor:default;}
+.cc.done{background:rgba(74,158,92,.16);color:var(--ok);border-color:rgba(74,158,92,.28);}
+.cc.today{background:rgba(180,134,11,.18);color:var(--gold3);border-color:var(--gold);font-weight:600;}
+.cc.avail{background:rgba(180,134,11,.07);color:var(--muted);border-color:rgba(180,134,11,.13);}
+.cc:not(.locked):hover{border-color:var(--gold2);color:var(--gold2);}
+.cc.cc-continues{background:transparent;cursor:default;color:var(--muted);font-size:16px;letter-spacing:1px;opacity:.5;}
+.cc.selected{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);}
+.cc-allsets{
+  grid-column:span 2;aspect-ratio:auto;height:100%;min-height:34px;
+  border-radius:5px;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-family:'Cinzel',serif;letter-spacing:.04em;
+  cursor:pointer;transition:all .14s;
+  background:rgba(34,139,112,.1);color:var(--teal2);border:1px solid rgba(34,139,112,.25);
+  white-space:nowrap;padding:0 10px;
+}
+.cc-allsets:hover{border-color:var(--teal2);background:rgba(34,139,112,.16);}
+.cc-allsets.selected{border-color:var(--teal2);box-shadow:0 0 0 1px var(--teal2);background:rgba(34,139,112,.18);}
+.set-mastery-banner{
+  background:rgba(180,134,11,.07);border:1px solid rgba(180,134,11,.18);
+  border-radius:8px;padding:11px 14px;font-size:13px;color:var(--text);line-height:1.5;
+}
+.set-mastery-banner strong{color:var(--gold3);}
+.wlist{display:grid;gap:10px;}
+.word-card{background:var(--s2);border:1px solid rgba(180,134,11,.09);border-radius:9px;padding:14px 16px;transition:border-color .15s;}
+.word-card:hover{border-color:rgba(180,134,11,.22);}
+.word-card-unmastered{background:rgba(192,80,74,.06);border-color:rgba(192,80,74,.3);}
+.word-card-unmastered:hover{border-color:rgba(192,80,74,.5);}
+.word-card-main{display:grid;grid-template-columns:1fr auto 1.3fr auto auto;align-items:center;gap:14px;}
+.war{font-family:'Scheherazade New',serif;font-size:26px;color:var(--gold3);text-align:right;}
+.wtr{font-size:11px;color:var(--muted);font-style:italic;text-align:center;}
+.wen{font-size:14px;}
+.word-urdu{font-family:'Scheherazade New',serif;font-size:17px;color:var(--teal2);direction:rtl;text-align:right;}
+.word-toggle{background:none;border:1px solid rgba(180,134,11,.2);color:var(--muted);font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.word-toggle:hover{border-color:var(--gold2);color:var(--gold2);}
+.word-card-detail{
+  margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.06);
+  display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:12.5px;
+  animation:tagIn .15s ease;
+}
+.word-card-detail .dlabel{color:var(--muted);font-family:'Cinzel',serif;font-size:10px;letter-spacing:.06em;text-transform:uppercase;}
+.word-card-detail .dval{color:var(--text);}
+.word-card-detail .dval.arabic{font-family:'Scheherazade New',serif;font-size:22px;font-weight:600;color:#f0c040;direction:rtl;text-align:left;}
+.word-card-detail .dval.urdu{font-family:'Scheherazade New',serif;font-size:19px;font-weight:600;color:#2bc796;direction:rtl;text-align:left;}
+.qwrap{max-width:620px;margin:0 auto;}
+.qprog{display:flex;gap:3px;margin-bottom:22px;}
+.qd{height:4px;flex:1;border-radius:2px;background:var(--s2);transition:background .28s;}
+.qd.done{background:var(--gold);}.qd.now{background:var(--teal2);}
+.qcard{background:linear-gradient(155deg,var(--s1),var(--s2));border:1px solid rgba(180,134,11,.18);border-radius:14px;padding:38px 32px;text-align:center;box-shadow:0 18px 52px rgba(0,0,0,.48);background-image:url("${bgUrl}");background-size:180px;}
+.qdir{font-family:'Cinzel',serif;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--teal2);margin-bottom:16px;}
+.qq{font-size:64px;color:var(--gold3);line-height:1.18;margin-bottom:5px;}
+.qq.en{font-size:25px;font-weight:300;color:var(--text);}
+.qtr{font-size:13px;color:var(--muted);font-style:italic;margin-bottom:34px;}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.opt{background:var(--s3);border:1px solid rgba(180,134,11,.11);color:var(--text);padding:15px 13px;border-radius:9px;font-family:'Spectral',serif;font-size:14px;cursor:pointer;transition:all .18s;line-height:1.4;}
+.opt:hover:not(:disabled){border-color:var(--gold2);color:var(--gold2);background:rgba(180,134,11,.06);}
+.opt.ar{font-family:'Scheherazade New',serif;font-size:24px;padding:18px 13px;}
+.opt.correct{background:rgba(74,158,92,.15)!important;border-color:var(--ok)!important;color:var(--ok)!important;}
+.opt.wrong{background:rgba(192,80,74,.1)!important;border-color:var(--err)!important;color:var(--err)!important;}
+.rring{width:132px;height:132px;border-radius:50%;border:2px solid var(--gold);display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto 26px;background:radial-gradient(circle,rgba(180,134,11,.07),transparent);box-shadow:0 0 36px rgba(180,134,11,.14);}
+.rpct{font-family:'Cinzel',serif;font-size:44px;color:var(--gold2);line-height:1;}
+.rfrac{font-size:11px;color:var(--muted);letter-spacing:.06em;}
+.miss{padding:11px 15px;border-radius:7px;background:rgba(192,80,74,.06);border:1px solid rgba(192,80,74,.18);display:grid;grid-template-columns:auto 1fr auto;gap:11px;align-items:center;margin-bottom:7px;font-size:13px;}
+.lbrow{display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:7px;transition:background .14s;}
+.lbrow:hover{background:var(--s2);}
+.lbrank{font-family:'Cinzel',serif;font-size:12px;color:var(--muted);width:26px;text-align:center;}
+.lbrank.top{color:var(--gold2);}
+.lbinfo{flex:1;}
+.lbname{font-size:15px;}
+.lbmeta{font-size:11px;color:var(--muted);}
+.lbsc{font-family:'Cinzel',serif;font-size:15px;color:var(--teal2);}
+.lbbadge{font-size:10px;background:rgba(180,134,11,.09);color:var(--gold);padding:2px 7px;border-radius:9px;border:1px solid rgba(180,134,11,.18);}
+.tabs{display:flex;gap:3px;background:var(--s2);border-radius:9px;padding:3px;margin-bottom:20px;}
+.tab{flex:1;padding:7px 10px;border-radius:7px;border:none;background:transparent;color:var(--muted);font-family:'Spectral',serif;font-size:12px;cursor:pointer;transition:all .18s;}
+.tab.on{background:var(--s1);color:var(--gold2);border:1px solid rgba(180,134,11,.18);}
+.tab-badge{display:inline-block;background:var(--err);color:#fff;font-size:10px;border-radius:9px;padding:1px 6px;margin-left:4px;}
+
+/* ── ADMIN MESSAGE CENTER ── */
+.msg-list{display:flex;flex-direction:column;gap:10px;}
+.msg-item{
+  display:grid;grid-template-columns:32px 1fr auto;gap:14px;align-items:start;
+  background:var(--s2);border:1px solid rgba(255,255,255,.06);
+  border-radius:9px;padding:14px 16px;cursor:pointer;transition:all .15s;
+}
+.msg-item.unread{border-color:rgba(180,134,11,.35);background:rgba(180,134,11,.05);}
+.msg-item.resolved{opacity:.55;}
+.msg-item:hover{border-color:rgba(180,134,11,.3);}
+.msg-icon{font-size:18px;text-align:center;}
+.msg-title{font-size:13.5px;color:var(--text);display:flex;align-items:center;gap:6px;}
+.msg-title strong{color:var(--gold3);}
+.msg-new-dot{width:7px;height:7px;border-radius:50%;background:var(--err);display:inline-block;}
+.msg-sub{font-size:12px;color:var(--muted);margin-top:3px;}
+.msg-date{font-size:10.5px;color:var(--muted);margin-top:4px;opacity:.7;}
+.msg-actions{display:flex;flex-direction:column;gap:6px;align-items:flex-end;}
+.msg-actions .btn{white-space:nowrap;}
+
+.tbl{width:100%;border-collapse:collapse;font-size:12px;}
+.tbl th{text-align:left;padding:7px 10px;color:var(--muted);font-weight:400;font-size:10px;letter-spacing:.08em;border-bottom:1px solid rgba(180,134,11,.1);}
+.tbl td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.035);vertical-align:middle;}
+.del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;}.del:hover{color:var(--err);}
+.hero{text-align:center;padding:50px 18px 34px;}
+.bism{font-family:'Scheherazade New',serif;font-size:48px;color:var(--gold2);direction:rtl;margin-bottom:18px;line-height:1.4;text-shadow:0 2px 18px rgba(180,134,11,.25);}
+.hero h2{font-size:32px;}.hero h2 em{color:var(--gold2);font-style:normal;}
+.hero .sub{max-width:480px;margin:0 auto 28px;font-size:16px;}
+.streak{display:inline-flex;align-items:center;gap:5px;background:rgba(180,134,11,.09);border:1px solid rgba(180,134,11,.22);border-radius:11px;padding:5px 12px;font-size:12px;color:var(--gold2);}
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:var(--s2);border:1px solid var(--gold);color:var(--gold2);padding:9px 20px;border-radius:20px;font-size:13px;z-index:999;animation:tin .28s ease;box-shadow:0 7px 22px rgba(0,0,0,.45);white-space:nowrap;}
+@keyframes tin{from{opacity:0;transform:translateX(-50%) translateY(9px)}}
+
+/* ── DONATE BUTTON ── */
+.ndonate{
+  display:inline-flex;align-items:center;gap:6px;
+  background:transparent;
+  border:1px solid rgba(212,147,10,.45);
+  color:#e8a020;padding:5px 14px;border-radius:16px;
+  font-family:'Spectral',serif;font-size:12px;cursor:pointer;transition:all .2s;
+}
+.ndonate:hover{background:rgba(212,147,10,.12);border-color:#e8a020;color:#f0c040;box-shadow:0 0 12px rgba(212,147,10,.2);}
+
+/* ── DONATE MODAL ── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.72);
+  z-index:500;display:flex;align-items:center;justify-content:center;
+  padding:20px;animation:mfade .22s ease;
+}
+@keyframes mfade{from{opacity:0}to{opacity:1}}
+.modal{
+  background:var(--s1);border:1px solid rgba(180,134,11,.25);
+  border-radius:14px;width:100%;max-width:520px;
+  box-shadow:0 24px 64px rgba(0,0,0,.7);
+  animation:mslide .26s ease;max-height:90vh;overflow-y:auto;
+}
+@keyframes mslide{from{transform:translateY(18px);opacity:0}to{transform:none;opacity:1}}
+.modal-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 24px 16px;
+  border-bottom:1px solid rgba(180,134,11,.12);
+}
+.modal-head h3{font-family:'Cinzel',serif;font-size:16px;font-weight:400;color:var(--gold2);}
+.modal-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;padding:2px 6px;border-radius:4px;}
+.modal-close:hover{color:var(--text);}
+.modal-body{padding:22px 24px 26px;}
+
+/* ── DONATE — FREQUENCY SELECTOR ── */
+.freq-row{display:flex;gap:8px;margin-bottom:16px;}
+.freq-pill{
+  flex:1;padding:8px 10px;border-radius:8px;
+  background:var(--s2);border:1px solid rgba(180,134,11,.14);
+  color:var(--muted);font-family:'Cinzel',serif;font-size:12px;
+  letter-spacing:.04em;cursor:pointer;transition:all .18s;
+}
+.freq-pill:hover{border-color:rgba(180,134,11,.3);color:var(--gold3);}
+.freq-pill.on{background:rgba(180,134,11,.14);border-color:var(--gold);color:var(--gold3);}
+
+/* ── DONATE — RECURRING SETUP (UPI) ── */
+.recurring-box{
+  background:var(--s2);border:1px solid rgba(180,134,11,.15);
+  border-radius:10px;padding:22px 22px 18px;text-align:center;
+}
+.recurring-icon{font-size:30px;margin-bottom:8px;}
+.recurring-box h4{font-family:'Cinzel',serif;font-size:14px;color:var(--gold2);font-weight:400;margin-bottom:8px;}
+.recurring-box p{font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;}
+.recurring-steps{
+  text-align:left;font-size:12.5px;color:var(--text);
+  line-height:1.8;margin:0 0 12px;padding-left:20px;
+}
+.recurring-steps li{margin-bottom:6px;}
+.recurring-steps li strong{color:var(--gold3);}
+
+/* ── DONATE — BANK TRANSFER BY REQUEST (shown to everyone; UPI is the only self-service method) ── */
+.bank-login-prompt{
+  background:rgba(26,107,90,.07);border:1px solid rgba(34,139,112,.2);
+  border-radius:8px;padding:13px 15px;margin-top:14px;
+  font-size:12.5px;color:#7acfb8;line-height:1.6;text-align:center;
+}
+.bank-login-prompt strong{color:var(--teal2);}
+
+/* ── DONATE TABS ── */
+.dtabs{display:flex;gap:3px;background:var(--s2);border-radius:8px;padding:3px;margin-bottom:22px;}
+.dtab{flex:1;padding:7px;border-radius:6px;border:none;background:transparent;color:var(--muted);font-family:'Spectral',serif;font-size:13px;cursor:pointer;transition:all .18s;}
+.dtab.on{background:var(--s1);color:var(--gold2);border:1px solid rgba(180,134,11,.18);}
+
+/* ── QR BOX ── */
+.qr-box{
+  background:var(--s2);border:1px solid rgba(180,134,11,.15);
+  border-radius:10px;padding:24px;text-align:center;margin-bottom:16px;
+}
+.qr-placeholder{
+  width:180px;height:180px;margin:0 auto 16px;
+  background:#fff;border-radius:8px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;color:#666;font-size:11px;
+  border:3px solid var(--gold2);
+  position:relative;overflow:hidden;
+}
+.qr-placeholder svg{opacity:.15;}
+.qr-corner{position:absolute;width:24px;height:24px;border-color:var(--gold2);border-style:solid;}
+.qr-corner.tl{top:6px;left:6px;border-width:3px 0 0 3px;}
+.qr-corner.tr{top:6px;right:6px;border-width:3px 3px 0 0;}
+.qr-corner.bl{bottom:6px;left:6px;border-width:0 0 3px 3px;}
+.qr-corner.br{bottom:6px;right:6px;border-width:0 3px 3px 0;}
+.qr-inner{position:relative;z-index:1;text-align:center;}
+.qr-upi{font-size:13px;color:var(--text);margin-bottom:4px;}
+.qr-upiid{font-family:'Courier New',monospace;font-size:15px;color:var(--gold3);background:rgba(180,134,11,.1);padding:6px 14px;border-radius:6px;display:inline-block;margin-top:6px;border:1px solid rgba(180,134,11,.2);}
+.copy-btn{background:transparent;border:1px solid rgba(180,134,11,.25);color:var(--muted);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;transition:all .18s;margin-top:8px;}
+.copy-btn:hover{border-color:var(--gold2);color:var(--gold2);}
+
+/* ── BANK DETAILS ── */
+.bank-row{display:flex;justify-content:space-between;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05);gap:12px;}
+.bank-row:last-child{border:none;}
+.bank-label{font-size:11px;color:var(--muted);letter-spacing:.05em;flex-shrink:0;padding-top:2px;}
+.bank-value{font-size:14px;color:var(--text);text-align:right;word-break:break-all;}
+.bank-value.mono{font-family:'Courier New',monospace;font-size:13px;color:var(--gold3);}
+
+/* ── DONATE FOOTER ── */
+.donate-ayah{
+  text-align:center;margin-top:20px;padding-top:16px;
+  border-top:1px solid rgba(180,134,11,.1);
+}
+.donate-ayah .arabic{font-size:22px;color:var(--gold2);margin-bottom:6px;}
+.donate-ayah p{font-size:12px;color:var(--muted);font-style:italic;}
+
+/* ── COMPACT DONATE STRIP (replaces the old large banner) ── */
+.donate-strip{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  background:rgba(180,134,11,.05);border:1px solid rgba(180,134,11,.15);
+  border-radius:8px;padding:12px 18px;margin-top:16px;
+  cursor:pointer;transition:all .18s;flex-wrap:wrap;
+}
+.donate-strip:hover{background:rgba(180,134,11,.09);border-color:rgba(180,134,11,.28);}
+.donate-strip span:first-child{font-size:13px;color:var(--muted);}
+.donate-strip-cta{font-family:'Cinzel',serif;font-size:12px;color:var(--gold2);font-weight:500;white-space:nowrap;}
+
+/* ── HOMEPAGE — ALL SETS QUIZ BEST-ATTEMPT RIBBON ── */
+.allsets-ribbon{
+  display:flex;align-items:center;gap:14px;
+  cursor:pointer;transition:all .18s;
+}
+.allsets-ribbon:hover{border-color:rgba(180,134,11,.3);}
+.allsets-ribbon-icon{font-size:26px;flex-shrink:0;}
+.allsets-ribbon-text{flex:1;min-width:0;}
+.allsets-ribbon-title{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.06em;color:var(--gold2);text-transform:uppercase;margin-bottom:4px;}
+.allsets-ribbon-detail{font-size:13.5px;color:var(--text);line-height:1.5;}
+.allsets-ribbon-detail strong{color:var(--gold3);}
+.allsets-ribbon-arrow{font-size:18px;color:var(--muted);flex-shrink:0;}
+.btn-donate{
+  background:linear-gradient(135deg,#c47f0a,#e8a020);
+  border:none;color:#0c1219;padding:10px 22px;border-radius:8px;
+  font-family:'Cinzel',serif;font-size:12px;cursor:pointer;
+  transition:all .2s;font-weight:500;white-space:nowrap;flex-shrink:0;
+}
+.btn-donate:hover{transform:translateY(-1px);box-shadow:0 5px 18px rgba(180,134,11,.35);}
+
+/* ── QUIZ EXIT BUTTON ── */
+.quiz-exit{
+  background:transparent;border:1px solid rgba(192,80,74,.35);
+  color:#d08075;padding:3px 11px;border-radius:14px;
+  font-size:11px;cursor:pointer;transition:all .18s;font-family:'Spectral',serif;
+}
+.quiz-exit:hover{background:rgba(192,80,74,.12);border-color:var(--err);color:#f0a8a0;}
+
+/* ── QUIZ TIMER ── */
+.quiz-timer{
+  font-family:'Cinzel',serif;font-size:13px;color:var(--teal2);
+  background:rgba(26,107,90,.1);border:1px solid rgba(34,139,112,.25);
+  border-radius:14px;padding:3px 12px;
+}
+.quiz-timer.low{
+  color:#fff;background:var(--err);border-color:var(--err);
+  animation:timerPulse 1s ease-in-out infinite;
+}
+@keyframes timerPulse{0%,100%{opacity:1;}50%{opacity:.6;}}
+
+/* ── HISTORY LIST ── */
+/* ── HISTORY — SIDE-BY-SIDE CHARTS (Set vs All Sets Quiz) ── */
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;align-items:stretch;}
+.chart-col{padding:16px 14px;display:flex;flex-direction:column;height:340px;}
+.chart-col-head{height:28px;display:flex;align-items:flex-start;flex-shrink:0;}
+.chart-col-inner{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;}
+.chart-empty{text-align:center;color:var(--muted);font-size:12px;padding:36px 10px;}
+@media(max-width:640px){.chart-row{grid-template-columns:1fr;}}
+
+.hist-row{
+  display:grid;grid-template-columns:56px 1fr 20px;align-items:center;gap:14px;
+  padding:14px 16px;border-radius:8px;cursor:pointer;transition:background .15s;
+  border-bottom:1px solid rgba(255,255,255,.04);
+}
+.hist-row:last-child{border-bottom:none;}
+.hist-row:hover{background:var(--s2);}
+.hist-pct{font-family:'Cinzel',serif;font-size:20px;text-align:center;}
+.hist-title{font-size:14px;color:var(--text);}
+.hist-date{font-size:11px;color:var(--muted);margin-top:2px;}
+.hist-arrow{color:var(--muted);font-size:16px;text-align:center;transition:color .15s;}
+.hist-row:hover .hist-arrow{color:var(--gold2);}
+
+/* ── ANSWER REVIEW ── */
+.review-answer-note{
+  font-size:12px;padding:8px 16px 12px;line-height:1.5;
+  margin-top:-4px;margin-bottom:8px;
+}
+
+@media(max-width:600px){.srow{grid-template-columns:repeat(2,1fr);}.opts{grid-template-columns:1fr;}.wrow{grid-template-columns:1fr 2fr;}.wtr{display:none;}.qq{font-size:46px;}.donate-strip{flex-direction:column;text-align:center;}}
+`;
+
+// ── Donation details ── replace placeholders with real values before going live
+const DONATE = {
+  charityName: "Your Charity Name Here",
+  upiId:       "yourcharity@upi",
+  accountName: "Charity Full Account Name",
+  accountNo:   "XXXX XXXX XXXX",
+  ifsc:        "XXXXX0000000",
+  bankName:    "Bank Name",
+  branch:      "Branch Name, City, India",
+  purpose:     "Quranic Education & Dawah",
+
+  // ── Registration details, for printing on receipts once confirmed ──────────
+  // PAN is confirmed and filled in. The others (80G/12A/10BD-BE) are pending
+  // confirmation from the trust's CA — leave them as null until verified.
+  // Nothing in the receipt code prints a field unless it's filled in here, so
+  // it's safe to update these one at a time as each gets confirmed, without
+  // needing any other code changes.
+  pan:           "PASTE_TRUST_PAN_HERE",       // confirmed — fill in the actual PAN
+  reg80G:        null,  // 80G registration number, once confirmed (e.g. "AABCT1234R/2026/0001")
+  reg80GValidTo: null,  // 80G validity expiry date, if applicable (e.g. "2031-03-31")
+  reg12A:        null,  // 12A registration number, once confirmed
+  form10BDFiled: false, // set true once the trust has actually filed Form 10BD for a given year
+};
+
+export default function App() {
+  const isAdminRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/admin";
+  const isFinanceRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/finance";
+  const resetTokenFromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("reset") : null;
+  const verifyTokenFromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("verify") : null;
+  const [view, setView] = useState(isAdminRoute ? "admin" : isFinanceRoute ? "finance" : resetTokenFromUrl ? "resetPassword" : verifyTokenFromUrl ? "verifyEmail" : "home");
+  const [user, setUser] = useState(null);
+  const [customWords, setCustomWords] = useState([]);
+  const [participants, setParticipants] = useState([]);
+  const [quiz, setQuiz] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [showDonate, setShowDonate] = useState(false);
+  const [reviewing, setReviewing] = useState(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [showFinanceMenu, setShowFinanceMenu] = useState(false);
+  const [adminProfileOpen, setAdminProfileOpen] = useState(false);
+  const [financeProfileOpen, setFinanceProfileOpen] = useState(false);
+  // Admin unlock is session-only (sessionStorage, not localStorage) — closing
+  // the browser tab re-locks it. This is intentionally separate from regular
+  // learner accounts; it gates the single shared Admin password, not a
+  // per-user login (that's #5, for learners).
+  const [adminUnlocked, setAdminUnlocked] = useState(() => sessionStorage.getItem("qv_admin_unlocked") === "1");
+  const [financeUnlocked, setFinanceUnlocked] = useState(() => sessionStorage.getItem("qv_finance_unlocked") === "1");
+  const [messages, setMessages] = useState([]);
+  const [receipts, setReceipts] = useState([]);
+
+  useEffect(() => {
+    const u = storageGet("qv_user");
+    const cw = storageGet("qv_custom") || [];
+    const ps = storageGet("qv_parts") || [];
+    if (u) setUser(u);
+    setCustomWords(cw);
+    setParticipants(ps);
+    setMessages(getMessages());
+    setReceipts(getReceipts());
+  }, []);
+
+  const unlockAdmin = () => {
+    setAdminUnlocked(true);
+    sessionStorage.setItem("qv_admin_unlocked", "1");
+  };
+  const lockAdmin = () => {
+    setAdminUnlocked(false);
+    sessionStorage.removeItem("qv_admin_unlocked");
+    if (isAdminRoute) { window.location.href = "/"; } else { setView("home"); }
+  };
+
+  const unlockFinance = () => {
+    setFinanceUnlocked(true);
+    sessionStorage.setItem("qv_finance_unlocked", "1");
+  };
+  const lockFinance = () => {
+    setFinanceUnlocked(false);
+    sessionStorage.removeItem("qv_finance_unlocked");
+    if (isFinanceRoute) { window.location.href = "/"; } else { setView("home"); }
+  };
+
+  const toast_ = (m) => { setToast(m); setTimeout(() => setToast(null), 2600); };
+
+  const saveUser = (u) => {
+    setUser(u);
+    storageSet("qv_user", u);
+    setParticipants(prev => {
+      const key = u.userId || u.email; // legacy accounts without userId still key by email
+      const next = prev.find(p => (p.userId || p.email) === key)
+        ? prev.map(p => (p.userId || p.email) === key ? u : p)
+        : [...prev, u];
+      storageSet("qv_parts", next);
+      return next;
+    });
+  };
+
+  // Register a brand-new account with userId + password.
+  const registerUser = async (userId, password, name, email) => {
+    const idLower = userId.trim().toLowerCase();
+    const idTaken = participants.some(p => (p.userId || "").toLowerCase() === idLower);
+    if (idTaken) { toast_("That User ID is already taken. Please choose another."); return { ok: false, reason: "id-taken" }; }
+
+    const passwordHash = await hashPassword(password);
+    const trimmedEmail = email.trim();
+    const u = {
+      userId: userId.trim(), passwordHash, name: name.trim(), email: trimmedEmail,
+      enrolledAt: new Date().toISOString(), scores: [], dayProgress: {},
+      emailVerified: false,
+    };
+
+    // Save the account in pending state — NOT logged in yet (no saveUser call,
+    // so no active session starts) until the email link is clicked.
+    setParticipants(prev => {
+      const next = [...prev, u];
+      storageSet("qv_parts", next);
+      return next;
+    });
+
+    const token = createVerifyToken(u.userId);
+    const verifyLink = `${window.location.origin}/?verify=${token}`;
+    try {
+      await sendVerificationEmail({ toEmail: trimmedEmail, learnerName: u.name, verifyLink });
+      return { ok: true, userId: u.userId, email: trimmedEmail };
+    } catch (err) {
+      console.error("Verification email failed to send:", err);
+      // Account still exists in pending state — they can use "Resend" on the
+      // verify-pending screen, or admin can fix the email and we resend.
+      return { ok: true, userId: u.userId, email: trimmedEmail, emailFailed: true };
+    }
+  };
+
+  // Resend a verification email for an account that hasn't verified yet —
+  // generates a fresh token (old links remain separately valid until they
+  // individually expire, which is fine since each is single-use anyway).
+  const resendVerificationEmail = async (userId) => {
+    const target = participants.find(p => (p.userId || "").toLowerCase() === userId.toLowerCase());
+    if (!target) return { ok: false, reason: "not-found" };
+    if (target.emailVerified) return { ok: false, reason: "already-verified" };
+
+    const token = createVerifyToken(target.userId);
+    const verifyLink = `${window.location.origin}/?verify=${token}`;
+    try {
+      await sendVerificationEmail({ toEmail: target.email, learnerName: target.name, verifyLink });
+      return { ok: true };
+    } catch (err) {
+      console.error("Resend verification failed:", err);
+      return { ok: false, reason: "send-failed" };
+    }
+  };
+
+  // Called when the user opens their emailed verification link.
+  const verifyEmailFromToken = (token) => {
+    const check = validateVerifyToken(token);
+    if (!check.valid) return { ok: false, reason: check.reason };
+
+    // Read participants directly from localStorage rather than the React
+    // `participants` state — when this page is opened fresh via the emailed
+    // link (a brand-new page load, not navigation within an already-running
+    // app), App's own mount effect that populates `participants` may not
+    // have finished yet, making the state variable briefly stale/empty and
+    // causing a valid token to incorrectly fail with "not-found".
+    const currentParticipants = storageGet("qv_parts") || [];
+    const target = currentParticipants.find(p => (p.userId || "").toLowerCase() === check.userId.toLowerCase());
+    if (!target) return { ok: false, reason: "not-found" };
+
+    const updated = { ...target, emailVerified: true };
+    const next = currentParticipants.map(p => (p.userId || "").toLowerCase() === check.userId.toLowerCase() ? updated : p);
+    storageSet("qv_parts", next);
+    setParticipants(next);
+    consumeVerifyToken(token);
+    // Now log them in, since verification is complete.
+    saveUser(updated);
+    return { ok: true, name: updated.name };
+  };
+
+  // Log in an existing account with userId + password.
+  const loginUser = async (userId, password) => {
+    const idLower = userId.trim().toLowerCase();
+    const existing = participants.find(p => (p.userId || "").toLowerCase() === idLower);
+    if (!existing) { toast_("No account found with that User ID."); return { ok: false, reason: "not-found" }; }
+
+    const hash = await hashPassword(password);
+    if (hash !== existing.passwordHash) { toast_("Incorrect password."); return { ok: false, reason: "wrong-password" }; }
+
+    // emailVerified === false specifically means this account was created
+    // after verification existed and hasn't completed it yet. Accounts from
+    // before this feature existed have emailVerified === undefined, which we
+    // treat as already-verified (grandfathered in) rather than locking out
+    // everyone who signed up previously.
+    if (existing.emailVerified === false) {
+      return { ok: false, reason: "not-verified", userId: existing.userId, email: existing.email };
+    }
+
+    saveUser(existing);
+    toast_(`Welcome back, ${existing.name}!`);
+    setView("home");
+    return { ok: true };
+  };
+
+  const logout = () => {
+    setUser(null);
+    storageRemove("qv_user");
+    setQuiz(null);
+    setSelectedDay(null);
+    setView("home");
+    toast_("Logged out — your progress is saved for next time");
+  };
+
+  // Admin-only: reset a learner's password to a new temporary one they provide
+  // Admin-triggered reset: generates a one-time reset link and emails it to
+  // the learner via EmailJS (Titan SMTP, support@awamibaitulmaal.org.in).
+  // The actual new password is never set by admin and never appears in the
+  // email — the learner sets it themselves by opening the link.
+  const sendResetLinkToUser = async (userId, messageId = null) => {
+    const target = participants.find(p => (p.userId || "").toLowerCase() === userId.toLowerCase());
+    if (!target) return { ok: false, reason: "not-found" };
+    if (!target.email) return { ok: false, reason: "no-email" };
+
+    const token = createResetToken(target.userId, messageId);
+    const resetLink = `${window.location.origin}/?reset=${token}`;
+
+    try {
+      await sendResetEmail({ toEmail: target.email, learnerName: target.name, resetLink });
+      return { ok: true };
+    } catch (err) {
+      console.error("EmailJS send failed:", err);
+      return { ok: false, reason: "send-failed" };
+    }
+  };
+
+  // Admin-only: correct a learner's name or email (e.g. fixing a typo'd
+  // domain like gmail.cm that slipped through signup). Email changes are
+  // re-validated through the same domain check used at signup, so admin
+  // can't accidentally introduce another bad address.
+  const updateParticipantDetails = async (userId, newName, newEmail) => {
+    const target = participants.find(p => (p.userId || "").toLowerCase() === userId.toLowerCase());
+    if (!target) return { ok: false, reason: "not-found" };
+
+    const trimmedEmail = newEmail.trim();
+    if (trimmedEmail !== target.email) {
+      const result = await isEmailDomainValid(trimmedEmail);
+      if (!result.valid) {
+        if (result.reason === "disposable") return { ok: false, reason: "disposable" };
+        if (result.reason === "no-mx") return { ok: false, reason: "no-mx" };
+        return { ok: false, reason: "format" };
+      }
+      // Note: a "likely-typo" warning is informational here — admin can still
+      // save if they're confident it's correct (e.g. a real but unusual domain).
+    }
+
+    const updated = { ...target, name: newName.trim(), email: trimmedEmail };
+    setParticipants(prev => {
+      const next = prev.map(p => (p.userId || "").toLowerCase() === userId.toLowerCase() ? updated : p);
+      storageSet("qv_parts", next);
+      return next;
+    });
+    if (user && (user.userId || "").toLowerCase() === userId.toLowerCase()) {
+      setUser(updated);
+      storageSet("qv_user", updated);
+    }
+    return { ok: true };
+  };
+
+  // Admin-only: permanently remove a participant account (e.g. an abandoned
+  // signup with an unfixable bad email). This does not affect Admin's own
+  // account — only learner participant records.
+  const deleteParticipant = (userId) => {
+    setParticipants(prev => {
+      const next = prev.filter(p => (p.userId || "").toLowerCase() !== userId.toLowerCase());
+      storageSet("qv_parts", next);
+      return next;
+    });
+    if (user && (user.userId || "").toLowerCase() === userId.toLowerCase()) {
+      setUser(null);
+      storageRemove("qv_user");
+    }
+  };
+
+  // Pre-launch cleanup: wipes every piece of test data accumulated during
+  // QA — participants, scores, messages, reset/verify tokens, custom words,
+  // and the admin password (reverts to the hardcoded default so a fresh
+  // production password must be set deliberately afterward). Deliberately
+  // does NOT touch qv_admin_email, since that's a real configuration value,
+  // not test data. Admin is logged out of the unlocked session as part of
+  // this, since the password they were using is no longer valid.
+  const resetAllTestData = () => {
+    storageRemove("qv_parts");
+    storageRemove("qv_user");
+    storageRemove("qv_messages");
+    storageRemove("qv_reset_tokens");
+    storageRemove("qv_verify_tokens");
+    storageRemove("qv_custom");
+    storageRemove("qv_admin_pw_hash");
+    sessionStorage.removeItem("qv_admin_unlocked");
+
+    setParticipants([]);
+    setUser(null);
+    setMessages([]);
+    setCustomWords([]);
+    setAdminUnlocked(false);
+    setQuiz(null);
+
+    window.location.href = "/admin";
+  };
+
+  // Sets a learner's password directly from a valid reset token (used by the
+  // "Set New Password" screen the reset link opens) — not by admin typing it.
+  const setPasswordFromToken = async (token, newPassword) => {
+    const check = validateResetToken(token);
+    if (!check.valid) return { ok: false, reason: check.reason };
+
+    // Read participants directly from localStorage rather than the React
+    // `participants` state — see the identical note in verifyEmailFromToken
+    // above for why this matters when the page is opened fresh via an
+    // emailed link rather than from inside an already-running app session.
+    const currentParticipants = storageGet("qv_parts") || [];
+    const target = currentParticipants.find(p => (p.userId || "").toLowerCase() === check.userId.toLowerCase());
+    if (!target) return { ok: false, reason: "not-found" };
+
+    const passwordHash = await hashPassword(newPassword);
+    const updated = { ...target, passwordHash };
+    const next = currentParticipants.map(p => (p.userId || "").toLowerCase() === check.userId.toLowerCase() ? updated : p);
+    storageSet("qv_parts", next);
+    setParticipants(next);
+    consumeResetToken(token);
+    if (user && (user.userId || "").toLowerCase() === check.userId.toLowerCase()) {
+      setUser(updated);
+      storageSet("qv_user", updated);
+    }
+
+    // If this reset link was sent from a Message Center request, auto-resolve
+    // that request now and leave an acknowledgment so admin sees confirmation
+    // it was actually completed by the learner, not just sent.
+    if (check.messageId) {
+      markMessageResolved(check.messageId);
+      addMessage({
+        type: "password_reset_completed",
+        userId: target.userId,
+        learnerName: target.name,
+        note: "Password reset completed by the learner.",
+        resolved: true, // acknowledgment itself doesn't need action
+      });
+      setMessages(getMessages());
+    }
+
+    return { ok: true, name: target.name };
+  };
+
+  // Forgot-password request from the Login screen → lands in Admin's Message
+  // Center. Admin reviews it, then clicks "Send Reset Link" to email the
+  // learner via sendResetLinkToUser above.
+  // Requires User ID + registered Email to match the SAME account. If they
+  // don't match, reject immediately client-side — no admin message is created,
+  // since there's nothing valid for admin to act on.
+  const submitForgotPasswordRequest = (userId, email, note) => {
+    const target = participants.find(p =>
+      (p.userId || "").toLowerCase() === userId.trim().toLowerCase() &&
+      (p.email || "").toLowerCase() === email.trim().toLowerCase()
+    );
+    if (!target) {
+      return { ok: false, reason: "no-match" };
+    }
+    addMessage({
+      type: "password_reset",
+      userId: userId.trim(),
+      email: email.trim(),
+      learnerName: target.name,
+      note: note.trim(),
+    });
+    setMessages(getMessages());
+    toast_("Request sent to the admin. You'll receive a reset link by email once approved.");
+    return { ok: true };
+  };
+
+  const onMarkMessageRead = (id) => { markMessageRead(id); setMessages(getMessages()); };
+  const onMarkMessageResolved = (id) => { markMessageResolved(id); setMessages(getMessages()); };
+
+  // Admin-issued donation receipt, sent after the finance team confirms funds
+  // were actually received (outside the app). Not an automated/verified
+  // payment confirmation — see the note above getReceipts() for why.
+  const issueReceipt = async ({ donorName, donorEmail, amount, donationDate, purpose, note }) => {
+    const record = addReceipt({ donorName, donorEmail, amount, donationDate, purpose, note });
+    setReceipts(getReceipts());
+    try {
+      await sendReceiptEmail({
+        toEmail: donorEmail, donorName, receiptNo: record.receiptNo,
+        amount, donationDate, purpose, note,
+      });
+      return { ok: true, receiptNo: record.receiptNo };
+    } catch (err) {
+      console.error("Receipt email failed to send:", err);
+      return { ok: true, receiptNo: record.receiptNo, emailFailed: true };
+    }
+  };
+
+  const allWords = [...WORD_BANK, ...customWords];
+
+  const startQuiz = (day = null) => {
+    if (!user) { toast_("Please enroll first"); return; }
+    const pool = getUnlockedWords(user.enrolledAt, user.dayProgress);
+    if (pool.length < 4) { toast_("Need more unlocked words"); return; }
+    const src = day ? getWordsForDay(day) : pool;
+    const use = src.length >= 4 ? src : pool;
+    // All Sets Quiz (day === null) covers every unlocked word, one question
+    // each, with a timer of 1.5 seconds per word (so 30 unlocked words = 45s
+    // total) — gives enough time for the word to load and an answer to be
+    // chosen. Set-specific quizzes stay untimed and capped at 10 questions.
+    const isAllSetsQuiz = day === null;
+    const questionCount = isAllSetsQuiz ? use.length : Math.min(10, use.length);
+    const questions = shuffle(use).slice(0, questionCount).map(w => {
+      const dir = Math.random() > .5 ? "ar2en" : "en2ar";
+      const qf = dir === "ar2en" ? "arabic" : "english";
+      const af = dir === "ar2en" ? "english" : "arabic";
+      return { word: w, dir, qf, af, options: shuffle([w[af], ...getWrongs(pool, w, af)]), chosen: null };
+    });
+    const timerSeconds = isAllSetsQuiz ? Math.round(questions.length * 1.5) : null;
+    setQuiz({ questions, cur: 0, score: 0, day, done: false, missed: [], timerSeconds, timeUp: false, startedAt: Date.now() });
+    setView("quiz");
+  };
+
+  const answer = (opt) => {
+    if (!quiz || quiz.questions[quiz.cur].chosen !== null) return;
+    const q = quiz.questions[quiz.cur];
+    const correct = opt === q.word[q.af];
+    const updQs = quiz.questions.map((qq, i) => i === quiz.cur ? { ...qq, chosen: opt } : qq);
+    const ns = quiz.score + (correct ? 1 : 0);
+    const nm = correct ? quiz.missed : [...quiz.missed, q.word];
+
+    setTimeout(() => {
+      if (quiz.cur + 1 >= updQs.length) {
+        const pct = Math.round((ns / updQs.length) * 100);
+        // Build detailed per-question log for review later
+        const detail = updQs.map(qq => ({
+          arabic: qq.word.arabic,
+          translit: qq.word.translit,
+          english: qq.word.english,
+          dir: qq.dir,
+          correctAnswer: qq.word[qq.af],
+          chosen: qq.chosen,
+          isCorrect: qq.chosen === qq.word[qq.af],
+        }));
+        const rec = { score: ns, total: updQs.length, pct, day: quiz.day, date: new Date().toISOString(), detail, timeUsedSec: Math.round((Date.now() - quiz.startedAt) / 1000) };
+        // A set unlocks the next one via EITHER path — see the constants'
+        // comment above for the full reasoning. The All Sets Quiz (quiz.day
+        // is null, stored under "free") isn't gated by either path, since it
+        // doesn't unlock a specific set; it's a review/practice mode.
+        const passed = pct >= PASSING_SCORE_PCT;
+        const allScoresForGate = [...(user.scores || []), rec];
+        const masteryGateMet = quiz.day ? hasMetMasteryGate(quiz.day, allScoresForGate, allWords) : false;
+        const unlockedNow = passed || masteryGateMet;
+        const dp = (!quiz.day || unlockedNow)
+          ? { ...user.dayProgress, [String(quiz.day || "free")]: new Date().toISOString() }
+          : user.dayProgress;
+        const updated = { ...user, scores: allScoresForGate, dayProgress: dp };
+        saveUser(updated);
+        setQuiz({ ...quiz, questions: updQs, score: ns, done: true, result: rec, missed: nm, passed, masteryGateMet });
+        setView("results");
+      } else {
+        setQuiz({ ...quiz, questions: updQs, score: ns, cur: quiz.cur + 1, missed: nm });
+      }
+    }, 860);
+    setQuiz({ ...quiz, questions: updQs, score: ns });
+  };
+
+  const cancelQuiz = () => {
+    setQuiz(null);
+    setView("learn");
+    toast_("Quiz cancelled — no score recorded");
+  };
+
+  // Called when the All Sets Quiz timer reaches zero. Locks further answers
+  // and finalizes the result using only the questions actually answered so
+  // far — unanswered questions are excluded from scoring entirely rather than
+  // counted as wrong, since the learner never got the chance to attempt them.
+  const finishQuizEarly = () => {
+    if (!quiz || quiz.done) return;
+    const answered = quiz.questions.filter(qq => qq.chosen !== null);
+    const correctCount = answered.filter(qq => qq.chosen === qq.word[qq.af]).length;
+    const total = answered.length;
+    const pct = total > 0 ? Math.round((correctCount / total) * 100) : 0;
+    const detail = answered.map(qq => ({
+      arabic: qq.word.arabic,
+      translit: qq.word.translit,
+      english: qq.word.english,
+      dir: qq.dir,
+      correctAnswer: qq.word[qq.af],
+      chosen: qq.chosen,
+      isCorrect: qq.chosen === qq.word[qq.af],
+    }));
+    const missed = answered.filter(qq => qq.chosen !== qq.word[qq.af]).map(qq => qq.word);
+    const rec = { score: correctCount, total, pct, day: quiz.day, date: new Date().toISOString(), detail, timedOut: true, timeUsedSec: quiz.timerSeconds };
+    // Same dual unlock gate as natural completion — see the constants'
+    // comment above for the full reasoning. In practice this path is only
+    // reached by the All Sets Quiz (the only mode with a timer), so
+    // quiz.day is always null and neither gate actually applies to a
+    // specific set's unlock — kept consistent in case that changes.
+    const passed = pct >= PASSING_SCORE_PCT;
+    const allScoresForGate = [...(user.scores || []), rec];
+    const masteryGateMet = quiz.day ? hasMetMasteryGate(quiz.day, allScoresForGate, allWords) : false;
+    const unlockedNow = passed || masteryGateMet;
+    const dp = (!quiz.day || unlockedNow)
+      ? { ...user.dayProgress, [String(quiz.day || "free")]: new Date().toISOString() }
+      : user.dayProgress;
+    const updated = { ...user, scores: allScoresForGate, dayProgress: dp };
+    saveUser(updated);
+    setQuiz({ ...quiz, done: true, timeUp: true, result: rec, missed, passed, masteryGateMet });
+    setView("results");
+  };
+
+  const reviewSession = (rec) => {
+    setReviewing(rec);
+    setView("review");
+  };
+
+  const saveCW = (w) => { setCustomWords(w); storageSet("qv_custom", w); };
+
+  return (
+    <>
+      <style>{CSS}</style>
+      <div className="app">
+        <nav className="nav">
+          <div className="nlogo" onClick={() => !isAdminRoute && !isFinanceRoute && setView("home")}>
+            <div className="nicon">📖</div>
+            <div className="ntext"><h1>Quranic Vocab</h1><span>{isAdminRoute ? "Admin Panel" : isFinanceRoute ? "Finance Panel" : "Daily Memorization Series"}</span></div>
+          </div>
+          {isAdminRoute ? (
+            <div className="nright">
+              {adminUnlocked && messages.filter(m => !m.resolved).length > 0 && (
+                <span className="admin-msg-badge">✉ {messages.filter(m => !m.resolved).length}</span>
+              )}
+              {adminUnlocked && (
+                <div className="nuser-wrap">
+                  <button className="nuser" onClick={() => setShowAdminMenu(s => !s)}>🔧 Admin <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
+                  {showAdminMenu && (
+                    <div className="nuser-menu" onMouseLeave={() => setShowAdminMenu(false)}>
+                      <button className="nuser-menu-item" onClick={() => { setShowAdminMenu(false); setAdminProfileOpen(true); }}>⚙ Profile Settings</button>
+                      <button className="nuser-menu-item logout" onClick={() => { setShowAdminMenu(false); lockAdmin(); }}>🔒 Lock</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : isFinanceRoute ? (
+            <div className="nright">
+              {financeUnlocked && (
+                <div className="nuser-wrap">
+                  <button className="nuser" onClick={() => setShowFinanceMenu(s => !s)}>🧾 Finance <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
+                  {showFinanceMenu && (
+                    <div className="nuser-menu" onMouseLeave={() => setShowFinanceMenu(false)}>
+                      <button className="nuser-menu-item" onClick={() => { setShowFinanceMenu(false); setFinanceProfileOpen(true); }}>⚙ Profile Settings</button>
+                      <button className="nuser-menu-item logout" onClick={() => { setShowFinanceMenu(false); lockFinance(); }}>🔒 Lock</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="nright">
+              {user && (
+                <div className="nuser-wrap">
+                  <button className="nuser" onClick={() => setShowUserMenu(s => !s)}>﷽ {user.name} <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
+                  {showUserMenu && (
+                    <div className="nuser-menu" onMouseLeave={() => setShowUserMenu(false)}>
+                      {user.userId && <div className="nuser-menu-email" style={{ color: "var(--gold3)", fontWeight: 500 }}>ID: {user.userId}</div>}
+                      <div className="nuser-menu-email">{user.email}</div>
+                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("history"); }}>📋 My History</button>
+                      <button className="nuser-menu-item logout" onClick={() => { setShowUserMenu(false); logout(); }}>↪ Log Out</button>
+                    </div>
+                  )}
+                </div>
+              )}
+              <button className={`nbtn ${view === "learn" ? "on" : ""}`} onClick={() => setView("learn")}>Learn</button>
+              <button className={`nbtn ${view === "history" ? "on" : ""}`} onClick={() => setView("history")}>History</button>
+              <button className={`nbtn ${view === "leaderboard" ? "on" : ""}`} onClick={() => setView("leaderboard")}>Ranks</button>
+              <button className="ndonate" onClick={() => setShowDonate(true)}>🤲 Donate</button>
+              {!user ? <button className="ncta" onClick={() => setView("enroll")}>Login / Join Now</button>
+                : <button className="ncta" onClick={() => setView("learn")}>▶ Study</button>}
+            </div>
+          )}
+        </nav>
+
+        {isAdminRoute ? (
+          adminUnlocked
+            ? <AdminPage customWords={customWords} saveWords={saveCW} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} />
+            : <AdminGate onUnlock={unlockAdmin} />
+        ) : isFinanceRoute ? (
+          financeUnlocked
+            ? <FinancePage receipts={receipts} onIssueReceipt={issueReceipt} toast_={toast_} />
+            : <FinanceGate onUnlock={unlockFinance} />
+        ) : (
+          <>
+            {view === "home" && <HomePage user={user} allWords={allWords} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} />}
+            {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} />}
+            {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
+            {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} />}
+            {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} />}
+            {view === "history" && <HistoryPage user={user} setView={setView} onReview={reviewSession} allWords={allWords} />}
+            {view === "review" && reviewing && <ReviewPage rec={reviewing} setView={setView} allWords={allWords} />}
+            {view === "leaderboard" && <LBPage participants={participants} user={user} />}
+            {view === "resetPassword" && <ResetPasswordPage token={resetTokenFromUrl} onSetPassword={setPasswordFromToken} setView={setView} />}
+            {view === "verifyEmail" && <VerifyEmailPage token={verifyTokenFromUrl} onVerify={verifyEmailFromToken} setView={setView} />}
+          </>
+        )}
+
+        {!isAdminRoute && !isFinanceRoute && showDonate && <DonateModal onClose={() => setShowDonate(false)} toast_={toast_} user={user} />}
+        {adminProfileOpen && (
+          <ChangePasswordModal
+            label="Admin"
+            getCurrentHash={getActiveAdminPasswordHash}
+            storageKey="qv_admin_pw_hash"
+            onClose={() => setAdminProfileOpen(false)}
+            toast_={toast_}
+          />
+        )}
+        {financeProfileOpen && (
+          <ChangePasswordModal
+            label="Finance"
+            getCurrentHash={getActiveFinancePasswordHash}
+            storageKey="qv_finance_pw_hash"
+            onClose={() => setFinanceProfileOpen(false)}
+            toast_={toast_}
+          />
+        )}
+        {toast && <div className="toast">{toast}</div>}
+      </div>
+    </>
+  );
+}
+
+function HomePage({ user, allWords, participants, onStart, setView, onDonate, onReview }) {
+  const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress).length : 0;
+  const dayN = user ? getUnlockedDays(user.enrolledAt, user.dayProgress) : 0;
+  const best = user?.scores?.length ? Math.max(...user.scores.map(s => s.pct)) : null;
+  const streak = calcStreak(user?.scores || []);
+  // Actual quiz completion = distinct numbered days completed / total days in programme
+  // (deliberately excludes "free" quick-quiz attempts and is 0 for a brand-new user)
+  const daysCompleted = user ? Object.keys(user.dayProgress || {}).filter(k => k !== "free").length : 0;
+  const recentSessions = [...(user?.scores || [])].reverse().slice(0, 4);
+  const wordsAddedLastWeek = countWordsAddedLastWeek(allWords);
+  const quranCoverage = estimateQuranCoverage(allWords.length);
+
+  // Item 7: best-ever All Sets Quiz attempt, for the homepage summary ribbon.
+  // Same selection logic as the calendar page's version — most words correct,
+  // ties broken by higher percentage, then by more recent date.
+  const allSetsScores = (user?.scores || []).filter(s => !s.day);
+  const bestAllSetsHome = allSetsScores.length > 0
+    ? allSetsScores.reduce((best, s) => {
+        if (!best) return s;
+        if (s.score !== best.score) return s.score > best.score ? s : best;
+        if (s.pct !== best.pct) return s.pct > best.pct ? s : best;
+        return new Date(s.date) > new Date(best.date) ? s : best;
+      }, null)
+    : null;
+
+  return (
+    <div className="page">
+      <div className="hero">
+        <div className="bism">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
+        <h2>Master the <em>Language of the Quran</em></h2>
+        <p className="sub">Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>
+        {user ? (
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+            <button className="btn bg" onClick={() => setView("learn")}>Continue — Set {dayN}</button>
+            <button className="btn bh" onClick={() => onStart()}>All Sets Quiz</button>
+          </div>
+        ) : <button className="btn bg" onClick={() => setView("enroll")}>Begin Your Journey →</button>}
+      </div>
+
+      <div className="srow">
+        <div className="sbox"><div className="sn">{allWords.length}</div><div className="sl">Total Words Ready to Learn</div></div>
+        <div className="sbox"><div className="sn">+{wordsAddedLastWeek}</div><div className="sl">New Words Added Last Week</div></div>
+        <div className="sbox"><div className="sn">{quranCoverage}%</div><div className="sl">Qur'an Coverage</div></div>
+        <div className="sbox"><div className="sn">{participants.length}</div><div className="sl">Total Members Enrolled</div></div>
+      </div>
+
+      {user && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="lbl">Your Progress</div>
+          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
+            <div onClick={() => setView("learn")} style={{ cursor: "pointer" }}>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>Current Set</div>
+              <div style={{ fontSize: 26, color: "var(--gold2)", fontFamily: "'Cinzel',serif" }}>{dayN} →</div>
+            </div>
+            <div onClick={() => setView("learn")} style={{ cursor: "pointer" }}>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>Unlocked</div>
+              <div style={{ fontSize: 26, color: "var(--gold2)", fontFamily: "'Cinzel',serif" }}>{unlocked} →</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>Sets Completed</div>
+              <div style={{ fontSize: 26, color: "var(--gold2)", fontFamily: "'Cinzel',serif" }}>{daysCompleted}</div>
+            </div>
+            {streak > 0 && <div className="streak">🔥 {streak}-day streak</div>}
+            {best !== null && <div><div style={{ fontSize: 12, color: "var(--muted)" }}>Best score</div><div style={{ fontSize: 26, color: "var(--teal2)", fontFamily: "'Cinzel',serif" }}>{best}%</div></div>}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--muted)" }}>The journey continues — new sets unlock as you complete each one.</div>
+        </div>
+      )}
+
+      {/* Item 7: All Sets Quiz best-attempt summary ribbon */}
+      {user && bestAllSetsHome && (
+        <div className="card allsets-ribbon" style={{ marginTop: 16 }} onClick={() => setView("learn")}>
+          <div className="allsets-ribbon-icon">🏆</div>
+          <div className="allsets-ribbon-text">
+            <div className="allsets-ribbon-title">All Sets Quiz — Best Attempt</div>
+            <div className="allsets-ribbon-detail">
+              You answered <strong>{bestAllSetsHome.score}</strong> word{bestAllSetsHome.score !== 1 ? "s" : ""} correctly
+              {bestAllSetsHome.timeUsedSec != null && (
+                bestAllSetsHome.score === unlocked
+                  ? <> in just <strong>{bestAllSetsHome.timeUsedSec}</strong> seconds! 🎉</>
+                  : <> in <strong>{bestAllSetsHome.timeUsedSec}</strong> seconds</>
+              )} out of <strong>{unlocked}</strong> unlocked words
+            </div>
+          </div>
+          <div className="allsets-ribbon-arrow">→</div>
+        </div>
+      )}
+
+      {/* Session History (replaces the old donate banner) */}
+      {user && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div className="lbl" style={{ marginBottom: 0 }}>Session History</div>
+            {recentSessions.length > 0 && <button className="btn bh bsm" onClick={() => setView("history")}>View All →</button>}
+          </div>
+          {recentSessions.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", padding: "20px 0" }}>
+              No sessions yet — head to <strong style={{ color: "var(--gold2)", cursor: "pointer", textDecoration: "underline" }} onClick={() => setView("learn")}>Learn</strong> and take your first quiz!
+            </div>
+          ) : (
+            <div className="wlist">
+              {recentSessions.map((s, i) => (
+                <div key={i} className="hist-row" onClick={() => onReview(s)} style={{ padding: "10px 12px" }}>
+                  <div className="hist-pct" style={{ color: s.pct >= 70 ? "var(--ok)" : s.pct >= 50 ? "var(--gold2)" : "var(--err)" }}>{s.pct}%</div>
+                  <div className="hist-info">
+                    <div className="hist-title">{s.day ? `Set ${s.day}` : "All Sets Quiz"} &nbsp;·&nbsp; {s.score}/{s.total} correct</div>
+                    <div className="hist-date">{new Date(s.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} at {new Date(s.date).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</div>
+                  </div>
+                  <div className="hist-arrow">→</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Compact donate strip — moved below, no longer the dominant element */}
+      <div className="donate-strip" onClick={onDonate}>
+        <span>🤲 Support this initiative — every rupee helps Quranic education continue</span>
+        <span className="donate-strip-cta">Donate →</span>
+      </div>
+    </div>
+  );
+}
+
+function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onResendVerification }) {
+  // mode: "login" | "signup"
+  const [mode, setMode] = useState("login");
+
+  // Login fields
+  const [loginId, setLoginId] = useState("");
+  const [loginPw, setLoginPw] = useState("");
+
+  // Forgot-password request modal — requires User ID + Email together
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotId, setForgotId] = useState("");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotNote, setForgotNote] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+
+  // Signup fields
+  const [suUserId, setSuUserId] = useState("");
+  const [suPw, setSuPw] = useState("");
+  const [suPwConfirm, setSuPwConfirm] = useState("");
+  const [suName, setSuName] = useState("");
+  const [suEmail, setSuEmail] = useState("");
+  const [typoWarning, setTypoWarning] = useState(null);
+  const [ignoreTypo, setIgnoreTypo] = useState(false);
+
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState("");
+
+  // Set after a successful signup (awaiting email click), or after a login
+  // attempt that was blocked because the account isn't verified yet.
+  const [pendingVerify, setPendingVerify] = useState(null); // { userId, email } or null
+  const [resendStatus, setResendStatus] = useState(""); // "", "sending", "sent", "failed"
+
+  const isValidUserId = (id) => /^[a-zA-Z0-9_]{4,20}$/.test(id.trim());
+
+  const submitForgot = () => {
+    setForgotError("");
+    if (!forgotId.trim() || !forgotEmail.trim()) return;
+    const result = onForgotPassword(forgotId, forgotEmail, forgotNote);
+    if (result.ok) {
+      setForgotSent(true);
+    } else {
+      setForgotError("That User ID and email don't match any account on file. Please double-check both and try again.");
+    }
+  };
+  const closeForgot = () => {
+    setShowForgot(false); setForgotId(""); setForgotEmail(""); setForgotNote(""); setForgotSent(false); setForgotError("");
+  };
+
+  // ── LOGIN ──
+  const submitLogin = async () => {
+    setError("");
+    if (!loginId.trim() || !loginPw) { setError("Enter your User ID and password."); return; }
+    setChecking(true);
+    const result = await onLogin(loginId, loginPw);
+    setChecking(false);
+    if (!result.ok) {
+      if (result.reason === "not-verified") {
+        setPendingVerify({ userId: result.userId, email: result.email });
+      } else {
+        setError("Login failed. Check your User ID and password, or contact admin if you've forgotten your password.");
+      }
+    }
+  };
+
+  // ── SIGN UP ──
+  const submitSignup = async () => {
+    setError("");
+    setTypoWarning(null);
+    const userId = suUserId.trim(), name = suName.trim(), email = suEmail.trim();
+    if (!userId || !suPw || !suPwConfirm || !name || !email) { setError("All fields are required."); return; }
+    if (!isValidUserId(userId)) { setError("User ID must be 4–20 characters: letters, numbers, underscore only."); return; }
+    const pwError = getPasswordComplexityError(suPw);
+    if (pwError) { setError(pwError); return; }
+    if (suPw !== suPwConfirm) { setError("Passwords don't match."); return; }
+
+    setChecking(true);
+    const result = await isEmailDomainValid(email);
+    setChecking(false);
+
+    if (!result.valid) {
+      if (result.reason === "disposable") setError("Temporary or disposable email addresses aren't accepted — please use one you actually check.");
+      else if (result.reason === "no-mx") setError("This email domain doesn't appear to exist. Please double-check for a typo.");
+      else setError("That doesn't look like a valid email address.");
+      return;
+    }
+    if (result.reason === "likely-typo" && !ignoreTypo) {
+      setTypoWarning({ suggestion: result.suggestion });
+      return;
+    }
+
+    setChecking(true);
+    const regResult = await onRegister(userId, suPw, name, email);
+    setChecking(false);
+    if (regResult.ok) {
+      setPendingVerify({ userId: regResult.userId, email: regResult.email });
+      if (regResult.emailFailed) {
+        setError("Account created, but the verification email failed to send. Try 'Resend' below, or contact admin.");
+      }
+    } else if (regResult.reason === "id-taken") {
+      setError("Could not create account. That User ID may already be taken.");
+    } else {
+      setError("Could not create account. Please try again.");
+    }
+  };
+
+  const acceptSuggestion = () => {
+    const local = suEmail.trim().split("@")[0];
+    setSuEmail(`${local}@${typoWarning.suggestion}`);
+    setTypoWarning(null);
+    setIgnoreTypo(false);
+  };
+  const useAnyway = () => { setTypoWarning(null); setIgnoreTypo(true); };
+
+  const submitResend = async () => {
+    if (!pendingVerify) return;
+    setResendStatus("sending");
+    const result = await onResendVerification(pendingVerify.userId);
+    setResendStatus(result.ok ? "sent" : "failed");
+  };
+
+  // ── PENDING VERIFICATION SCREEN ──
+  // Shown right after signup, or when a login attempt hits an unverified account.
+  if (pendingVerify) {
+    return (
+      <div className="page psm" style={{ textAlign: "center", paddingTop: 60 }}>
+        <div style={{ fontSize: 44, marginBottom: 14 }}>📧</div>
+        <h2>Check Your Email</h2>
+        <p className="sub" style={{ marginBottom: 24 }}>
+          We sent a verification link to <strong style={{ color: "var(--gold3)" }}>{pendingVerify.email}</strong>.
+          Click the link to activate your account and log in.
+        </p>
+        <div className="card">
+          {error && <div className="enroll-error" style={{ marginBottom: 14 }}>⚠ {error}</div>}
+          <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+            Didn't get it? Check your spam folder, or request a new link below.
+          </p>
+          <button className="btn bg bfw" onClick={submitResend} disabled={resendStatus === "sending"}>
+            {resendStatus === "sending" ? "Sending…" : "Resend Verification Email"}
+          </button>
+          {resendStatus === "sent" && <p style={{ fontSize: 12, color: "var(--ok)", marginTop: 10 }}>✅ New link sent — check your inbox.</p>}
+          {resendStatus === "failed" && <p style={{ fontSize: 12, color: "var(--err)", marginTop: 10 }}>⚠ Failed to send. Please contact admin for help.</p>}
+          <button className="btn bh bfw" style={{ marginTop: 10 }} onClick={() => { setPendingVerify(null); setError(""); setResendStatus(""); setMode("login"); }}>
+            Back to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page psm">
+      <div className="lbl">{mode === "login" ? "Login" : "Create Account"}</div>
+      <h2>{mode === "login" ? "Welcome Back" : "Join the Series"}</h2>
+      <p className="sub" style={{ marginBottom: 22 }}>
+        {mode === "login" && "Enter your User ID and password to resume your journey."}
+        {mode === "signup" && "Choose a User ID and password to begin your journey."}
+      </p>
+
+      <div className="auth-mode-tabs">
+        <button className={`auth-mode-tab ${mode === "login" ? "on" : ""}`} onClick={() => { setMode("login"); setError(""); }}>Login</button>
+        <button className={`auth-mode-tab ${mode === "signup" ? "on" : ""}`} onClick={() => { setMode("signup"); setError(""); }}>Sign Up</button>
+      </div>
+
+      <div className="card">
+        {mode === "login" && (
+          <>
+            <div className="field"><label>User ID</label><input value={loginId} onChange={e => { setLoginId(e.target.value); setError(""); }} placeholder="Your User ID" autoFocus /></div>
+            <div className="field"><label>Password</label><input type="password" value={loginPw} onChange={e => { setLoginPw(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && submitLogin()} placeholder="Your password" /></div>
+            {error && <div className="enroll-error">⚠ {error}</div>}
+            <button className="btn bg bfw" onClick={submitLogin} disabled={!loginId || !loginPw || checking}>
+              {checking ? "Checking…" : "Login →"}
+            </button>
+            <p className="enroll-hint">🔒 <span className="forgot-link" onClick={() => setShowForgot(true)}>Forgot your password? Contact the admin to have it reset.</span></p>
+          </>
+        )}
+
+        {mode === "signup" && (
+          <>
+            <div className="field"><label>Choose a User ID</label><input value={suUserId} onChange={e => { setSuUserId(e.target.value); setError(""); }} placeholder="e.g. ghouse123 (4–20 chars)" /></div>
+            <div className="field"><label>Choose a Password</label><input type="password" value={suPw} onChange={e => { setSuPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
+            <div className="field"><label>Confirm Password</label><input type="password" value={suPwConfirm} onChange={e => { setSuPwConfirm(e.target.value); setError(""); }} placeholder="Re-enter password" /></div>
+            <div className="field"><label>Full Name</label><input value={suName} onChange={e => { setSuName(e.target.value); setError(""); }} placeholder="Your name" /></div>
+            <div className="field"><label>Email Address</label><input type="email" value={suEmail} onChange={e => { setSuEmail(e.target.value); setError(""); setTypoWarning(null); setIgnoreTypo(false); }} placeholder="your@email.com" /></div>
+            {error && <div className="enroll-error">⚠ {error}</div>}
+            {typoWarning && (
+              <div className="enroll-typo-warning">
+                <div>🤔 Did you mean <strong>@{typoWarning.suggestion}</strong>?</div>
+                <div className="enroll-typo-actions">
+                  <button className="btn bsm bg" onClick={acceptSuggestion}>Yes, fix it</button>
+                  <button className="btn bsm bh" onClick={useAnyway}>No, use as typed</button>
+                </div>
+              </div>
+            )}
+            <button className="btn bg bfw" onClick={submitSignup} disabled={checking}>
+              {checking ? "Checking…" : "Create Account →"}
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="enroll-sincerity">
+        <div className="arabic">إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ</div>
+        <p>"Actions are judged by intentions." This journey is between you and the words of Allah ﷻ — please use a real email that's truly yours. Memorizing the Qur'an means something only when it's approached with sincerity, not shortcuts. Begin honestly, and let every word you learn bring you closer to Him.</p>
+      </div>
+
+      {showForgot && (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeForgot(); }}>
+          <div className="modal" style={{ maxWidth: 400 }}>
+            <div className="modal-head">
+              <h3>🔑 Request Password Reset</h3>
+              <button className="modal-close" onClick={closeForgot}>✕</button>
+            </div>
+            <div className="modal-body">
+              {!forgotSent ? (
+                <>
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+                    Both your User ID and registered email must match the same account.
+                  </p>
+                  <div className="field"><label>Your User ID</label><input value={forgotId} onChange={e => { setForgotId(e.target.value); setForgotError(""); }} placeholder="The User ID you signed up with" autoFocus /></div>
+                  <div className="field"><label>Your Registered Email</label><input type="email" value={forgotEmail} onChange={e => { setForgotEmail(e.target.value); setForgotError(""); }} placeholder="The email you signed up with" /></div>
+                  <div className="field"><label>Note (optional)</label><input value={forgotNote} onChange={e => setForgotNote(e.target.value)} placeholder="e.g. your phone number, or how to reach you" /></div>
+                  {forgotError && <div className="enroll-error">⚠ {forgotError}</div>}
+                  <button className="btn bg bfw" onClick={submitForgot} disabled={!forgotId.trim() || !forgotEmail.trim()}>Send Request →</button>
+                </>
+              ) : (
+                <div style={{ textAlign: "center", padding: "10px 0" }}>
+                  <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+                  <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Request sent!</p>
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 18 }}>The admin will email you a reset link shortly.</p>
+                  <button className="btn bh" onClick={closeForgot}>Close</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Reset Password Page (opened via emailed reset link) ─────────────────────
+function ResetPasswordPage({ token, onSetPassword, setView }) {
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [done, setDone] = useState(false);
+  const [learnerName, setLearnerName] = useState("");
+
+  const tokenCheck = token ? validateResetToken(token) : { valid: false, reason: "not-found" };
+
+  const submit = async () => {
+    setError("");
+    if (!newPw || !confirmPw) { setError("Both fields are required."); return; }
+    const pwError = getPasswordComplexityError(newPw);
+    if (pwError) { setError(pwError); return; }
+    if (newPw !== confirmPw) { setError("Passwords don't match."); return; }
+
+    setChecking(true);
+    const result = await onSetPassword(token, newPw);
+    setChecking(false);
+    if (result.ok) {
+      setLearnerName(result.name);
+      setDone(true);
+      // Clean the token out of the URL so refreshing doesn't re-trigger this page
+      window.history.replaceState({}, "", window.location.pathname);
+    } else {
+      setError("This link is no longer valid. Please request a new one.");
+    }
+  };
+
+  if (!tokenCheck.valid && !done) {
+    const messages = {
+      "not-found": "This reset link is invalid.",
+      "used": "This reset link has already been used.",
+      "expired": "This reset link has expired (links are valid for 24 hours).",
+    };
+    return (
+      <div className="page psm" style={{ textAlign: "center", paddingTop: 80 }}>
+        <div style={{ fontSize: 44, marginBottom: 14 }}>⚠️</div>
+        <h2>Link Not Valid</h2>
+        <p className="sub" style={{ marginBottom: 24 }}>{messages[tokenCheck.reason] || "This reset link can't be used."} Please request a new one from the Login page.</p>
+        <button className="btn bg" onClick={() => { window.history.replaceState({}, "", window.location.pathname); setView("enroll"); }}>Go to Login</button>
+      </div>
+    );
+  }
+
+  if (done) {
+    return (
+      <div className="page psm" style={{ textAlign: "center", paddingTop: 80 }}>
+        <div style={{ fontSize: 44, marginBottom: 14 }}>✅</div>
+        <h2>Password Updated</h2>
+        <p className="sub" style={{ marginBottom: 24 }}>{learnerName ? `Welcome back, ${learnerName}. ` : ""}Your password has been set. You can now log in with it.</p>
+        <button className="btn bg" onClick={() => setView("enroll")}>Go to Login</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page psm" style={{ paddingTop: 60 }}>
+      <div className="lbl" style={{ justifyContent: "center" }}>Reset Password</div>
+      <h2 style={{ textAlign: "center" }}>Set a New Password</h2>
+      <p className="sub" style={{ textAlign: "center", marginBottom: 26 }}>Choose a new password for your account.</p>
+      <div className="card">
+        <div className="field"><label>New Password</label><input type="password" value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" autoFocus /></div>
+        <div className="field"><label>Confirm New Password</label><input type="password" value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setError(""); }} placeholder="Re-enter password" /></div>
+        {error && <div className="enroll-error">⚠ {error}</div>}
+        <button className="btn bg bfw" onClick={submit} disabled={checking}>
+          {checking ? "Updating…" : "Set New Password →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Verify Email Page (opened via emailed signup verification link) ─────────
+function VerifyEmailPage({ token, onVerify, setView }) {
+  const [status, setStatus] = useState("checking"); // checking | done | error
+  const [reason, setReason] = useState("");
+  const [learnerName, setLearnerName] = useState("");
+  const ranRef = useState(() => ({ current: false }))[0];
+
+  useEffect(() => {
+    if (ranRef.current) return; // guard against double-run in strict mode
+    ranRef.current = true;
+    if (!token) { setStatus("error"); setReason("not-found"); return; }
+    const result = onVerify(token);
+    if (result.ok) {
+      setLearnerName(result.name);
+      setStatus("done");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else {
+      setStatus("error");
+      setReason(result.reason);
+    }
+  }, []);
+
+  if (status === "checking") {
+    return (
+      <div className="page psm" style={{ textAlign: "center", paddingTop: 80 }}>
+        <div style={{ fontSize: 44, marginBottom: 14 }}>⏳</div>
+        <h2>Verifying…</h2>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    const messages = {
+      "not-found": "This verification link is invalid.",
+      "used": "This link has already been used — your account should already be verified. Try logging in.",
+      "expired": "This verification link has expired (links are valid for 48 hours). Please request a new one from the Login page.",
+    };
+    return (
+      <div className="page psm" style={{ textAlign: "center", paddingTop: 80 }}>
+        <div style={{ fontSize: 44, marginBottom: 14 }}>⚠️</div>
+        <h2>Link Not Valid</h2>
+        <p className="sub" style={{ marginBottom: 24 }}>{messages[reason] || "This verification link can't be used."}</p>
+        <button className="btn bg" onClick={() => { window.history.replaceState({}, "", window.location.pathname); setView("enroll"); }}>Go to Login</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page psm" style={{ textAlign: "center", paddingTop: 80 }}>
+      <div style={{ fontSize: 44, marginBottom: 14 }}>✅</div>
+      <h2>Email Verified!</h2>
+      <p className="sub" style={{ marginBottom: 24 }}>Welcome, {learnerName}! Your account is now active and you're logged in.</p>
+      <button className="btn bg" onClick={() => setView("home")}>Go to Home</button>
+    </div>
+  );
+}
+
+// ── Shared expandable word card — used on Day Words page and History's ──────
+// Strong/Weak word breakdown, so both show identical detail (Urdu, root,
+// root meanings, Qur'an reference).
+function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
+  return (
+    <div className={`word-card ${highlight ? "word-card-unmastered" : ""}`}>
+      <div className="word-card-main">
+        <div className="war">{word.arabic}</div>
+        <div className="wtr">{word.translit}</div>
+        <div className="wen">{word.english}</div>
+        {badge}
+        <button className="word-toggle" onClick={onToggle}>
+          {isOpen ? "Hide ▲" : "Details ▼"}
+        </button>
+      </div>
+      {isOpen && (
+        <div className="word-card-detail">
+          <span className="dlabel">Urdu</span>
+          <span className="dval urdu">{word.urdu || "—"}</span>
+          <span className="dlabel">Root</span>
+          <span className="dval arabic">{word.root && word.root !== "—" ? word.root : "— (no triliteral root)"}</span>
+          <span className="dlabel">Root Meaning (En)</span>
+          <span className="dval">{word.rootEnglish || "—"}</span>
+          <span className="dlabel">Root Meaning (Ur)</span>
+          <span className="dval urdu">{word.rootUrdu || "—"}</span>
+          {word.ayahRef && (<><span className="dlabel">Qur'an Ref</span><span className="dval">{word.ayahRef}</span></>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDay }) {
+  const [expandedWord, setExpandedWord] = useState(null);
+  const [viewingAllSets, setViewingAllSets] = useState(false);
+
+  if (!user) return (
+    <div className="page pmd" style={{ textAlign: "center", paddingTop: 72 }}>
+      <div style={{ fontSize: 44, marginBottom: 14 }}>📖</div>
+      <h2>Please Enroll First</h2>
+      <p className="sub" style={{ marginBottom: 22 }}>Enroll to track your daily progress.</p>
+      <button className="btn bg" onClick={() => setView("enroll")}>Enroll Now</button>
+    </div>
+  );
+  const unlocked = getUnlockedDays(user.enrolledAt, user.dayProgress);
+  const totalDays = Math.ceil(allWords.length / WORDS_PER_DAY);
+  const words = selectedDay ? allWords.slice((selectedDay - 1) * WORDS_PER_DAY, selectedDay * WORDS_PER_DAY) : null;
+  const done = (d) => !!user.dayProgress?.[String(d)];
+
+  const selectSet = (d) => { setSelectedDay(d); setViewingAllSets(false); };
+  const selectAllSets = () => { setSelectedDay(null); setViewingAllSets(true); };
+
+  // Item 4: words "mastered" in the currently selected set — a word counts as
+  // mastered once its most recent MASTERY_STREAK_REQUIRED (3) attempts were
+  // all correct, in a row. Older mistakes don't permanently block mastery
+  // once that streak is achieved, but any wrong answer resets it back to
+  // zero. Counts attempts from BOTH this set's own dedicated quiz AND the
+  // All Sets Quiz — mastery reflects whether the learner actually knows the
+  // word, regardless of which quiz mode they demonstrated that through.
+  let setMastery = null;
+  let setMasteredKeys = null;
+  if (selectedDay) {
+    const setWordArabics = new Set((words || []).map(w => w.arabic));
+    const relevantScores = (user.scores || []).filter(s => s.day === selectedDay || s.day == null);
+    const { masteredSet } = buildStrictMastery(relevantScores);
+    // Only count mastery for words that actually belong to this set — an
+    // All Sets Quiz attempt covers many sets' words at once, so we filter
+    // its contribution down to just the words shown on this page.
+    setMasteredKeys = new Set([...masteredSet].filter(arabic => setWordArabics.has(arabic)));
+    setMastery = { mastered: setMasteredKeys.size, totalInSet: words ? words.length : WORDS_PER_DAY };
+  }
+
+  // Item 5: best-ever All Sets Quiz attempt — most words answered correctly.
+  // Ties broken by higher percentage, then by more recent date (so a newer
+  // attempt with full data, e.g. timing info, isn't silently shadowed by an
+  // older tied attempt that predates a feature like time tracking).
+  let bestAllSets = null;
+  if (viewingAllSets) {
+    const allSetsScores = (user.scores || []).filter(s => !s.day);
+    if (allSetsScores.length > 0) {
+      bestAllSets = allSetsScores.reduce((best, s) => {
+        if (!best) return s;
+        if (s.score !== best.score) return s.score > best.score ? s : best;
+        if (s.pct !== best.pct) return s.pct > best.pct ? s : best;
+        return new Date(s.date) > new Date(best.date) ? s : best;
+      }, null);
+    }
+  }
+
+  return (
+    <div className="page pmd">
+      <div className="lbl">Word Sets</div>
+      <h2>Choose Your Set</h2>
+      <p className="sub" style={{ marginBottom: 26 }}>Set {unlocked} unlocked so far · {unlocked * WORDS_PER_DAY} words available</p>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="lbl" style={{ marginBottom: 13 }}>Progress Calendar</div>
+        <div className="cal" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(34px, 1fr)) auto" }}>
+          {Array.from({ length: totalDays }, (_, i) => i + 1).map(d => {
+            const locked = d > unlocked, isDone = done(d), isToday = d === unlocked;
+            return (
+              <div key={d} className={`cc ${locked ? "locked" : isDone ? "done" : isToday ? "today" : "avail"} ${selectedDay === d ? "selected" : ""}`}
+                title={locked ? `Unlocks once Set ${d - 1} is completed` : `Set ${d}`}
+                onClick={() => !locked && selectSet(d)}>
+                {isDone ? "✓" : d}
+              </div>
+            );
+          })}
+          <div className="cc cc-continues" title="More sets will be added as the word bank grows">⋯</div>
+          <button
+            className={`cc-allsets ${viewingAllSets ? "selected" : ""}`}
+            onClick={selectAllSets}
+            title="See your best All Sets Quiz attempt"
+          >
+            All Sets
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 11, color: "var(--muted)" }}>
+          <span><span style={{ color: "var(--gold3)" }}>■</span> Current</span>
+          <span><span style={{ color: "var(--ok)" }}>■</span> Done</span>
+          <span style={{ opacity: .5 }}>■ Locked</span>
+        </div>
+      </div>
+
+      {selectedDay && words && (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div className="lbl" style={{ marginBottom: 0 }}>Set {selectedDay} Words</div>
+            <button className="btn bg bsm" onClick={() => onQuiz(selectedDay)}>Quiz Set {selectedDay}</button>
+          </div>
+          {setMastery && (
+            <div className="set-mastery-banner">
+              🎯 <strong>{setMastery.mastered}</strong> of <strong>{setMastery.totalInSet}</strong> words mastered in this set
+              {setMastery.mastered >= setMastery.totalInSet
+                ? <> — all words mastered! 🎉</>
+                : <> — highlighted words below still need {MASTERY_STREAK_REQUIRED} correct answers in a row.</>}
+              {done(selectedDay) && setMastery.mastered < setMastery.totalInSet && (
+                <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+                  Note: passing this set's quiz (80%+) unlocks the next set, but "mastered" tracks each word individually and takes longer to build up — they're measuring different things.
+                </div>
+              )}
+            </div>
+          )}
+          <div className="wlist" style={{ marginTop: 16 }}>
+            {words.map((w, i) => {
+              const isOpen = expandedWord === `${selectedDay}-${i}`;
+              const isMastered = setMasteredKeys ? setMasteredKeys.has(w.arabic) : false;
+              return (
+                <WordDetailCard
+                  key={i}
+                  word={w}
+                  isOpen={isOpen}
+                  onToggle={() => setExpandedWord(isOpen ? null : `${selectedDay}-${i}`)}
+                  highlight={!isMastered}
+                />
+              );
+            })}
+          </div>
+          {done(selectedDay) && <div style={{ marginTop: 12, fontSize: 12, color: "var(--ok)", textAlign: "center" }}>✓ Completed</div>}
+        </div>
+      )}
+
+      {viewingAllSets && (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div className="lbl" style={{ marginBottom: 0 }}>All Sets Quiz — Best Attempt</div>
+            <button className="btn bg bsm" onClick={() => onQuiz()}>Quiz All Sets</button>
+          </div>
+          {bestAllSets ? (
+            <div className="set-mastery-banner">
+              🏆 Best attempt: <strong>{bestAllSets.score}</strong> word{bestAllSets.score !== 1 ? "s" : ""} answered correctly
+              {bestAllSets.timeUsedSec != null && (
+                bestAllSets.score === bestAllSets.total
+                  ? <> in just <strong>{bestAllSets.timeUsedSec}</strong> seconds! 🎉</>
+                  : <> in <strong>{bestAllSets.timeUsedSec}</strong> seconds</>
+              )} out of <strong>{bestAllSets.total}</strong> words ({bestAllSets.pct}%)
+            </div>
+          ) : (
+            <div className="set-mastery-banner">
+              No All Sets Quiz attempts yet — take one to see your best score here.
+            </div>
+          )}
+        </div>
+      )}
+
+      {!selectedDay && !viewingAllSets && (
+        <div className="card" style={{ textAlign: "center", padding: 36, color: "var(--muted)" }}>
+          Select a set from the calendar to preview its words and quiz.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuizPage({ quiz, onAnswer, onCancel, onTimeUp }) {
+  const { questions, cur } = quiz;
+  const q = questions[cur];
+  const isArQ = q.qf === "arabic";
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const hasTimer = quiz.timerSeconds != null;
+  const [timeLeft, setTimeLeft] = useState(quiz.timerSeconds);
+
+  useEffect(() => {
+    if (!hasTimer || quiz.done) return;
+    if (timeLeft <= 0) {
+      onTimeUp();
+      return;
+    }
+    const id = setTimeout(() => setTimeLeft(t => t - 1), 1000);
+    return () => clearTimeout(id);
+  }, [timeLeft, hasTimer, quiz.done]);
+
+  const timerLow = hasTimer && timeLeft <= 10;
+
+  return (
+    <div className="page pmd qwrap">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "var(--muted)", marginBottom: 9 }}>
+        <span>Q {cur + 1} / {questions.length}</span>
+        <span style={{ display: "flex", gap: 14, alignItems: "center" }}>
+          {hasTimer && (
+            <span className={`quiz-timer ${timerLow ? "low" : ""}`}>⏱ {timeLeft}s</span>
+          )}
+          <span style={{ color: "var(--gold2)" }}>Score: {quiz.score}</span>
+          <button className="quiz-exit" onClick={() => setConfirmCancel(true)}>✕ Exit Quiz</button>
+        </span>
+      </div>
+      <div className="qprog">{questions.map((_, i) => <div key={i} className={`qd ${i < cur ? "done" : i === cur ? "now" : ""}`} />)}</div>
+      <div className="qcard">
+        <div className="qdir">{q.dir === "ar2en" ? "Arabic → English" : "English → Arabic"}</div>
+        <div className={`qq arabic ${isArQ ? "" : "en"}`}>{q.word[q.qf]}</div>
+        {isArQ && <div className="qtr">{q.word.translit}</div>}
+        {!isArQ && <div style={{ marginBottom: 34 }} />}
+        <div className="opts">
+          {q.options.map((opt, i) => {
+            let c = `opt${!isArQ ? " ar" : ""}`;
+            if (q.chosen !== null) { if (opt === q.word[q.af]) c += " correct"; else if (opt === q.chosen) c += " wrong"; }
+            return <button key={i} className={c} onClick={() => onAnswer(opt)} disabled={q.chosen !== null}>{opt}</button>;
+          })}
+        </div>
+      </div>
+
+      {confirmCancel && (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setConfirmCancel(false); }}>
+          <div className="modal" style={{ maxWidth: 380 }}>
+            <div className="modal-body" style={{ textAlign: "center", padding: "28px 24px" }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+              <h3 style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "var(--gold2)", marginBottom: 8 }}>Exit this quiz?</h3>
+              <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 20, lineHeight: 1.6 }}>
+                Your progress on this attempt ({cur + 1} of {questions.length} answered) will not be saved. This will not count as a session.
+              </p>
+              <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                <button className="btn bh" onClick={() => setConfirmCancel(false)}>Continue Quiz</button>
+                <button className="btn" style={{ background: "var(--err)", color: "#fff" }} onClick={onCancel}>Exit Without Saving</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview }) {
+  const { result, missed } = quiz;
+  const { score, total, pct } = result;
+  const msg = pct >= 90 ? { t: "Excellent! ما شاء الله", c: "var(--ok)" }
+    : pct >= 70 ? { t: "Well done! الحمد لله", c: "var(--teal2)" }
+    : pct >= 50 ? { t: "Keep going! إن شاء الله", c: "var(--gold2)" }
+    : { t: "More practice needed — صبر", c: "var(--err)" };
+  return (
+    <div className="page psm" style={{ textAlign: "center" }}>
+      <div className="lbl" style={{ justifyContent: "center" }}>Session Complete</div>
+      {result.timedOut && (
+        <div style={{ background: "rgba(192,80,74,.08)", border: "1px solid rgba(192,80,74,.25)", borderRadius: 8, padding: "8px 14px", marginBottom: 16, fontSize: 13, color: "#e0a098" }}>
+          ⏱ Time's up! Scored based on {total} question{total !== 1 ? "s" : ""} you answered.
+        </div>
+      )}
+      {quiz.day && (
+        quiz.passed
+          ? <div style={{ background: "rgba(74,158,92,.08)", border: "1px solid rgba(74,158,92,.25)", borderRadius: 8, padding: "8px 14px", marginBottom: 16, fontSize: 13, color: "var(--ok)" }}>
+              ✅ Passed! ({PASSING_SCORE_PCT}%+ on this attempt) — the next set is now unlocked.
+            </div>
+          : quiz.masteryGateMet
+          ? <div style={{ background: "rgba(74,158,92,.08)", border: "1px solid rgba(74,158,92,.25)", borderRadius: 8, padding: "8px 14px", marginBottom: 16, fontSize: 13, color: "var(--ok)" }}>
+              ✅ {MASTERY_GATE_PCT}%+ of this set's words are now mastered — the next set is unlocked!
+            </div>
+          : <div style={{ background: "rgba(192,80,74,.08)", border: "1px solid rgba(192,80,74,.25)", borderRadius: 8, padding: "8px 14px", marginBottom: 16, fontSize: 13, color: "#e0a098" }}>
+              Unlock the next set with <strong>{PASSING_SCORE_PCT}%+</strong> on one attempt, or by mastering <strong>{MASTERY_GATE_PCT}%+</strong> of this set's words over time — retry to keep working toward either.
+            </div>
+      )}
+      <div className="rring"><div className="rpct">{pct}%</div><div className="rfrac">{score} / {total}</div></div>
+      <div style={{ fontSize: 20, color: msg.c, marginBottom: 6 }}>{msg.t}</div>
+      {user?.scores?.length > 1 && <div style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 24px" }}>{user.scores.length} sessions · Best: {Math.max(...user.scores.map(s => s.pct))}%</div>}
+      {missed.length > 0 && (
+        <div style={{ textAlign: "left", marginBottom: 24 }}>
+          <div className="lbl" style={{ marginBottom: 9 }}>Words to Review</div>
+          {missed.map((w, i) => (
+            <div className="miss" key={i}>
+              <span className="arabic" style={{ fontSize: 20, color: "var(--gold3)" }}>{w.arabic}</span>
+              <span style={{ color: "var(--muted)" }}>{w.translit}</span>
+              <span>{w.english}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 9, justifyContent: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <button className="btn bg" onClick={onRetry}>Retry</button>
+        <button className="btn bt" onClick={() => setView("learn")}>Sets</button>
+        <button className="btn bh" onClick={() => setView("leaderboard")}>Ranks</button>
+      </div>
+      <div style={{ marginBottom: 22 }}>
+        <button className="btn bh" style={{ width: "100%" }} onClick={() => onReview(result)}>📋 Review Full Answer Breakdown</button>
+      </div>
+      {/* Donate nudge after completing a session */}
+      <div style={{ background: "rgba(180,134,11,.06)", border: "1px solid rgba(180,134,11,.18)", borderRadius: 10, padding: "16px 18px", textAlign: "center" }}>
+        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10 }}>جَزَاكَ اللَّهُ خَيْرًا — Enjoying this? Consider supporting the cause.</div>
+        <button className="btn-donate" onClick={onDonate}>🤲 Donate to {DONATE.charityName}</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Simple SVG Bar Chart — supports two modes ──────────────────────────────────
+// mode="score" (Set Quizzes): bar height = percentage, label on top = "8/10"
+// mode="time"  (All Sets Quiz): bar height = seconds taken, label on top =
+//   number of words answered correctly, y-axis gridlines scaled to seconds
+function ScoreBarChart({ data, compact = false, mode = "score" }) {
+  if (data.length === 0) return null;
+  const W = compact ? 320 : 420, H = compact ? 290 : 320, padL = compact ? 30 : 36, padB = 32, padT = 18, padR = 8;
+  const chartW = W - padL - padR, chartH = H - padT - padB;
+  const barGap = compact ? 10 : 14;
+  // Fixed bar width regardless of how many bars there are, so a 2-bar chart
+  // and a 6-bar chart both show consistently-sized bars rather than one
+  // stretching wide and the other shrinking to fit — only the total row
+  // width differs, anchored from the left in both cases.
+  const maxBarW = compact ? 30 : 42;
+  const barW = Math.min(maxBarW, (chartW - barGap * (data.length - 1)) / data.length);
+  const startX = padL;
+
+  // Time mode: scale the y-axis to the highest time value actually present,
+  // rounded up to a clean number, so gridlines are meaningful regardless of
+  // how long attempts took (10s vs 90s attempts both render sensibly).
+  const maxTime = mode === "time"
+    ? Math.max(10, Math.ceil(Math.max(...data.map(d => d.timeUsedSec || 0)) / 10) * 10)
+    : 100;
+  const gridSteps = mode === "time"
+    ? [0, maxTime * 0.25, maxTime * 0.5, maxTime * 0.75, maxTime].map(Math.round)
+    : [0, 25, 50, 75, 100];
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%", maxWidth: compact ? 340 : 440, display: "block" }}>
+      {gridSteps.map(p => {
+        const fraction = mode === "time" ? p / maxTime : p / 100;
+        const y = padT + chartH - fraction * chartH;
+        return (
+          <g key={p}>
+            <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+            <text x={padL - 8} y={y + 3} fontSize={compact ? 9 : 11} fill="var(--muted)" textAnchor="end" fontFamily="Spectral, serif">{p}{mode === "time" ? "s" : ""}</text>
+          </g>
+        );
+      })}
+      {data.map((d, i) => {
+        const x = startX + i * (barW + barGap);
+        let barFraction, topLabel, color;
+        if (mode === "time") {
+          const t = d.timeUsedSec ?? 0;
+          barFraction = maxTime > 0 ? t / maxTime : 0;
+          topLabel = d.score != null ? `${d.score}✓` : "—";
+          color = "var(--teal2)";
+        } else {
+          barFraction = d.pct / 100;
+          topLabel = (d.score != null && d.total != null) ? `${d.score}/${d.total}` : `${d.pct}%`;
+          color = d.pct >= 70 ? "var(--ok)" : d.pct >= 50 ? "var(--gold2)" : "var(--err)";
+        }
+        const barH = barFraction * chartH;
+        const y = padT + chartH - barH;
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={barW} height={barH} rx="3" fill={color} opacity="0.85" />
+            {(!compact || data.length <= 8) && <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Cinzel, serif">{topLabel}</text>}
+            <text x={x + barW / 2} y={H - 10} fontSize={compact ? 10 : 12} fill="var(--muted)" textAnchor="middle" fontFamily="Spectral, serif">{d.label}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ── Simple SVG Pie/Donut Chart — Strong vs Weak vs Even words ─────────────────
+function WordStrengthPieChart({ strong, weak, even, compact = false }) {
+  const total = strong + weak + even;
+  if (total === 0) return null;
+  const size = 180, cx = size / 2, cy = size / 2, r = 70, innerR = 42;
+
+  const segments = [
+    { value: strong, color: "var(--ok)", label: "Strong" },
+    { value: weak, color: "var(--err)", label: "Weak" },
+    { value: even, color: "var(--gold2)", label: "Mixed" },
+  ].filter(s => s.value > 0);
+
+  let cumulativeAngle = -90; // start at top
+  const paths = segments.map(seg => {
+    const angle = (seg.value / total) * 360;
+    const startAngle = cumulativeAngle;
+    const endAngle = cumulativeAngle + angle;
+    cumulativeAngle = endAngle;
+
+    const toRad = (deg) => (deg * Math.PI) / 180;
+    const x1 = cx + r * Math.cos(toRad(startAngle));
+    const y1 = cy + r * Math.sin(toRad(startAngle));
+    const x2 = cx + r * Math.cos(toRad(endAngle));
+    const y2 = cy + r * Math.sin(toRad(endAngle));
+    const ix1 = cx + innerR * Math.cos(toRad(startAngle));
+    const iy1 = cy + innerR * Math.sin(toRad(startAngle));
+    const ix2 = cx + innerR * Math.cos(toRad(endAngle));
+    const iy2 = cy + innerR * Math.sin(toRad(endAngle));
+    const largeArc = angle > 180 ? 1 : 0;
+
+    const d = `M ${ix1} ${iy1} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerR} ${innerR} 0 ${largeArc} 0 ${ix1} ${iy1} Z`;
+    return { d, color: seg.color, label: seg.label, value: seg.value };
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: compact ? 14 : 18 }}>
+      <svg viewBox={`0 0 ${size} ${size}`} style={{ width: compact ? 200 : 230, height: compact ? 200 : 230, flexShrink: 0, display: "block" }}>
+        {paths.map((p, i) => <path key={i} d={p.d} fill={p.color} opacity="0.88" />)}
+        <text x={cx} y={cy - 4} textAnchor="middle" fontSize={compact ? 24 : 28} fontFamily="Cinzel, serif" fill="var(--gold3)">{total}</text>
+        <text x={cx} y={cy + 18} textAnchor="middle" fontSize={compact ? 10 : 11} fontFamily="Spectral, serif" fill="var(--muted)">words</text>
+      </svg>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: compact ? "6px 16px" : "8px 20px" }}>
+        {paths.map((p, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: compact ? 13 : 14 }}>
+            <span style={{ width: compact ? 11 : 12, height: compact ? 11 : 12, borderRadius: 3, background: p.color, display: "inline-block" }} />
+            <span style={{ color: "var(--text)" }}>{p.label}</span>
+            <span style={{ color: "var(--muted)" }}>({p.value})</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HistoryPage({ user, setView, onReview, allWords }) {
+  const [wordTab, setWordTab] = useState("weak"); // weak | strong | even
+  const [expandedHistWord, setExpandedHistWord] = useState(null);
+  const [allSetsWordTab, setAllSetsWordTab] = useState("weak");
+  const [expandedAllSetsHistWord, setExpandedAllSetsHistWord] = useState(null);
+
+  if (!user) return (
+    <div className="page pmd" style={{ textAlign: "center", paddingTop: 72 }}>
+      <div style={{ fontSize: 44, marginBottom: 14 }}>📋</div>
+      <h2>Please Enroll First</h2>
+      <p className="sub" style={{ marginBottom: 22 }}>Enroll to start tracking your quiz history.</p>
+      <button className="btn bg" onClick={() => setView("enroll")}>Enroll Now</button>
+    </div>
+  );
+
+  const sessions = [...(user.scores || [])].reverse(); // most recent first
+  const setScores = (user.scores || []).filter(s => s.day);
+  const allSetsScores = (user.scores || []).filter(s => !s.day);
+  const barData = buildAttemptScoreSeries(setScores);
+  const allSetsBarData = buildAttemptScoreSeries(allSetsScores);
+  const wordBreakdown = buildWordStrengthBreakdown(setScores, allWords || []);
+  const allSetsWordBreakdown = buildWordStrengthBreakdown(allSetsScores, allWords || []);
+
+  const listForTab = wordTab === "weak" ? wordBreakdown.weak : wordTab === "strong" ? wordBreakdown.strong : wordBreakdown.even;
+  const badgeColor = wordTab === "weak" ? "var(--err)" : wordTab === "strong" ? "var(--ok)" : "var(--gold2)";
+  const allSetsListForTab = allSetsWordTab === "weak" ? allSetsWordBreakdown.weak : allSetsWordTab === "strong" ? allSetsWordBreakdown.strong : allSetsWordBreakdown.even;
+  const allSetsBadgeColor = allSetsWordTab === "weak" ? "var(--err)" : allSetsWordTab === "strong" ? "var(--ok)" : "var(--gold2)";
+
+  return (
+    <div className="page pmd">
+      <div className="lbl">Quiz History</div>
+      <h2>Your Past Attempts</h2>
+      <p className="sub" style={{ marginBottom: 26 }}>{sessions.length} session{sessions.length !== 1 ? "s" : ""} recorded. Click any attempt to see exactly which words you got right or wrong.</p>
+
+      {sessions.length > 0 && (
+        <>
+          <div className="chart-row">
+            <div className="card chart-col">
+              <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0, fontSize: 10 }}>Set Quizzes — Last {barData.length} Attempts</div></div>
+              <div className="chart-col-inner">
+                {barData.length > 0 ? <ScoreBarChart data={barData} compact mode="score" /> : <div className="chart-empty">No set quizzes yet</div>}
+              </div>
+            </div>
+            <div className="card chart-col">
+              <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0, fontSize: 10 }}>All Sets Quiz — Last {allSetsBarData.length} Attempts</div></div>
+              <div className="chart-col-inner">
+                {allSetsBarData.length > 0 ? <ScoreBarChart data={allSetsBarData} compact mode="time" /> : <div className="chart-empty">No All Sets Quiz attempts yet</div>}
+              </div>
+            </div>
+          </div>
+
+          {(wordBreakdown.totalTracked > 0 || allSetsWordBreakdown.totalTracked > 0) && (
+            <div className="chart-row" style={{ marginBottom: 16 }}>
+              {wordBreakdown.totalTracked > 0 && (
+                <div className="card chart-col">
+                  <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0, fontSize: 10 }}>Set Quizzes — Word Strength</div></div>
+                  <div className="chart-col-inner">
+                    <WordStrengthPieChart strong={wordBreakdown.strong.length} weak={wordBreakdown.weak.length} even={wordBreakdown.even.length} compact />
+                  </div>
+                </div>
+              )}
+              {allSetsWordBreakdown.totalTracked > 0 && (
+                <div className="card chart-col">
+                  <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0, fontSize: 10 }}>All Sets Quiz — Word Strength</div></div>
+                  <div className="chart-col-inner">
+                    <WordStrengthPieChart strong={allSetsWordBreakdown.strong.length} weak={allSetsWordBreakdown.weak.length} even={allSetsWordBreakdown.even.length} compact />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {wordBreakdown.totalTracked > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="lbl" style={{ marginBottom: 14 }}>Word Strength Breakdown (Set Quizzes)</div>
+
+              <div className="tabs" style={{ marginTop: 0, marginBottom: 14 }}>
+                <button className={`tab ${wordTab === "weak" ? "on" : ""}`} onClick={() => { setWordTab("weak"); setExpandedHistWord(null); }}>
+                  Weak ({wordBreakdown.weak.length})
+                </button>
+                <button className={`tab ${wordTab === "strong" ? "on" : ""}`} onClick={() => { setWordTab("strong"); setExpandedHistWord(null); }}>
+                  Strong ({wordBreakdown.strong.length})
+                </button>
+                <button className={`tab ${wordTab === "even" ? "on" : ""}`} onClick={() => { setWordTab("even"); setExpandedHistWord(null); }}>
+                  Mixed ({wordBreakdown.even.length})
+                </button>
+              </div>
+
+              {listForTab.length === 0 ? (
+                <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 13, padding: "16px 0" }}>
+                  No words in this category yet.
+                </div>
+              ) : (
+                <div className="wlist">
+                  {listForTab.map((w, i) => {
+                    const isOpen = expandedHistWord === `${wordTab}-${i}`;
+                    const badge = (
+                      <span style={{ fontSize: 10, color: badgeColor, border: `1px solid ${badgeColor}`, borderRadius: 8, padding: "2px 7px", whiteSpace: "nowrap" }}>
+                        {w.correct}✓ / {w.wrong}✗
+                      </span>
+                    );
+                    return (
+                      <WordDetailCard
+                        key={i}
+                        word={w}
+                        isOpen={isOpen}
+                        onToggle={() => setExpandedHistWord(isOpen ? null : `${wordTab}-${i}`)}
+                        badge={badge}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+
+              {wordBreakdown.weak.length > 0 && (
+                <div style={{ marginTop: 18, textAlign: "center" }}>
+                  <button className="btn bg bsm" onClick={() => setView("learn")}>📚 Practice Weak Words</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {allSetsWordBreakdown.totalTracked > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="lbl" style={{ marginBottom: 14 }}>Word Strength Breakdown (All Sets Quiz)</div>
+
+              <div className="tabs" style={{ marginTop: 0, marginBottom: 14 }}>
+                <button className={`tab ${allSetsWordTab === "weak" ? "on" : ""}`} onClick={() => { setAllSetsWordTab("weak"); setExpandedAllSetsHistWord(null); }}>
+                  Weak ({allSetsWordBreakdown.weak.length})
+                </button>
+                <button className={`tab ${allSetsWordTab === "strong" ? "on" : ""}`} onClick={() => { setAllSetsWordTab("strong"); setExpandedAllSetsHistWord(null); }}>
+                  Strong ({allSetsWordBreakdown.strong.length})
+                </button>
+                <button className={`tab ${allSetsWordTab === "even" ? "on" : ""}`} onClick={() => { setAllSetsWordTab("even"); setExpandedAllSetsHistWord(null); }}>
+                  Mixed ({allSetsWordBreakdown.even.length})
+                </button>
+              </div>
+
+              {allSetsListForTab.length === 0 ? (
+                <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 13, padding: "16px 0" }}>
+                  No words in this category yet.
+                </div>
+              ) : (
+                <div className="wlist">
+                  {allSetsListForTab.map((w, i) => {
+                    const isOpen = expandedAllSetsHistWord === `${allSetsWordTab}-${i}`;
+                    const badge = (
+                      <span style={{ fontSize: 10, color: allSetsBadgeColor, border: `1px solid ${allSetsBadgeColor}`, borderRadius: 8, padding: "2px 7px", whiteSpace: "nowrap" }}>
+                        {w.correct}✓ / {w.wrong}✗
+                      </span>
+                    );
+                    return (
+                      <WordDetailCard
+                        key={i}
+                        word={w}
+                        isOpen={isOpen}
+                        onToggle={() => setExpandedAllSetsHistWord(isOpen ? null : `${allSetsWordTab}-${i}`)}
+                        badge={badge}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+
+              {allSetsWordBreakdown.weak.length > 0 && (
+                <div style={{ marginTop: 18, textAlign: "center" }}>
+                  <button className="btn bg bsm" onClick={() => setView("learn")}>📚 Practice Weak Words</button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {sessions.length === 0 ? (
+        <div className="card" style={{ textAlign: "center", padding: 44, color: "var(--muted)" }}>
+          No quiz attempts yet. Go to <strong style={{ color: "var(--gold2)", cursor: "pointer", textDecoration: "underline" }} onClick={() => setView("learn")}>Learn</strong> and take your first quiz!
+        </div>
+      ) : (
+        <div className="card">
+          {sessions.map((s, i) => (
+            <div key={i} className="hist-row" onClick={() => onReview(s)}>
+              <div className="hist-pct" style={{ color: s.pct >= 70 ? "var(--ok)" : s.pct >= 50 ? "var(--gold2)" : "var(--err)" }}>{s.pct}%</div>
+              <div className="hist-info">
+                <div className="hist-title">{s.day ? `Set ${s.day}` : "All Sets Quiz"} &nbsp;·&nbsp; {s.score}/{s.total} correct</div>
+                <div className="hist-date">{new Date(s.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} at {new Date(s.date).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</div>
+              </div>
+              <div className="hist-arrow">→</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewPage({ rec, setView, allWords }) {
+  const [expandedReviewWord, setExpandedReviewWord] = useState(null);
+  const detail = rec.detail || [];
+  const correctCount = detail.filter(d => d.isCorrect).length;
+
+  return (
+    <div className="page pmd">
+      <div className="lbl">Answer Breakdown</div>
+      <h2>{rec.day ? `Set ${rec.day} Review` : "Quiz Review"}</h2>
+      <p className="sub" style={{ marginBottom: 22 }}>
+        {new Date(rec.date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} ·
+        Scored {rec.pct}% ({rec.score}/{rec.total})
+      </p>
+
+      {detail.length === 0 ? (
+        <div className="card" style={{ textAlign: "center", padding: 36, color: "var(--muted)" }}>
+          Detailed breakdown isn't available for this older session — only the overall score was saved.
+          New quiz attempts will include full per-question detail.
+        </div>
+      ) : (
+        <div className="card">
+          <div className="wlist">
+            {detail.map((d, i) => {
+              const isOpen = expandedReviewWord === i;
+              const full = (allWords || []).find(w => w.arabic === d.arabic) || {};
+              const word = { ...full, arabic: d.arabic, english: d.english, translit: d.translit };
+              const badge = (
+                <span style={{
+                  fontSize: 10, padding: "2px 7px", borderRadius: 8, whiteSpace: "nowrap",
+                  color: d.isCorrect ? "var(--ok)" : "var(--err)",
+                  border: `1px solid ${d.isCorrect ? "var(--ok)" : "var(--err)"}`,
+                }}>
+                  {d.isCorrect ? "✓ Correct" : "✗ Wrong"}
+                </span>
+              );
+              return (
+                <div key={i}>
+                  <WordDetailCard
+                    word={word}
+                    isOpen={isOpen}
+                    onToggle={() => setExpandedReviewWord(isOpen ? null : i)}
+                    badge={badge}
+                  />
+                  {!d.isCorrect && (
+                    <div className="review-answer-note">
+                      <span style={{ color: "var(--err)" }}>You chose: {d.chosen}</span>
+                      <span style={{ color: "var(--ok)", marginLeft: 12 }}>Correct: {d.correctAnswer}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 9, justifyContent: "center", marginTop: 22, flexWrap: "wrap" }}>
+        <button className="btn bg" onClick={() => setView("history")}>← Back to History</button>
+        <button className="btn bh" onClick={() => setView("learn")}>Go to Learn</button>
+      </div>
+    </div>
+  );
+}
+
+function LBPage({ participants, user }) {
+  const ranked = [...participants].filter(p => p.scores?.length > 0)
+    .map(p => ({ ...p, best: Math.max(...p.scores.map(s => s.pct)), sessions: p.scores.length }))
+    .sort((a, b) => b.best - a.best || b.sessions - a.sessions);
+  const userKey = user ? (user.userId || user.email) : null;
+  return (
+    <div className="page pmd">
+      <div className="lbl">Leaderboard</div>
+      <h2>Top Learners</h2>
+      <p className="sub" style={{ marginBottom: 26 }}>Ranked by best quiz score</p>
+      {ranked.length === 0
+        ? <div className="card" style={{ textAlign: "center", color: "var(--muted)", padding: 44 }}>No scores yet — complete a quiz to appear here!</div>
+        : <div className="card">
+          {ranked.map((p, i) => {
+            const pKey = p.userId || p.email;
+            const isYou = userKey && pKey === userKey;
+            return (
+              <div className="lbrow" key={pKey} style={isYou ? { background: "rgba(180,134,11,.05)", borderRadius: 7 } : {}}>
+                <div className={`lbrank ${i < 3 ? "top" : ""}`}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</div>
+                <div className="lbinfo">
+                  <div className="lbname">{p.userId || p.name} {isYou && <span style={{ color: "var(--teal2)", fontSize: 11 }}>(you)</span>}</div>
+                  <div className="lbmeta">{p.sessions} sessions · {Object.keys(p.dayProgress || {}).filter(k => k !== "free").length} sets done</div>
+                </div>
+                <div className="lbsc">{p.best}%</div>
+                <div className="lbbadge">{calcStreak(p.scores) > 0 ? `🔥${calcStreak(p.scores)}` : "—"}</div>
+              </div>
+            );
+          })}
+        </div>}
+    </div>
+  );
+}
+
+// ─── Admin Password Gate ──────────────────────────────────────────────────────
+function AdminGate({ onUnlock }) {
+  const [password, setPassword] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    if (!password) return;
+    setChecking(true);
+    setError("");
+    const hash = await hashPassword(password);
+    setChecking(false);
+    if (hash === getActiveAdminPasswordHash()) {
+      onUnlock();
+    } else {
+      setError("Incorrect password.");
+      setPassword("");
+    }
+  };
+
+  return (
+    <div className="page psm" style={{ paddingTop: 80 }}>
+      <div className="lbl" style={{ justifyContent: "center" }}>Restricted Area</div>
+      <h2 style={{ textAlign: "center" }}>Admin Access</h2>
+      <p className="sub" style={{ textAlign: "center", marginBottom: 26 }}>This area is for administrators only.</p>
+      <div className="card">
+        <div className="field">
+          <label>Admin Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={e => { setPassword(e.target.value); setError(""); }}
+            onKeyDown={e => e.key === "Enter" && submit()}
+            placeholder="Enter admin password"
+            autoFocus
+          />
+        </div>
+        {error && <div className="enroll-error">⚠ {error}</div>}
+        <button className="btn bg bfw" onClick={submit} disabled={!password || checking}>
+          {checking ? "Checking…" : "Unlock →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Finance Gate — separate, restricted-scope password (receipts only) ──────
+function FinanceGate({ onUnlock }) {
+  const [password, setPassword] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    if (!password) return;
+    setChecking(true);
+    setError("");
+    const hash = await hashPassword(password);
+    setChecking(false);
+    if (hash === getActiveFinancePasswordHash()) {
+      onUnlock();
+    } else {
+      setError("Incorrect password.");
+      setPassword("");
+    }
+  };
+
+  return (
+    <div className="page psm" style={{ paddingTop: 80 }}>
+      <div className="lbl" style={{ justifyContent: "center" }}>Restricted Area</div>
+      <h2 style={{ textAlign: "center" }}>Finance Team Access</h2>
+      <p className="sub" style={{ textAlign: "center", marginBottom: 26 }}>This area is for the finance team only — issue donation receipts here.</p>
+      <div className="card">
+        <div className="field">
+          <label>Finance Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={e => { setPassword(e.target.value); setError(""); }}
+            onKeyDown={e => e.key === "Enter" && submit()}
+            placeholder="Enter finance password"
+            autoFocus
+          />
+        </div>
+        {error && <div className="enroll-error">⚠ {error}</div>}
+        <button className="btn bg bfw" onClick={submit} disabled={!password || checking}>
+          {checking ? "Checking…" : "Unlock →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Generic Change Password modal — used by both Admin and Finance ──────────
+// profile dropdowns. Which password it checks/changes is determined by the
+// getCurrentHash/storageKey/label props passed in, not hardcoded, so one
+// component serves both roles without duplicating the logic.
+function ChangePasswordModal({ label, getCurrentHash, storageKey, onClose, toast_ }) {
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    if (!currentPw || !newPw || !confirmPw) { setError("All fields are required."); return; }
+    const complexityError = getPasswordComplexityError(newPw);
+    if (complexityError) { setError(complexityError); return; }
+    if (newPw !== confirmPw) { setError("New password and confirmation don't match."); return; }
+
+    setChecking(true);
+    const currentHash = await hashPassword(currentPw);
+    if (currentHash !== getCurrentHash()) {
+      setChecking(false);
+      setError("Current password is incorrect.");
+      return;
+    }
+    const newHash = await hashPassword(newPw);
+    storageSet(storageKey, newHash);
+    setChecking(false);
+    toast_(`${label} password updated successfully!`);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 400 }}>
+        <div className="modal-head">
+          <h3>{label} — Change Password</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div className="field"><label>Current Password</label><input type="password" value={currentPw} onChange={e => { setCurrentPw(e.target.value); setError(""); }} placeholder="Enter current password" autoFocus /></div>
+          <div className="field"><label>New Password</label><input type="password" value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
+          <div className="field"><label>Confirm New Password</label><input type="password" value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setError(""); }} placeholder="Re-enter new password" /></div>
+          {error && <div className="enroll-error">⚠ {error}</div>}
+          <button className="btn bg bfw" onClick={submit} disabled={checking}>
+            {checking ? "Updating…" : "Update Password"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Shared Receipt Manager — used inside Admin's Receipts tab AND the ───────
+// standalone Finance Panel, so both stay in sync with one implementation
+// instead of two copies to maintain separately.
+function ReceiptManager({ receipts, onIssueReceipt, toast_ }) {
+  const [rcptName, setRcptName] = useState("");
+  const [rcptEmail, setRcptEmail] = useState("");
+  const [rcptAmount, setRcptAmount] = useState("");
+  const [rcptDate, setRcptDate] = useState(new Date().toISOString().slice(0, 10));
+  const [rcptPurpose, setRcptPurpose] = useState("Donation");
+  const [rcptNote, setRcptNote] = useState("");
+  const [rcptError, setRcptError] = useState("");
+  const [rcptSending, setRcptSending] = useState(false);
+  const [rcptSuccess, setRcptSuccess] = useState(null);
+
+  const submitReceipt = async () => {
+    setRcptError("");
+    if (!rcptName.trim() || !rcptEmail.trim() || !rcptAmount || !rcptDate) {
+      setRcptError("Donor name, email, amount, and date are all required.");
+      return;
+    }
+    if (isNaN(Number(rcptAmount)) || Number(rcptAmount) <= 0) {
+      setRcptError("Enter a valid amount.");
+      return;
+    }
+    setRcptSending(true);
+    const result = await onIssueReceipt({
+      donorName: rcptName.trim(),
+      donorEmail: rcptEmail.trim(),
+      amount: Number(rcptAmount),
+      donationDate: rcptDate,
+      purpose: rcptPurpose.trim() || "Donation",
+      note: rcptNote.trim(),
+    });
+    setRcptSending(false);
+    if (result.ok) {
+      setRcptSuccess({ receiptNo: result.receiptNo, emailFailed: result.emailFailed });
+      setRcptName(""); setRcptEmail(""); setRcptAmount(""); setRcptNote("");
+      setRcptDate(new Date().toISOString().slice(0, 10));
+      setRcptPurpose("Donation");
+    } else {
+      setRcptError("Could not issue receipt. Please try again.");
+    }
+  };
+
+  return (
+    <>
+      <div className="card" style={{ maxWidth: 480, marginBottom: 16 }}>
+        <div className="lbl">Issue Donation Receipt</div>
+        <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+          Only issue this after the finance team confirms the payment was actually received. This is a bookkeeping record, not an automated payment verification — the app has no way to independently confirm a UPI transfer occurred.
+        </p>
+        <div className="field"><label>Donor Name</label><input value={rcptName} onChange={e => { setRcptName(e.target.value); setRcptError(""); }} placeholder="Full name" /></div>
+        <div className="field"><label>Donor Email</label><input type="email" value={rcptEmail} onChange={e => { setRcptEmail(e.target.value); setRcptError(""); }} placeholder="donor@email.com" /></div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <div className="field" style={{ flex: 1 }}><label>Amount (₹)</label><input type="number" value={rcptAmount} onChange={e => { setRcptAmount(e.target.value); setRcptError(""); }} placeholder="1000" /></div>
+          <div className="field" style={{ flex: 1 }}><label>Date Received</label><input type="date" value={rcptDate} onChange={e => setRcptDate(e.target.value)} /></div>
+        </div>
+        <div className="field"><label>Purpose</label><input value={rcptPurpose} onChange={e => setRcptPurpose(e.target.value)} placeholder="Donation" /></div>
+        <div className="field"><label>Note (optional)</label><input value={rcptNote} onChange={e => setRcptNote(e.target.value)} placeholder="Any additional note for the donor" /></div>
+        {rcptError && <div className="enroll-error">⚠ {rcptError}</div>}
+        <button className="btn bg bfw" onClick={submitReceipt} disabled={rcptSending}>
+          {rcptSending ? "Issuing…" : "Issue & Email Receipt"}
+        </button>
+        {rcptSuccess && (
+          <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 7, background: "rgba(74,158,92,.08)", border: "1px solid rgba(74,158,92,.25)" }}>
+            <div style={{ fontSize: 13, color: "var(--ok)" }}>✅ Receipt {rcptSuccess.receiptNo} issued.</div>
+            {rcptSuccess.emailFailed && <div style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>⚠ Email failed to send — check EmailJS connection and resend manually if needed.</div>}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="lbl">Receipt Log</div>
+        {receipts.length === 0 ? (
+          <div style={{ textAlign: "center", color: "var(--muted)", padding: 30 }}>No receipts issued yet.</div>
+        ) : (
+          <table className="tbl">
+            <thead><tr><th>Receipt #</th><th>Donor</th><th>Amount</th><th>Date</th><th>Issued</th></tr></thead>
+            <tbody>
+              {receipts.map(r => (
+                <tr key={r.id}>
+                  <td style={{ color: "var(--gold3)", fontFamily: "monospace" }}>{r.receiptNo}</td>
+                  <td>{r.donorName}<br/><span style={{ color: "var(--muted)", fontSize: 11 }}>{r.donorEmail}</span></td>
+                  <td style={{ color: "var(--ok)" }}>₹{r.amount}</td>
+                  <td>{new Date(r.donationDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td>
+                  <td style={{ color: "var(--muted)", fontSize: 11 }}>{new Date(r.issuedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ─── Finance Panel — restricted to receipt issuing only, nothing else ────────
+function FinancePage({ receipts, onIssueReceipt, toast_ }) {
+  return (
+    <div className="page">
+      <div style={{ marginBottom: 20 }}>
+        <div className="lbl" style={{ marginBottom: 4 }}>Finance Panel</div>
+        <h2 style={{ fontSize: 20 }}>Donation Receipts</h2>
+      </div>
+      <ReceiptManager receipts={receipts} onIssueReceipt={onIssueReceipt} toast_={toast_} />
+    </div>
+  );
+}
+
+function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData }) {
+  const [resetTarget, setResetTarget] = useState(null); // userId being reset, or null
+  const [resetMessageId, setResetMessageId] = useState(null); // linked message, if reset was triggered from Messages tab
+  const [resetSending, setResetSending] = useState(false);
+  const [resetError, setResetError] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [editTarget, setEditTarget] = useState(null); // userId being edited, or null
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editError, setEditError] = useState("");
+  const [editChecking, setEditChecking] = useState(false);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
+  const [tab, setTab] = useState("words");
+  const [arabic, setArabic] = useState(""), [translit, setTranslit] = useState(""), [english, setEnglish] = useState("");
+  const [urdu, setUrdu] = useState(""), [root, setRootField] = useState(""), [rootEnglish, setRootEnglish] = useState(""), [rootUrdu, setRootUrdu] = useState("");
+  const [ayahRef, setAyahRef] = useState("");
+  const allWords = [...WORD_BANK, ...customWords];
+
+  const submitReset = async () => {
+    setResetError("");
+    setResetSending(true);
+    const result = await onSendResetLink(resetTarget, resetMessageId);
+    setResetSending(false);
+    if (result.ok) {
+      setResetSent(true);
+      toast_(`Reset link emailed to ${resetTarget}.`);
+    } else if (result.reason === "no-email") {
+      setResetError("This learner has no registered email on file — can't send a link.");
+    } else if (result.reason === "send-failed") {
+      setResetError("Email failed to send. Check the EmailJS/Titan connection and try again.");
+    } else {
+      setResetError("Could not find that user.");
+    }
+  };
+
+  const closeReset = () => { setResetTarget(null); setResetMessageId(null); setResetError(""); setResetSent(false); };
+
+  const openEdit = (p) => {
+    setEditTarget(p.userId);
+    setEditName(p.name);
+    setEditEmail(p.email);
+    setEditError("");
+  };
+  const closeEdit = () => { setEditTarget(null); setEditError(""); };
+
+  const submitEdit = async () => {
+    setEditError("");
+    if (!editName.trim() || !editEmail.trim()) { setEditError("Name and email are required."); return; }
+    setEditChecking(true);
+    const result = await onUpdateParticipant(editTarget, editName, editEmail);
+    setEditChecking(false);
+    if (result.ok) {
+      toast_(`Account updated for ${editTarget}.`);
+      closeEdit();
+    } else if (result.reason === "disposable") {
+      setEditError("That email looks like a disposable/temporary address — please use a real one.");
+    } else if (result.reason === "no-mx") {
+      setEditError("That email domain doesn't appear to exist. Double-check for a typo.");
+    } else {
+      setEditError("Couldn't save — please check the details and try again.");
+    }
+  };
+
+  const submitDelete = () => {
+    onDeleteParticipant(deleteConfirmTarget);
+    toast_(`Account ${deleteConfirmTarget} deleted.`);
+    setDeleteConfirmTarget(null);
+  };
+
+  const handleResendVerify = async (userId) => {
+    const result = await onResendVerification(userId);
+    toast_(result.ok ? `Verification email resent to ${userId}.` : "Failed to resend — check EmailJS connection.");
+  };
+
+  const add = () => {
+    if (!arabic || !english) { toast_("Arabic and English required"); return; }
+    saveWords([...customWords, {
+      arabic: arabic.trim(), translit: translit.trim(), english: english.trim(),
+      urdu: urdu.trim() || "—",
+      root: root.trim() || "—", rootEnglish: rootEnglish.trim() || "—", rootUrdu: rootUrdu.trim() || "—",
+      ayahRef: ayahRef.trim() || "",
+      addedAt: new Date().toISOString(),
+    }]);
+    setArabic(""); setTranslit(""); setEnglish(""); setUrdu(""); setRootField(""); setRootEnglish(""); setRootUrdu(""); setAyahRef("");
+    toast_("Word added!");
+  };
+
+  return (
+    <div className="page">
+      <div className="lbl" style={{ marginBottom: 16 }}>Administration</div>
+      <div className="tabs">
+        <button className={`tab ${tab === "words" ? "on" : ""}`} onClick={() => setTab("words")}>All Words ({allWords.length})</button>
+        <button className={`tab ${tab === "add" ? "on" : ""}`} onClick={() => setTab("add")}>Add Word</button>
+        <button className={`tab ${tab === "parts" ? "on" : ""}`} onClick={() => setTab("parts")}>Participants ({participants.length})</button>
+        <button className={`tab ${tab === "messages" ? "on" : ""}`} onClick={() => setTab("messages")}>
+          ✉ Messages {messages.filter(m => !m.resolved).length > 0 && <span className="tab-badge">{messages.filter(m => !m.resolved).length}</span>}
+        </button>
+        <button className={`tab ${tab === "settings" ? "on" : ""}`} onClick={() => setTab("settings")}>⚙ Settings</button>
+      </div>
+      {tab === "words" && (
+        <div className="card">
+          <div style={{ maxHeight: 460, overflowY: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Arabic</th><th>Transliteration</th><th>English</th><th>Urdu</th><th>Root</th><th></th></tr></thead>
+              <tbody>{allWords.map((w, i) => {
+                const isCust = customWords.includes(w);
+                return <tr key={i}>
+                  <td><span className="arabic" style={{ fontSize: 22 }}>{w.arabic}</span></td>
+                  <td style={{ color: "var(--muted)", fontStyle: "italic" }}>{w.translit}</td>
+                  <td>{w.english}</td>
+                  <td><span className="arabic" style={{ fontSize: 15, color: "var(--teal2)" }}>{w.urdu || "—"}</span></td>
+                  <td><span className="arabic" style={{ fontSize: 13, color: "var(--teal2)" }}>{w.root}</span></td>
+                  <td>{isCust ? <button className="del" onClick={() => saveWords(customWords.filter(x => x !== w))}>✕</button> : <span style={{ fontSize: 10, color: "var(--muted)" }}>built-in</span>}</td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {tab === "add" && (
+        <div className="card" style={{ maxWidth: 480 }}>
+          <div className="field"><label>Arabic Word *</label><input value={arabic} onChange={e => setArabic(e.target.value)} placeholder="e.g. مَسْجِدٌ" style={{ direction: "rtl", fontSize: 22, fontFamily: "'Scheherazade New','Amiri',serif" }} /></div>
+          <div className="field"><label>Transliteration</label><input value={translit} onChange={e => setTranslit(e.target.value)} placeholder="e.g. Masjid" /></div>
+          <div className="field"><label>English Meaning *</label><input value={english} onChange={e => setEnglish(e.target.value)} placeholder="e.g. Mosque" /></div>
+          <div className="field"><label>Urdu Meaning</label><input value={urdu} onChange={e => setUrdu(e.target.value)} placeholder="e.g. مسجد" style={{ direction: "rtl", fontFamily: "'Scheherazade New',serif", fontSize: 17 }} /></div>
+          <div className="field"><label>Root Letters</label><input value={root} onChange={e => setRootField(e.target.value)} placeholder="e.g. سجد" style={{ direction: "rtl", fontFamily: "'Scheherazade New',serif" }} /></div>
+          <div className="field"><label>Root Meaning (English)</label><input value={rootEnglish} onChange={e => setRootEnglish(e.target.value)} placeholder="e.g. to prostrate" /></div>
+          <div className="field"><label>Root Meaning (Urdu)</label><input value={rootUrdu} onChange={e => setRootUrdu(e.target.value)} placeholder="e.g. سجدہ کرنا" style={{ direction: "rtl", fontFamily: "'Scheherazade New',serif", fontSize: 15 }} /></div>
+          <div className="field"><label>Qur'an Reference (optional)</label><input value={ayahRef} onChange={e => setAyahRef(e.target.value)} placeholder="e.g. Surah Al-Baqarah 2:144" /></div>
+          <button className="btn bg" onClick={add}>Add Word</button>
+          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 11 }}>Custom words unlock day-by-day after the built-in words.</p>
+        </div>
+      )}
+      {tab === "parts" && (
+        <div className="card">
+          {participants.length === 0 ? <div style={{ textAlign: "center", color: "var(--muted)", padding: 36 }}>No participants yet.</div>
+            : <table className="tbl">
+              <thead><tr><th>Name</th><th>User ID</th><th>Email</th><th>Status</th><th>Set</th><th>Sessions</th><th>Best</th><th></th></tr></thead>
+              <tbody>{participants.map(p => {
+                const isUnverified = p.emailVerified === false;
+                return (
+                <tr key={p.userId || p.email}>
+                  <td>{p.name}</td>
+                  <td style={{ color: p.userId ? "var(--gold3)" : "var(--muted)" }}>{p.userId || <span style={{ fontStyle: "italic", fontSize: 11 }}>legacy — not upgraded</span>}</td>
+                  <td style={{ color: "var(--muted)" }}>{p.email}</td>
+                  <td>
+                    {isUnverified
+                      ? <span style={{ fontSize: 10, color: "var(--err)", border: "1px solid var(--err)", borderRadius: 8, padding: "2px 7px", whiteSpace: "nowrap" }}>⚠ Unverified</span>
+                      : <span style={{ fontSize: 10, color: "var(--ok)", border: "1px solid var(--ok)", borderRadius: 8, padding: "2px 7px", whiteSpace: "nowrap" }}>✓ Verified</span>}
+                  </td>
+                  <td style={{ color: "var(--gold2)" }}>{getUnlockedDays(p.enrolledAt, p.dayProgress)}</td>
+                  <td>{p.scores?.length || 0}</td>
+                  <td style={{ color: "var(--ok)" }}>{p.scores?.length ? `${Math.max(...p.scores.map(s => s.pct))}%` : "—"}</td>
+                  <td>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {p.userId && !isUnverified && (
+                        <button className="del" style={{ fontSize: 11 }} onClick={() => { setResetTarget(p.userId); setResetMessageId(null); setResetError(""); setResetSent(false); }}>🔑 Reset</button>
+                      )}
+                      {p.userId && isUnverified && (
+                        <button className="del" style={{ fontSize: 11 }} onClick={() => handleResendVerify(p.userId)}>📧 Resend Verify</button>
+                      )}
+                      {p.userId && (
+                        <button className="del" style={{ fontSize: 11 }} onClick={() => openEdit(p)}>✏ Edit</button>
+                      )}
+                      {p.userId && (
+                        <button className="del" style={{ fontSize: 11, color: "var(--err)" }} onClick={() => setDeleteConfirmTarget(p.userId)}>🗑 Delete</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                );
+              })}</tbody>
+            </table>}
+        </div>
+      )}
+      {tab === "messages" && (
+        <div className="card">
+          {messages.length === 0 ? (
+            <div style={{ textAlign: "center", color: "var(--muted)", padding: 40 }}>No messages yet. Password reset requests from learners will appear here.</div>
+          ) : (
+            <div className="msg-list">
+              {messages.map(m => {
+                const accountUnknown = m.learnerName?.startsWith("(unknown");
+                const isAck = m.type === "password_reset_completed";
+                return (
+                <div key={m.id} className={`msg-item ${m.resolved ? "resolved" : !m.read ? "unread" : ""}`} onClick={() => !m.read && onMarkRead(m.id)}>
+                  <div className="msg-icon">{isAck ? "✅" : m.resolved ? "✅" : accountUnknown ? "⚠️" : "🔑"}</div>
+                  <div className="msg-body">
+                    <div className="msg-title">
+                      {isAck ? "Reset completed" : "Password reset request"} — <strong>{m.userId}</strong>
+                      {!m.resolved && !m.read && <span className="msg-new-dot" />}
+                    </div>
+                    {accountUnknown ? (
+                      <div className="msg-sub" style={{ color: "var(--err)" }}>⚠ No account found with this User ID — likely a typo. {m.note ? `Note: ${m.note}` : ""}</div>
+                    ) : isAck ? (
+                      <div className="msg-sub" style={{ color: "var(--ok)" }}>{m.learnerName} successfully set their new password.</div>
+                    ) : (
+                      <div className="msg-sub">{m.learnerName}{m.note ? ` · ${m.note}` : ""}</div>
+                    )}
+                    <div className="msg-date">{new Date(m.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
+                  </div>
+                  <div className="msg-actions">
+                    {!m.resolved && !accountUnknown && !isAck && (
+                      <>
+                        <button className="btn bg bsm" onClick={(e) => { e.stopPropagation(); setResetTarget(m.userId); setResetMessageId(m.id); setResetError(""); setResetSent(false); }}>Send Reset Link</button>
+                        <button className="btn bh bsm" onClick={(e) => { e.stopPropagation(); onMarkResolved(m.id); }}>Mark Resolved</button>
+                      </>
+                    )}
+                    {!m.resolved && accountUnknown && (
+                      <button className="btn bh bsm" onClick={(e) => { e.stopPropagation(); onMarkResolved(m.id); }}>Dismiss (No Account)</button>
+                    )}
+                    {(m.resolved || isAck) && <span style={{ fontSize: 11, color: "var(--ok)" }}>{isAck ? "Acknowledged" : "Resolved"}</span>}
+                  </div>
+                </div>
+              );})}
+            </div>
+          )}
+        </div>
+      )}
+      {tab === "settings" && <AdminEmailSettings toast_={toast_} />}
+      {tab === "settings" && <ResetTestDataPanel onResetAllTestData={onResetAllTestData} />}
+
+      {resetTarget && (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeReset(); }}>
+          <div className="modal" style={{ maxWidth: 400 }}>
+            <div className="modal-head">
+              <h3>Send Reset Link — {resetTarget}</h3>
+              <button className="modal-close" onClick={closeReset}>✕</button>
+            </div>
+            <div className="modal-body">
+              {!resetSent ? (
+                <>
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+                    This emails a one-time link to <strong style={{ color: "var(--gold3)" }}>{resetTarget}</strong>'s registered email address. The link lets them set a new password themselves — no password is sent or typed by you. The link expires in 24 hours.
+                  </p>
+                  {resetError && <div className="enroll-error">⚠ {resetError}</div>}
+                  <button className="btn bg bfw" onClick={submitReset} disabled={resetSending}>
+                    {resetSending ? "Sending…" : "Send Reset Link →"}
+                  </button>
+                </>
+              ) : (
+                <div style={{ textAlign: "center", padding: "10px 0" }}>
+                  <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+                  <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Reset link sent!</p>
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 18 }}>{resetTarget} will receive an email with a link to set their own new password.</p>
+                  <button className="btn bh" onClick={closeReset}>Close</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editTarget && (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}>
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-head">
+              <h3>Edit Account — {editTarget}</h3>
+              <button className="modal-close" onClick={closeEdit}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+                Use this to correct a learner's name or fix a typo'd email (e.g. a wrong domain entered at signup). Only change the email to what the learner has told you directly — the new address is re-validated before saving.
+              </p>
+              <div className="field"><label>Full Name</label><input value={editName} onChange={e => { setEditName(e.target.value); setEditError(""); }} placeholder="Learner's name" /></div>
+              <div className="field"><label>Email Address</label><input type="email" value={editEmail} onChange={e => { setEditEmail(e.target.value); setEditError(""); }} placeholder="learner@email.com" /></div>
+              {editError && <div className="enroll-error">⚠ {editError}</div>}
+              <button className="btn bg bfw" onClick={submitEdit} disabled={editChecking}>
+                {editChecking ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmTarget && (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setDeleteConfirmTarget(null); }}>
+          <div className="modal" style={{ maxWidth: 380 }}>
+            <div className="modal-head">
+              <h3>Delete Account?</h3>
+              <button className="modal-close" onClick={() => setDeleteConfirmTarget(null)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ textAlign: "center", padding: "20px 24px" }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+              <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 8 }}>
+                Permanently delete <strong style={{ color: "var(--err)" }}>{deleteConfirmTarget}</strong>?
+              </p>
+              <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 20, lineHeight: 1.6 }}>
+                This removes their account, scores, and progress entirely. This cannot be undone.
+              </p>
+              <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                <button className="btn bh" onClick={() => setDeleteConfirmTarget(null)}>Cancel</button>
+                <button className="btn" style={{ background: "var(--err)", color: "#fff" }} onClick={submitDelete}>Delete Permanently</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Admin Email Settings (one-time setup, edit requires password confirm) ────
+function AdminEmailSettings({ toast_ }) {
+  const [savedEmail, setSavedEmail] = useState(getAdminEmail());
+  const [editing, setEditing] = useState(!savedEmail);
+  const [newEmail, setNewEmail] = useState(savedEmail);
+  const [confirmPw, setConfirmPw] = useState("");
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    const trimmed = newEmail.trim();
+    if (!trimmed || !trimmed.includes("@")) { setError("Enter a valid email address."); return; }
+    // Re-confirm admin password before allowing the change, since this is
+    // already inside the unlocked Admin panel.
+    if (!confirmPw) { setError("Enter your admin password to confirm this change."); return; }
+    setChecking(true);
+    const hash = await hashPassword(confirmPw);
+    setChecking(false);
+    if (hash !== getActiveAdminPasswordHash()) { setError("Incorrect admin password."); return; }
+
+    setAdminEmail(trimmed);
+    setSavedEmail(trimmed);
+    setEditing(false);
+    setConfirmPw("");
+    toast_("Admin notification email saved.");
+  };
+
+  return (
+    <div className="card" style={{ maxWidth: 440, marginTop: 16 }}>
+      <div className="lbl">Admin Notification Email</div>
+      {!editing ? (
+        <>
+          <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 12 }}>
+            Current email: <strong style={{ color: "var(--gold3)" }}>{savedEmail}</strong>
+          </p>
+          <button className="btn bh bsm" onClick={() => { setEditing(true); setNewEmail(savedEmail); setError(""); }}>Change Email</button>
+        </>
+      ) : (
+        <>
+          <div className="field"><label>Email Address</label><input type="email" value={newEmail} onChange={e => { setNewEmail(e.target.value); setError(""); }} placeholder="admin@example.com" /></div>
+          <div className="field"><label>Confirm Admin Password</label><input type="password" value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setError(""); }} placeholder="Required to save changes" /></div>
+          {error && <div className="enroll-error">⚠ {error}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn bg" onClick={submit} disabled={checking}>{checking ? "Saving…" : "Save Email"}</button>
+            {savedEmail && <button className="btn bh" onClick={() => { setEditing(false); setError(""); }}>Cancel</button>}
+          </div>
+        </>
+      )}
+      <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 12, lineHeight: 1.6 }}>
+        This is a record-keeping address — password reset and verification emails to learners are already sent automatically via EmailJS. This address is just where you, as admin, can be reached if that's wired up separately later.
+      </p>
+    </div>
+  );
+}
+
+// ─── Reset All Test Data (pre-launch cleanup) ─────────────────────────────────
+// Destructive, irreversible action — wipes every participant, score, message,
+// and token accumulated during QA. Requires typing a literal confirmation
+// phrase (not just a click) given how severe and unrecoverable this is.
+function ResetTestDataPanel({ onResetAllTestData }) {
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const CONFIRM_PHRASE = "DELETE ALL TEST DATA";
+
+  const close = () => { setOpen(false); setConfirmText(""); };
+
+  return (
+    <div className="card" style={{ maxWidth: 440, marginTop: 16, borderColor: "rgba(192,80,74,.3)" }}>
+      <div className="lbl" style={{ color: "var(--err)" }}>⚠ Danger Zone</div>
+      <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
+        Permanently erases <strong style={{ color: "var(--text)" }}>every participant, score, day progress, message, and reset/verification link</strong> created so far. Use this once, right before going live, to start with a clean slate. The admin password also reverts to the default and must be set again.
+      </p>
+      {!open ? (
+        <button className="btn" style={{ background: "var(--err)", color: "#fff" }} onClick={() => setOpen(true)}>
+          🧹 Reset All Test Data
+        </button>
+      ) : (
+        <div style={{ background: "rgba(192,80,74,.06)", border: "1px solid rgba(192,80,74,.25)", borderRadius: 8, padding: "14px 16px" }}>
+          <p style={{ fontSize: 13, color: "var(--text)", marginBottom: 10, lineHeight: 1.6 }}>
+            This cannot be undone. Type <strong style={{ color: "var(--err)", fontFamily: "monospace" }}>{CONFIRM_PHRASE}</strong> below to confirm.
+          </p>
+          <input
+            value={confirmText}
+            onChange={e => setConfirmText(e.target.value)}
+            placeholder={CONFIRM_PHRASE}
+            style={{ width: "100%", background: "var(--s2)", border: "1px solid rgba(192,80,74,.3)", color: "var(--text)", padding: "9px 13px", borderRadius: 7, fontFamily: "monospace", fontSize: 13, marginBottom: 12, outline: "none" }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className="btn"
+              style={{ background: "var(--err)", color: "#fff" }}
+              disabled={confirmText !== CONFIRM_PHRASE}
+              onClick={onResetAllTestData}
+            >
+              Permanently Delete Everything
+            </button>
+            <button className="btn bh" onClick={close}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Donate Modal ─────────────────────────────────────────────────────────────
+function DonateModal({ onClose, toast_, user }) {
+  const [frequency, setFrequency] = useState("once"); // once | monthly | yearly
+
+  const copy = (text, label) => {
+    navigator.clipboard.writeText(text).then(() => toast_(`${label} copied!`)).catch(() => toast_("Copy manually from screen"));
+  };
+
+  // Generate UPI payment deep-link (works on mobile with UPI apps).
+  // Note: standard UPI deep-links only support one-time payments — there's no
+  // universal cross-app deep-link for recurring UPI (that needs a registered
+  // UPI AutoPay/e-mandate merchant integration). For Monthly/Yearly, we guide
+  // the user to set it up themselves via their banking app instead of
+  // pretending a one-tap link can create a recurring payment.
+  const upiLink = `upi://pay?pa=${encodeURIComponent(DONATE.upiId)}&pn=${encodeURIComponent(DONATE.charityName)}&tn=${encodeURIComponent(DONATE.purpose)}&cu=INR`;
+
+  // Close on overlay click
+  const handleOverlay = (e) => { if (e.target === e.currentTarget) onClose(); };
+
+  return (
+    <div className="modal-overlay" onClick={handleOverlay}>
+      <div className="modal">
+        <div className="modal-head">
+          <h3>🤲 Support Quranic Education</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+
+          <div style={{ textAlign: "center", marginBottom: 16, fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
+            Your donation supports <strong style={{ color: "var(--gold2)" }}>{DONATE.charityName}</strong> — enabling free Quranic learning for all.
+          </div>
+
+          {/* ── FREQUENCY SELECTOR ── */}
+          <div className="freq-row">
+            <button className={`freq-pill ${frequency === "once" ? "on" : ""}`} onClick={() => setFrequency("once")}>One-time</button>
+            <button className={`freq-pill ${frequency === "monthly" ? "on" : ""}`} onClick={() => setFrequency("monthly")}>Monthly</button>
+            <button className={`freq-pill ${frequency === "yearly" ? "on" : ""}`} onClick={() => setFrequency("yearly")}>Yearly</button>
+          </div>
+
+          <div className="dtabs">
+            <button className={`dtab on`} style={{ flex: 1 }}>📱 UPI Payment</button>
+          </div>
+
+          {/* ── UPI TAB (the only payment method — see note below on why) ── */}
+          {true && (
+            <div>
+              {frequency === "once" ? (
+              <div className="qr-box">
+                {/* QR Placeholder — replace the SVG below with your actual QR image */}
+                <div className="qr-placeholder">
+                  <div className="qr-corner tl"/><div className="qr-corner tr"/>
+                  <div className="qr-corner bl"/><div className="qr-corner br"/>
+                  <div className="qr-inner">
+                    <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+                      <rect x="4" y="4" width="28" height="28" rx="2" stroke="#b8860b" strokeWidth="3"/>
+                      <rect x="12" y="12" width="12" height="12" fill="#b8860b"/>
+                      <rect x="48" y="4" width="28" height="28" rx="2" stroke="#b8860b" strokeWidth="3"/>
+                      <rect x="56" y="12" width="12" height="12" fill="#b8860b"/>
+                      <rect x="4" y="48" width="28" height="28" rx="2" stroke="#b8860b" strokeWidth="3"/>
+                      <rect x="12" y="56" width="12" height="12" fill="#b8860b"/>
+                      <rect x="48" y="48" width="8" height="8" fill="#b8860b"/>
+                      <rect x="60" y="48" width="8" height="8" fill="#b8860b"/>
+                      <rect x="48" y="60" width="8" height="8" fill="#b8860b"/>
+                      <rect x="60" y="60" width="8" height="8" fill="#b8860b"/>
+                    </svg>
+                    <div style={{ fontSize: 10, color: "#888", marginTop: 6 }}>Replace with your<br/>actual UPI QR image</div>
+                  </div>
+                </div>
+
+                <div className="qr-upi">Scan with any UPI app</div>
+                <div className="qr-upi" style={{ marginTop: 10 }}>Or pay directly to UPI ID:</div>
+                <div className="qr-upiid">{DONATE.upiId}</div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 10, flexWrap: "wrap" }}>
+                  <button className="copy-btn" onClick={() => copy(DONATE.upiId, "UPI ID")}>Copy UPI ID</button>
+                  <a href={upiLink} style={{ textDecoration: "none" }}>
+                    <button className="copy-btn" style={{ color: "var(--teal2)", borderColor: "rgba(34,139,112,.35)" }}>
+                      Open UPI App ↗
+                    </button>
+                  </a>
+                </div>
+              </div>
+              ) : (
+                <div className="recurring-box">
+                  <div className="recurring-icon">🔁</div>
+                  <h4>Set up {frequency === "monthly" ? "Monthly" : "Yearly"} UPI AutoPay</h4>
+                  <p>UPI doesn't support one-tap recurring payments across apps yet — but setting up an AutoPay mandate takes under a minute in your own banking app:</p>
+                  <ol className="recurring-steps">
+                    <li>Open your UPI app (GPay, PhonePe, Paytm, BHIM)</li>
+                    <li>Go to <strong>Mandates / AutoPay / Subscriptions</strong></li>
+                    <li>Choose <strong>"Pay to UPI ID"</strong> and enter:
+                      <div className="qr-upiid" style={{ margin: "8px 0" }}>{DONATE.upiId}</div>
+                    </li>
+                    <li>Set frequency to <strong>{frequency === "monthly" ? "Monthly" : "Yearly"}</strong> and your preferred amount</li>
+                    <li>Confirm with your UPI PIN — done!</li>
+                  </ol>
+                  <button className="copy-btn" onClick={() => copy(DONATE.upiId, "UPI ID")} style={{ marginTop: 4 }}>Copy UPI ID</button>
+                </div>
+              )}
+
+              <div className="callout" style={{ background: "rgba(26,107,90,.08)", border: "1px solid rgba(26,107,90,.2)", borderRadius: 7, padding: "10px 14px", fontSize: 12, color: "var(--teal2)", marginTop: 12 }}>
+                💡 Works with <strong>GPay, PhonePe, Paytm, BHIM</strong> and all UPI-enabled bank apps
+              </div>
+            </div>
+          )}
+
+          {/* ── BANK TRANSFER — by request only, screened by admin ── */}
+          {/* UPI is the only self-service payment method app-wide. Direct bank
+              transfer is intentionally never shown automatically — a donor
+              who wants it must email admin first, so admin can have a quick
+              conversation with the donor before sharing account details and
+              accepting a transfer. This keeps the in-app flow domestic-leaning
+              (UPI requires an Indian bank account to exist at all) and adds a
+              human checkpoint for the one channel that doesn't have that
+              built-in restriction. */}
+          <div className="bank-login-prompt">
+            Prefer a direct bank transfer instead of UPI? Email <strong>admin@awamibaitulmaal.org.in</strong> and the admin will get in touch to arrange it.
+          </div>
+
+          {/* ── FOOTER AYAH ── */}
+          <div className="donate-ayah">
+            <div className="arabic" style={{ fontFamily: "'Scheherazade New',serif", fontSize: 22, color: "var(--gold2)", direction: "rtl", marginBottom: 6 }}>
+              مَن ذَا الَّذِي يُقْرِضُ اللَّهَ قَرْضًا حَسَنًا
+            </div>
+            <p style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>
+              "Who is it that will lend to Allah a goodly loan?" — Al-Baqarah 2:245
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
