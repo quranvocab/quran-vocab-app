@@ -817,6 +817,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   backdrop-filter:blur(10px);
   box-shadow:0 6px 24px rgba(0,0,0,.35),0 0 20px rgba(0,200,230,.08),inset 0 1px 0 rgba(255,255,255,.07);
   transition:transform .2s,box-shadow .2s;cursor:default;
+  position:relative;
 }
 .sbox:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.4),0 0 30px rgba(0,200,230,.15),inset 0 1px 0 rgba(255,255,255,.1);}
 .sn{font-family:'Poppins',sans-serif;font-size:34px;font-weight:500;color:var(--cyan2);text-shadow:0 0 20px rgba(0,220,255,.4);}
@@ -863,7 +864,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 .word-card-main{display:grid;grid-template-columns:1fr auto 1.3fr auto auto;align-items:center;gap:14px;}
 .war{font-family:'Scheherazade New',serif;font-size:34px;font-weight:600;color:var(--gold2);text-align:right;text-shadow:0 0 18px rgba(255,184,0,.3);}
 .wtr{font-size:13px;color:var(--muted);font-style:italic;text-align:center;}
-.wen{font-size:17px;font-weight:400;color:var(--text);text-align:center;}
+.wen{font-size:17px;font-weight:400;color:var(--text);text-align:center;align-self:center;}
 .word-urdu{font-family:'Scheherazade New',serif;font-size:22px;color:var(--teal2);direction:rtl;text-align:right;text-shadow:0 0 12px rgba(0,212,168,.25);}
 .word-toggle{
   background:rgba(0,200,230,.08);border:1px solid rgba(0,200,230,.28);
@@ -2221,32 +2222,41 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
       </div>
 
       <div className="srow">
-        <div className="sbox"><div className="sn">{allWords.length}</div><div className="sl">Total Words Ready to Learn</div></div>
-        <div className="sbox"><div className="sn">+{wordsAddedLastWeek}</div><div className="sl">New Words Added Last Week</div></div>
+        <div className="sbox">
+          <span style={{ position: "absolute", top: 7, right: 9, fontSize: 11, opacity: .55 }}>🔒</span>
+          <div className="sn">{allWords.length}</div>
+          <div className="sl">Total Words</div>
+        </div>
+        <div className="sbox"><div className="sn">+{wordsAddedLastWeek}</div><div className="sl">Added Last Week</div></div>
         <div className="sbox"><div className="sn">{quranCoverage}%</div><div className="sl">Qur'an Coverage</div></div>
-        <div className="sbox"><div className="sn">{participants.length}</div><div className="sl">Total Members Enrolled</div></div>
+        {user ? (
+          <div className="sbox">
+            <span style={{ position: "absolute", top: 7, right: 9, fontSize: 11, opacity: .65 }}>🔓</span>
+            <div className="sn">{unlocked * WORDS_PER_DAY}</div>
+            <div className="sl">Words Unlocked</div>
+          </div>
+        ) : (
+          <div className="sbox"><div className="sn">{participants.length}</div><div className="sl">Members Enrolled</div></div>
+        )}
       </div>
 
       {user && (
         <div className="card" style={{ marginTop: 16 }}>
           <div className="lbl">Your Progress</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 14 }}>
-            <div onClick={() => setView("learn")} style={{ cursor: "pointer", textAlign: "center" }}>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Current Set</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold2)", fontFamily: "'Poppins',sans-serif" }}>{dayN}</div>
-            </div>
-            <div onClick={() => setView("learn")} style={{ cursor: "pointer", textAlign: "center" }}>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Unlocked</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold2)", fontFamily: "'Poppins',sans-serif" }}>{unlocked}</div>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Sets Completed</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold2)", fontFamily: "'Poppins',sans-serif" }}>{daysCompleted}</div>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Best Score</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold2)", fontFamily: "'Poppins',sans-serif" }}>{best !== null ? `${best}%` : "—"}</div>
-            </div>
+            {[
+              { label: "Current Set", value: dayN, icon: null, onClick: () => setView("learn") },
+              { label: "Unlocked", value: unlocked, icon: "🔓", onClick: () => setView("learn") },
+              { label: "Completed", value: daysCompleted, icon: null },
+              { label: "Best Score", value: best !== null ? `${best}%` : "—", icon: null },
+            ].map(({ label, value, icon, onClick }) => (
+              <div key={label} onClick={onClick} style={{ cursor: onClick ? "pointer" : "default", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", minHeight: 32, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.4, gap: 4 }}>
+                  {icon && <span style={{ fontSize: 13 }}>{icon}</span>}{label}
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold2)", fontFamily: "'Poppins',sans-serif", lineHeight: 1 }}>{value}</div>
+              </div>
+            ))}
           </div>
           {streak > 0 && <div style={{ textAlign: "center", marginBottom: 10 }}><span className="streak">🔥 {streak}-day streak</span></div>}
           <div style={{ fontSize: 11, color: "var(--muted)" }}>The journey continues — new sets unlock as you complete each one.</div>
@@ -2291,7 +2301,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
                     <div className="hist-title">{s.day ? `Set ${s.day}` : "All Sets Quiz"}</div>
                     <div className="hist-date">{new Date(s.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} at {new Date(s.date).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</div>
                   </div>
-                  <div style={{ fontSize: 13, color: "var(--muted)", whiteSpace: "nowrap" }}>{s.score}/{s.total}</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap" }}>{s.score}/{s.total}</div>
                   <div className="hist-pct" style={{ color: s.pct >= 70 ? "var(--ok)" : s.pct >= 50 ? "var(--gold2)" : "var(--err)", fontSize: 16, fontWeight: 700, minWidth: 48, textAlign: "right" }}>{s.pct}%</div>
                   <div className="hist-arrow">→</div>
                 </div>
@@ -2967,7 +2977,7 @@ function QuizPage({ quiz, onAnswer, onCancel, onTimeUp }) {
         <div className={`qq arabic ${isArQ ? "" : "en"}`}>{q.word[q.qf]}</div>
         {isArQ && <div className="qtr">{q.word.translit}</div>}
         {!isArQ && <div style={{ marginBottom: 34 }} />}
-        <div className="opts">
+        <div className="opts" key={`q-${cur}`}>
           {q.options.map((opt, i) => {
             let c = `opt${!isArQ ? " ar" : ""}`;
             if (q.chosen !== null) { if (opt === q.word[q.af]) c += " correct"; else if (opt === q.chosen) c += " wrong"; }
@@ -3004,6 +3014,11 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview }) {
     : pct >= 70 ? { t: "Well done! الحمد لله", c: "var(--teal2)" }
     : pct >= 50 ? { t: "Keep going! إن شاء الله", c: "var(--gold2)" }
     : { t: "More practice needed — صبر", c: "var(--err)" };
+
+  // Count words now mastered (3 consecutive correct across all sessions)
+  const { masteredSet } = buildStrictMastery(user?.scores || []);
+  const masteredCount = masteredSet.size;
+
   return (
     <div className="page psm" style={{ textAlign: "center" }}>
       <div className="lbl" style={{ justifyContent: "center" }}>Session Complete</div>
@@ -3027,7 +3042,18 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview }) {
       )}
       <div className="rring"><div className="rpct">{pct}%</div><div className="rfrac">{score} / {total}</div></div>
       <div style={{ fontSize: 20, color: msg.c, marginBottom: 6 }}>{msg.t}</div>
-      {user?.scores?.length > 1 && <div style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 24px" }}>{user.scores.length} sessions · Best: {Math.max(...user.scores.map(s => s.pct))}%</div>}
+      {user?.scores?.length > 1 && <div style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 14px" }}>{user.scores.length} sessions · Best: {Math.max(...user.scores.map(s => s.pct))}%</div>}
+
+      {/* Mastered word count */}
+      {masteredCount > 0 && (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(0,200,230,.08)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "8px 18px", marginBottom: 20, fontSize: 14 }}>
+          <span style={{ fontSize: 18 }}>⭐</span>
+          <span style={{ color: "var(--text)" }}>
+            <strong style={{ color: "var(--cyan2)", fontWeight: 700 }}>{masteredCount}</strong>
+            <span style={{ color: "var(--muted)" }}> word{masteredCount !== 1 ? "s" : ""} mastered (3 correct in a row)</span>
+          </span>
+        </div>
+      )}
       {missed.length > 0 && (
         <div style={{ textAlign: "left", marginBottom: 24 }}>
           <div className="lbl" style={{ marginBottom: 9 }}>Words to Review</div>
@@ -3221,7 +3247,21 @@ function HistoryPage({ user, setView, onReview, allWords }) {
               </div>
             </div>
             <div className="card chart-col">
-              <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>All Sets Quiz — Last {allSetsBarData.length} Attempts</div></div>
+              <div className="chart-col-head">
+                <div style={{ width: "100%" }}>
+                  <div className="lbl" style={{ marginBottom: 4 }}>All Sets Quiz — Last {allSetsBarData.length} Attempts</div>
+                  {allSetsBarData.length > 0 && (() => {
+                    const totalUnlockedWords = getUnlockedWords(user.enrolledAt, user.dayProgress).length;
+                    const timeAvailable = Math.round(totalUnlockedWords * 1.5);
+                    return (
+                      <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--muted)", marginBottom: 4, flexWrap: "wrap" }}>
+                        <span>📚 <strong style={{ color: "var(--gold2)" }}>{totalUnlockedWords}</strong> total words</span>
+                        <span>⏱ <strong style={{ color: "var(--cyan2)" }}>{timeAvailable}s</strong> time available</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
               <div className="chart-col-inner">
                 {allSetsBarData.length > 0 ? <ScoreBarChart data={allSetsBarData} compact mode="score" /> : <div className="chart-empty">No All Sets Quiz attempts yet</div>}
               </div>
