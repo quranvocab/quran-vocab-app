@@ -2297,7 +2297,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
               </div>
             ))}
           </div>
-          <div style={{ overflow: "hidden", marginTop: 4 }}>
+          <div style={{ overflow: "hidden", marginTop: 4, direction: "ltr" }}>
             <div style={{ display: "inline-block", whiteSpace: "nowrap", animation: "marquee 18s linear infinite", fontSize: 11, color: "var(--muted)" }}>
               Keep going — each quiz unlocks more words on your path to the Quran. &nbsp;&nbsp;&nbsp;✦&nbsp;&nbsp;&nbsp; Keep going — each quiz unlocks more words on your path to the Quran.
             </div>
