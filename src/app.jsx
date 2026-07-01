@@ -724,7 +724,7 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
 .page{max-width:860px;margin:0 auto;padding:44px 22px;animation:fu .32s ease;}
 .pmd{max-width:680px;}.psm{max-width:520px;}
 @keyframes fu{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:none}}
-@keyframes marquee{from{transform:translateX(-50%)}to{transform:translateX(0)}}
+@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 .lbl{font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--cyan2);display:flex;align-items:center;gap:9px;margin-bottom:13px;font-weight:600;}
 .lbl::before{content:'';width:28px;height:2px;background:var(--cyan2);border-radius:1px;}
 .lbl::before{content:'';width:26px;height:1px;background:var(--teal);}
