@@ -832,15 +832,17 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 .cc.cc-continues{background:transparent;cursor:default;color:var(--muted);font-size:16px;letter-spacing:1px;opacity:.5;}
 .cc.selected{border-color:var(--cyan2);box-shadow:0 0 0 1px var(--teal);}
 .cc-allsets{
-  grid-column:span 2;aspect-ratio:auto;height:100%;min-height:34px;
-  border-radius:5px;display:flex;align-items:center;justify-content:center;
-  font-size:10px;font-family:'Poppins',sans-serif;letter-spacing:.01em;
-  cursor:pointer;transition:all .14s;
-  background:rgba(0,200,230,.08);color:var(--teal2);border:1px solid rgba(0,200,230,.2);
-  white-space:nowrap;padding:0 10px;
+  grid-column:span 3;aspect-ratio:auto;height:100%;min-height:34px;
+  border-radius:7px;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-family:'Poppins',sans-serif;font-weight:600;letter-spacing:.02em;
+  cursor:pointer;transition:all .18s;
+  background:linear-gradient(135deg,rgba(0,200,230,.25),rgba(0,180,210,.18));
+  color:var(--cyan2);border:1.5px solid rgba(0,200,230,.45);
+  white-space:nowrap;padding:0 14px;
+  box-shadow:0 0 14px rgba(0,200,230,.15),inset 0 1px 0 rgba(255,255,255,.08);
 }
-.cc-allsets:hover{border-color:var(--cyan2);background:rgba(0,200,230,.14);}
-.cc-allsets.selected{border-color:var(--cyan2);box-shadow:0 0 0 1px var(--teal);background:rgba(0,180,220,.18);}
+.cc-allsets:hover{border-color:var(--cyan2);background:linear-gradient(135deg,rgba(0,200,230,.38),rgba(0,180,210,.28));box-shadow:0 0 22px rgba(0,200,230,.25);}
+.cc-allsets.selected{background:linear-gradient(135deg,var(--cyan),#0090b8);color:#fff;border-color:var(--cyan);box-shadow:0 0 0 2px rgba(0,200,230,.3),0 4px 16px rgba(0,200,230,.3);}
 .set-mastery-banner{
   background:rgba(0,200,230,.06);border:1px solid rgba(0,180,220,.18);
   border-radius:8px;padding:11px 14px;font-size:13px;color:var(--text);line-height:1.5;
@@ -1850,17 +1852,15 @@ export default function App() {
 
   const allWords = [...WORD_BANK, ...customWords];
 
-  const startQuiz = (day = null) => {
+  const startQuiz = (day = null, customPool = null) => {
     if (!user) { toast_("Please enroll first"); return; }
     const pool = getUnlockedWords(user.enrolledAt, user.dayProgress);
     if (pool.length < 4) { toast_("Need more unlocked words"); return; }
-    const src = day ? getWordsForDay(day) : pool;
+    const src = customPool ? customPool : day ? getWordsForDay(day) : pool;
     const use = src.length >= 4 ? src : pool;
-    // All Sets Quiz (day === null) covers every unlocked word, one question
-    // each, with a timer of 1.5 seconds per word (so 30 unlocked words = 45s
-    // total) — gives enough time for the word to load and an answer to be
-    // chosen. Set-specific quizzes stay untimed and capped at 10 questions.
-    const isAllSetsQuiz = day === null;
+    // All Sets Quiz (day === null, no customPool) = all unlocked words, timed
+    // Set quiz or custom (weak word practice) = capped at 10, no timer
+    const isAllSetsQuiz = day === null && !customPool;
     const questionCount = isAllSetsQuiz ? use.length : Math.min(10, use.length);
     const questions = shuffle(use).slice(0, questionCount).map(w => {
       const dir = Math.random() > .5 ? "ar2en" : "en2ar";
@@ -1869,7 +1869,8 @@ export default function App() {
       return { word: w, dir, qf, af, options: shuffle([w[af], ...getWrongs(pool, w, af)]), chosen: null };
     });
     const timerSeconds = isAllSetsQuiz ? Math.round(questions.length * 1.5) : null;
-    setQuiz({ questions, cur: 0, score: 0, day, done: false, missed: [], timerSeconds, timeUp: false, startedAt: Date.now() });
+    const quizLabel = customPool ? "weak-practice" : day;
+    setQuiz({ questions, cur: 0, score: 0, day: quizLabel, done: false, missed: [], timerSeconds, timeUp: false, startedAt: Date.now() });
     setView("quiz");
   };
 
@@ -1968,6 +1969,17 @@ export default function App() {
   };
 
   const saveCW = (w) => { setCustomWords(w); storageSet("qv_custom", w); };
+
+  // Close all nav dropdowns when clicking anywhere outside them
+  React.useEffect(() => {
+    const close = () => {
+      setShowUserMenu(false);
+      setShowAdminMenu(false);
+      if (typeof setShowFinanceMenu === 'function') setShowFinanceMenu(false);
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, []);
 
   // Ensure mobile viewport is set correctly (safe to call multiple times)
   React.useEffect(() => {
@@ -2098,7 +2110,7 @@ export default function App() {
                 : <button className="ncta" onClick={() => setView("learn")}>▶ Study</button>}
               {user && (
                 <div className="nuser-wrap">
-                  <button className="nuser" onClick={() => setShowUserMenu(s => !s)}>﷽ {user.name} <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
+                  <button className="nuser" onClick={e => { e.stopPropagation(); setShowUserMenu(s => !s); }}>﷽ {user.name} <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
                   {showUserMenu && (
                     <div className="nuser-menu" onMouseLeave={() => setShowUserMenu(false)}>
                       {user.userId && <div className="nuser-menu-email" style={{ color: "var(--gold3)", fontWeight: 500 }}>ID: {user.userId}</div>}
@@ -2128,7 +2140,7 @@ export default function App() {
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
             {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} />}
             {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} />}
-            {view === "history" && <HistoryPage user={user} setView={setView} onReview={reviewSession} allWords={allWords} />}
+            {view === "history" && <HistoryPage user={user} setView={setView} onReview={reviewSession} allWords={allWords} onStart={startQuiz} />}
             {view === "review" && reviewing && <ReviewPage rec={reviewing} setView={setView} allWords={allWords} />}
             {view === "leaderboard" && <LBPage participants={participants} user={user} />}
             {view === "resetPassword" && <ResetPasswordPage token={resetTokenFromUrl} onSetPassword={setPasswordFromToken} setView={setView} />}
@@ -2230,7 +2242,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
         <div className="sbox"><div className="sn">{quranCoverage}%</div><div className="sl">Qur'an Coverage</div></div>
         {user ? (
           <div className="sbox">
-            <span style={{ position: "absolute", top: 6, right: 8, fontSize: 14, opacity: .75 }}>🔓</span>
+            <span style={{ position: "absolute", top: 7, right: 9, fontSize: 11, opacity: .65 }}>🔓</span>
             <div className="sn">{unlocked}</div>
             <div className="sl">Words Unlocked</div>
           </div>
@@ -2240,25 +2252,27 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
       </div>
 
       {user && (
-        <div className="card" style={{ marginTop: 16 }}>
+        <div className="card" style={{ marginTop: 16, position: "relative" }}>
           <div className="lbl">Your Progress</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 14 }}>
+          {streak > 0 && (
+            <span className="streak" style={{ position: "absolute", top: 20, right: 20, fontSize: 11, padding: "3px 10px" }}>
+              🔥 {streak}-day streak
+            </span>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 10 }}>
             {[
-              { label: "Current Set", value: dayN, icon: null, onClick: () => setView("learn") },
-              { label: "Unlocked", value: unlocked, icon: null, onClick: () => setView("learn") },
-              { label: "Completed", value: daysCompleted, icon: null },
-              { label: "Best Score", value: best !== null ? `${best}%` : "—", icon: null },
-            ].map(({ label, value, icon, onClick }) => (
-              <div key={label} onClick={onClick} style={{ cursor: onClick ? "pointer" : "default", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", minHeight: 32, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.4, gap: 4 }}>
-                  {icon && <span style={{ fontSize: 13 }}>{icon}</span>}{label}
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold2)", fontFamily: "'Poppins',sans-serif", lineHeight: 1 }}>{value}</div>
+              { label: "Current Set", value: dayN, onClick: () => setView("learn") },
+              { label: "Unlocked", value: unlocked, onClick: () => setView("learn") },
+              { label: "Completed", value: daysCompleted },
+              { label: "Best Score", value: best !== null ? `${best}%` : "—" },
+            ].map(({ label, value, onClick }) => (
+              <div key={label} onClick={onClick} style={{ cursor: onClick ? "pointer" : "default", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--cyan2)", minHeight: 34, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.3 }}>{label}</div>
+                <div style={{ fontSize: 22, fontWeight: 400, color: "var(--muted)", fontFamily: "'Poppins',sans-serif", lineHeight: 1 }}>{value}</div>
               </div>
             ))}
           </div>
-          {streak > 0 && <div style={{ textAlign: "center", marginBottom: 10 }}><span className="streak">🔥 {streak}-day streak</span></div>}
-          <div style={{ fontSize: 11, color: "var(--muted)" }}>The journey continues — new sets unlock as you complete each one.</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>The journey continues — new sets unlock as you complete each one.</div>
         </div>
       )}
 
@@ -2737,6 +2751,9 @@ function VerifyEmailPage({ token, onVerify, setView }) {
 function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
   return (
     <div className={`word-card ${highlight ? "word-card-unmastered" : ""}`}>
+      {badge && (
+        <div style={{ textAlign: "center", marginBottom: 8 }}>{badge}</div>
+      )}
       <div className="word-card-main">
         <div className="war">{word.arabic}</div>
         <div className="wtr">{word.translit}</div>
@@ -2745,9 +2762,6 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
           {isOpen ? "Hide ▲" : "Details ▼"}
         </button>
       </div>
-      {badge && (
-        <div style={{ marginTop: 6, textAlign: "right" }}>{badge}</div>
-      )}
       {isOpen && (
         <div className="word-card-detail">
           <span className="dlabel">Urdu</span>
@@ -3204,7 +3218,7 @@ function WordStrengthPieChart({ strong, weak, even, compact = false }) {
   );
 }
 
-function HistoryPage({ user, setView, onReview, allWords }) {
+function HistoryPage({ user, setView, onReview, allWords, onStart }) {
   const [wordTab, setWordTab] = useState("weak"); // weak | strong | even
   const [expandedHistWord, setExpandedHistWord] = useState(null);
   const [allSetsWordTab, setAllSetsWordTab] = useState("weak");
@@ -3313,7 +3327,7 @@ function HistoryPage({ user, setView, onReview, allWords }) {
                   {listForTab.map((w, i) => {
                     const isOpen = expandedHistWord === `${wordTab}-${i}`;
                     const badge = (
-                      <span style={{ fontSize: 11, color: badgeColor, fontWeight: 600, padding: "2px 0", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 11, color: badgeColor, fontWeight: 600, border: `1px solid ${badgeColor}`, borderRadius: 10, padding: "2px 10px", whiteSpace: "nowrap", display: "inline-block", minWidth: 80, textAlign: "center" }}>
                         {w.correct}✓ / {w.wrong}✗
                       </span>
                     );
@@ -3332,7 +3346,7 @@ function HistoryPage({ user, setView, onReview, allWords }) {
 
               {wordBreakdown.weak.length > 0 && (
                 <div style={{ marginTop: 18, textAlign: "center" }}>
-                  <button className="btn bg bsm" onClick={() => setView("learn")}>📚 Practice Weak Words</button>
+                  <button className="btn bg bsm" onClick={() => onStart(null, wordBreakdown.weak)}>📚 Practice Weak Words (Quiz)</button>
                 </div>
               )}
             </div>
@@ -3363,7 +3377,7 @@ function HistoryPage({ user, setView, onReview, allWords }) {
                   {allSetsListForTab.map((w, i) => {
                     const isOpen = expandedAllSetsHistWord === `${allSetsWordTab}-${i}`;
                     const badge = (
-                      <span style={{ fontSize: 11, color: allSetsBadgeColor, fontWeight: 600, padding: "2px 0", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 11, color: allSetsBadgeColor, fontWeight: 600, border: `1px solid ${allSetsBadgeColor}`, borderRadius: 10, padding: "2px 10px", whiteSpace: "nowrap", display: "inline-block", minWidth: 80, textAlign: "center" }}>
                         {w.correct}✓ / {w.wrong}✗
                       </span>
                     );
@@ -3382,7 +3396,7 @@ function HistoryPage({ user, setView, onReview, allWords }) {
 
               {allSetsWordBreakdown.weak.length > 0 && (
                 <div style={{ marginTop: 18, textAlign: "center" }}>
-                  <button className="btn bg bsm" onClick={() => setView("learn")}>📚 Practice Weak Words</button>
+                  <button className="btn bg bsm" onClick={() => onStart(null, allSetsWordBreakdown.weak)}>📚 Practice Weak Words (Quiz)</button>
                 </div>
               )}
             </div>
@@ -3402,7 +3416,7 @@ function HistoryPage({ user, setView, onReview, allWords }) {
                 <div className="hist-title">{s.day ? `Set ${s.day}` : "All Sets Quiz"}</div>
                 <div className="hist-date">{new Date(s.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} at {new Date(s.date).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</div>
               </div>
-              <div style={{ fontSize: 13, color: "var(--muted)", whiteSpace: "nowrap" }}>{s.score}/{s.total}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap" }}>{s.score}/{s.total}</div>
               <div className="hist-pct" style={{ color: s.pct >= 70 ? "var(--ok)" : s.pct >= 50 ? "var(--gold2)" : "var(--err)", fontSize: 16, fontWeight: 700, minWidth: 48, textAlign: "right" }}>{s.pct}%</div>
               <div className="hist-arrow">→</div>
             </div>
