@@ -724,6 +724,7 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
 .page{max-width:860px;margin:0 auto;padding:44px 22px;animation:fu .32s ease;}
 .pmd{max-width:680px;}.psm{max-width:520px;}
 @keyframes fu{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:none}}
+@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 .lbl{font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--cyan2);display:flex;align-items:center;gap:9px;margin-bottom:13px;font-weight:600;}
 .lbl::before{content:'';width:28px;height:2px;background:var(--cyan2);border-radius:1px;}
 .lbl::before{content:'';width:26px;height:1px;background:var(--teal);}
@@ -820,7 +821,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   position:relative;
 }
 .sbox:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.4),0 0 30px rgba(0,200,230,.15),inset 0 1px 0 rgba(255,255,255,.1);}
-.sn{font-family:'Poppins',sans-serif;font-size:28px;font-weight:700;color:var(--gold2);}
+.sn{font-family:'Poppins',sans-serif;font-size:36px;font-weight:700;color:var(--gold2);}
 .sl{font-size:11px;color:var(--muted);letter-spacing:.07em;margin-top:4px;text-transform:uppercase;}
 .cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:5px;}
 .cc{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;transition:all .14s;border:1px solid transparent;}
@@ -2279,7 +2280,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
         <div className="card" style={{ marginTop: 16, position: "relative" }}>
           <div className="lbl">Your Progress</div>
           {streak > 0 && (
-            <span className="streak" style={{ position: "absolute", top: 18, right: 20, fontSize: 11, padding: "3px 10px" }}>
+            <span className="streak" style={{ position: "absolute", top: 12, right: 14, fontSize: 11, padding: "3px 10px" }}>
               🔥 {streak}-day streak
             </span>
           )}
@@ -2291,12 +2292,16 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
               { label: "Best Score", value: best !== null ? `${best}%` : "—" },
             ].map(({ label, value, onClick }) => (
               <div key={label} onClick={onClick} style={{ cursor: onClick ? "pointer" : "default", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--cyan2)", minHeight: 34, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.3 }}>{label}</div>
-                <div style={{ fontSize: 34, fontWeight: 500, color: "var(--cyan2)", fontFamily: "'Poppins',sans-serif", lineHeight: 1, textShadow: "0 0 20px rgba(0,220,255,.35)" }}>{value}</div>
+                <div style={{ fontSize: 11, fontWeight: 500, color: "var(--cyan2)", minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.3, whiteSpace: "nowrap" }}>{label}</div>
+                <div style={{ fontSize: 26, fontWeight: 400, color: "var(--cyan2)", fontFamily: "'Poppins',sans-serif", lineHeight: 1, textShadow: "0 0 16px rgba(0,220,255,.25)" }}>{value}</div>
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Keep going — each quiz unlocks more words on your path to the Quran.</div>
+          <div style={{ overflow: "hidden", marginTop: 4 }}>
+            <div style={{ display: "inline-block", whiteSpace: "nowrap", animation: "marquee 18s linear infinite", fontSize: 11, color: "var(--muted)" }}>
+              Keep going — each quiz unlocks more words on your path to the Quran. &nbsp;&nbsp;&nbsp;✦&nbsp;&nbsp;&nbsp; Keep going — each quiz unlocks more words on your path to the Quran.
+            </div>
+          </div>
         </div>
       )}
 
