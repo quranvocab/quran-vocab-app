@@ -820,7 +820,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   position:relative;
 }
 .sbox:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.4),0 0 30px rgba(0,200,230,.15),inset 0 1px 0 rgba(255,255,255,.1);}
-.sn{font-family:'Poppins',sans-serif;font-size:34px;font-weight:500;color:var(--cyan2);text-shadow:0 0 20px rgba(0,220,255,.4);}
+.sn{font-family:'Poppins',sans-serif;font-size:28px;font-weight:700;color:var(--gold2);}
 .sl{font-size:11px;color:var(--muted);letter-spacing:.07em;margin-top:4px;text-transform:uppercase;}
 .cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:5px;}
 .cc{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;transition:all .14s;border:1px solid transparent;}
@@ -1254,7 +1254,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 
   /* STATS GRID — 2 columns */
   .srow{grid-template-columns:repeat(2,1fr);gap:8px;}
-  .sn{font-size:22px;}
+  .sn{font-size:20px;}
   .sl{font-size:9px;}
   .sbox{padding:12px 10px;}
 
@@ -1970,7 +1970,31 @@ export default function App() {
 
   const saveCW = (w) => { setCustomWords(w); storageSet("qv_custom", w); };
 
-  // Close all nav dropdowns when clicking anywhere outside them
+  // ── Browser back button support ─────────────────────────────────────────
+  // Push state whenever the view changes so the browser history stack tracks it
+  React.useEffect(() => {
+    if (!isAdminRoute && !isFinanceRoute) {
+      const hash = '#' + view;
+      if (window.location.hash !== hash) {
+        window.history.pushState({ view }, '', hash);
+      }
+    }
+  }, [view]);
+
+  // On browser back/forward, restore the view from the history state
+  React.useEffect(() => {
+    const onPop = (e) => {
+      if (isAdminRoute || isFinanceRoute) return;
+      const v = e.state?.view;
+      if (v) setView(v);
+      else setView('home');
+    };
+    // Set initial history state
+    window.history.replaceState({ view }, '', window.location.hash || '#home');
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [isAdminRoute, isFinanceRoute]);
+  // ── End browser back button ──────────────────────────────────────────────
   React.useEffect(() => {
     const close = () => {
       setShowUserMenu(false);
@@ -2255,7 +2279,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
         <div className="card" style={{ marginTop: 16, position: "relative" }}>
           <div className="lbl">Your Progress</div>
           {streak > 0 && (
-            <span className="streak" style={{ position: "absolute", top: 20, right: 20, fontSize: 11, padding: "3px 10px" }}>
+            <span className="streak" style={{ position: "absolute", top: 18, right: 20, fontSize: 11, padding: "3px 10px" }}>
               🔥 {streak}-day streak
             </span>
           )}
@@ -2268,11 +2292,11 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
             ].map(({ label, value, onClick }) => (
               <div key={label} onClick={onClick} style={{ cursor: onClick ? "pointer" : "default", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                 <div style={{ fontSize: 15, fontWeight: 600, color: "var(--cyan2)", minHeight: 34, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.3 }}>{label}</div>
-                <div style={{ fontSize: 22, fontWeight: 400, color: "var(--muted)", fontFamily: "'Poppins',sans-serif", lineHeight: 1 }}>{value}</div>
+                <div style={{ fontSize: 34, fontWeight: 500, color: "var(--cyan2)", fontFamily: "'Poppins',sans-serif", lineHeight: 1, textShadow: "0 0 20px rgba(0,220,255,.35)" }}>{value}</div>
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>The journey continues — new sets unlock as you complete each one.</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Keep going — each quiz unlocks more words on your path to the Quran.</div>
         </div>
       )}
 
@@ -2928,20 +2952,37 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
               No All Sets Quiz attempts yet — take one to see your best score here.
             </div>
           )}
-          {/* Show all unlocked words — same layout as individual set words */}
-          <div className="wlist" style={{ marginTop: 16 }}>
-            {getUnlockedWords(user.enrolledAt, user.dayProgress).map((w, i) => {
-              const isOpen = expandedWord === `allsets-${i}`;
-              return (
-                <WordDetailCard
-                  key={i}
-                  word={w}
-                  isOpen={isOpen}
-                  onToggle={() => setExpandedWord(isOpen ? null : `allsets-${i}`)}
-                />
-              );
-            })}
-          </div>
+          {/* Show all unlocked words — same layout as individual set words, with mastery highlight */}
+          {(() => {
+            const { masteredSet: allMastered } = buildStrictMastery(user.scores || []);
+            const allMasteredCount = getUnlockedWords(user.enrolledAt, user.dayProgress).filter(w => allMastered.has(w.arabic)).length;
+            const allUnlocked = getUnlockedWords(user.enrolledAt, user.dayProgress);
+            return (
+              <>
+                {allMastered.size > 0 && (
+                  <div className="set-mastery-banner" style={{ marginTop: 12, marginBottom: 4 }}>
+                    ⭐ <strong>{allMasteredCount}</strong> of <strong>{allUnlocked.length}</strong> words mastered
+                    {allMasteredCount >= allUnlocked.length ? " — all words mastered! 🎉" : " — highlighted words below still need 3 correct in a row."}
+                  </div>
+                )}
+                <div className="wlist" style={{ marginTop: 12 }}>
+                  {allUnlocked.map((w, i) => {
+                    const isOpen = expandedWord === `allsets-${i}`;
+                    const isMastered = allMastered.has(w.arabic);
+                    return (
+                      <WordDetailCard
+                        key={i}
+                        word={w}
+                        isOpen={isOpen}
+                        onToggle={() => setExpandedWord(isOpen ? null : `allsets-${i}`)}
+                        highlight={!isMastered}
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -3223,6 +3264,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
   const [expandedHistWord, setExpandedHistWord] = useState(null);
   const [allSetsWordTab, setAllSetsWordTab] = useState("weak");
   const [expandedAllSetsHistWord, setExpandedAllSetsHistWord] = useState(null);
+  const [expandedWeakWord, setExpandedWeakWord] = useState(null);
 
   if (!user) return (
     <div className="page pmd" style={{ textAlign: "center", paddingTop: 72 }}>
@@ -3345,8 +3387,8 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
               )}
 
               {wordBreakdown.weak.length > 0 && (
-                <div style={{ marginTop: 18, textAlign: "center" }}>
-                  <button className="btn bg bsm" onClick={() => onStart(null, wordBreakdown.weak)}>📚 Practice Weak Words (Quiz)</button>
+                <div style={{ marginTop: 10, fontSize: 11, color: "var(--muted)", textAlign: "center" }}>
+                  See combined weak word practice below ↓
                 </div>
               )}
             </div>
@@ -3395,12 +3437,63 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
               )}
 
               {allSetsWordBreakdown.weak.length > 0 && (
-                <div style={{ marginTop: 18, textAlign: "center" }}>
-                  <button className="btn bg bsm" onClick={() => onStart(null, allSetsWordBreakdown.weak)}>📚 Practice Weak Words (Quiz)</button>
+                <div style={{ marginTop: 10, fontSize: 11, color: "var(--muted)", textAlign: "center" }}>
+                  See combined weak word practice below ↓
                 </div>
               )}
             </div>
           )}
+          {/* ── COMBINED WEAK WORD PRACTICE ─────────────────────────── */}
+          {(wordBreakdown.weak.length > 0 || allSetsWordBreakdown.weak.length > 0) && (() => {
+            // Deduplicate weak words from both sections by arabic key
+            const seenArabic = new Set();
+            const combinedWeak = [
+              ...wordBreakdown.weak,
+              ...allSetsWordBreakdown.weak,
+            ].filter(w => {
+              if (seenArabic.has(w.arabic)) return false;
+              seenArabic.add(w.arabic);
+              return true;
+            });
+            const { masteredSet } = buildStrictMastery(user?.scores || []);
+            return (
+              <div className="card" style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <div className="lbl" style={{ marginBottom: 0 }}>Weak Words Practice</div>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>{combinedWeak.length} word{combinedWeak.length !== 1 ? "s" : ""} to review</span>
+                </div>
+                <div className="set-mastery-banner" style={{ marginBottom: 14 }}>
+                  📝 These are words you've answered incorrectly more than correctly across Set and All Sets quizzes. Review them below, then take a focused quiz.
+                </div>
+                <div className="wlist" style={{ marginBottom: 16 }}>
+                  {combinedWeak.map((w, i) => {
+                    const isOpen = expandedWeakWord === `weak-${i}`;
+                    const isMastered = masteredSet.has(w.arabic);
+                    const badge = (
+                      <span style={{ fontSize: 11, color: "var(--err)", fontWeight: 600, border: "1px solid var(--err)", borderRadius: 10, padding: "2px 10px", whiteSpace: "nowrap", display: "inline-block", minWidth: 80, textAlign: "center" }}>
+                        {w.correct}✓ / {w.wrong}✗
+                      </span>
+                    );
+                    return (
+                      <WordDetailCard
+                        key={i}
+                        word={w}
+                        isOpen={isOpen}
+                        onToggle={() => setExpandedWeakWord(isOpen ? null : `weak-${i}`)}
+                        badge={badge}
+                        highlight={!isMastered}
+                      />
+                    );
+                  })}
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <button className="btn bg" onClick={() => onStart(null, combinedWeak)}>
+                    📚 Quiz Weak Words ({Math.min(10, combinedWeak.length)} questions)
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
 
