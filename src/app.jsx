@@ -861,10 +861,10 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 }
 .word-card-unmastered{background:rgba(255,82,82,.05);border-color:rgba(255,82,82,.25);}
 .word-card-unmastered:hover{border-color:rgba(255,82,82,.45);}
-.word-card-main{display:grid;grid-template-columns:1fr auto 1.3fr auto auto;align-items:center;gap:14px;}
-.war{font-family:'Scheherazade New',serif;font-size:34px;font-weight:600;color:var(--gold2);text-align:right;text-shadow:0 0 18px rgba(255,184,0,.3);}
-.wtr{font-size:13px;color:var(--muted);font-style:italic;text-align:center;}
-.wen{font-size:17px;font-weight:400;color:var(--text);text-align:center;align-self:center;}
+.word-card-main{display:grid;grid-template-columns:auto 1fr auto;align-items:stretch;gap:14px;}
+.war{font-family:'Scheherazade New',serif;font-size:34px;font-weight:600;color:var(--gold2);text-align:right;text-shadow:0 0 18px rgba(255,184,0,.3);display:flex;align-items:center;min-width:80px;}
+.wtr{font-size:13px;color:var(--muted);font-style:italic;text-align:center;display:none;}
+.wen{font-size:17px;font-weight:400;color:var(--text);display:flex;align-items:center;justify-content:center;text-align:center;flex:1;}
 .word-urdu{font-family:'Scheherazade New',serif;font-size:22px;color:var(--teal2);direction:rtl;text-align:right;text-shadow:0 0 12px rgba(0,212,168,.25);}
 .word-toggle{
   background:rgba(0,200,230,.08);border:1px solid rgba(0,200,230,.28);
@@ -1256,17 +1256,16 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   .sl{font-size:9px;}
   .sbox{padding:12px 10px;}
 
-  /* WORD CARD — reflow to 3-col 2-row grid */
+  /* WORD CARD — 3-col on mobile too */
   .word-card-main{
     grid-template-columns:auto 1fr auto;
-    grid-template-rows:auto auto;
-    gap:4px 10px;
+    gap:8px 10px;
   }
-  .war{grid-column:1;grid-row:1/3;font-size:26px;align-self:center;padding-right:4px;}
+  .war{font-size:26px;min-width:60px;}
   .wtr{display:none;}
-  .wen{grid-column:2;grid-row:1;font-size:15px;align-self:end;}
-  .word-urdu{grid-column:2;grid-row:2;font-size:17px;align-self:start;text-align:left;}
-  .word-toggle{grid-column:3;grid-row:1;align-self:start;}
+  .wen{font-size:15px;}
+  .word-urdu{display:none;}
+  .word-toggle{align-self:center;}
 
   /* QUIZ */
   .opts{grid-template-columns:1fr;}
@@ -2223,7 +2222,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
 
       <div className="srow">
         <div className="sbox">
-          <span style={{ position: "absolute", top: 7, right: 9, fontSize: 11, opacity: .55 }}>🔒</span>
+          <span style={{ position: "absolute", top: 6, right: 8, fontSize: 12, opacity: .6 }}>🔒</span>
           <div className="sn">{allWords.length}</div>
           <div className="sl">Total Words</div>
         </div>
@@ -2231,8 +2230,8 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
         <div className="sbox"><div className="sn">{quranCoverage}%</div><div className="sl">Qur'an Coverage</div></div>
         {user ? (
           <div className="sbox">
-            <span style={{ position: "absolute", top: 7, right: 9, fontSize: 11, opacity: .65 }}>🔓</span>
-            <div className="sn">{unlocked * WORDS_PER_DAY}</div>
+            <span style={{ position: "absolute", top: 6, right: 8, fontSize: 14, opacity: .75 }}>🔓</span>
+            <div className="sn">{unlocked}</div>
             <div className="sl">Words Unlocked</div>
           </div>
         ) : (
@@ -2246,7 +2245,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 14 }}>
             {[
               { label: "Current Set", value: dayN, icon: null, onClick: () => setView("learn") },
-              { label: "Unlocked", value: unlocked, icon: "🔓", onClick: () => setView("learn") },
+              { label: "Unlocked", value: unlocked, icon: null, onClick: () => setView("learn") },
               { label: "Completed", value: daysCompleted, icon: null },
               { label: "Best Score", value: best !== null ? `${best}%` : "—", icon: null },
             ].map(({ label, value, icon, onClick }) => (
@@ -2742,11 +2741,13 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
         <div className="war">{word.arabic}</div>
         <div className="wtr">{word.translit}</div>
         <div className="wen">{word.english}</div>
-        {badge}
         <button className="word-toggle" onClick={onToggle}>
           {isOpen ? "Hide ▲" : "Details ▼"}
         </button>
       </div>
+      {badge && (
+        <div style={{ marginTop: 6, textAlign: "right" }}>{badge}</div>
+      )}
       {isOpen && (
         <div className="word-card-detail">
           <span className="dlabel">Urdu</span>
@@ -2981,7 +2982,7 @@ function QuizPage({ quiz, onAnswer, onCancel, onTimeUp }) {
           {q.options.map((opt, i) => {
             let c = `opt${!isArQ ? " ar" : ""}`;
             if (q.chosen !== null) { if (opt === q.word[q.af]) c += " correct"; else if (opt === q.chosen) c += " wrong"; }
-            return <button key={i} className={c} onClick={() => onAnswer(opt)} disabled={q.chosen !== null}>{opt}</button>;
+            return <button key={`${cur}-${i}`} className={c} onClick={() => onAnswer(opt)} disabled={q.chosen !== null}>{opt}</button>;
           })}
         </div>
       </div>
@@ -3248,23 +3249,21 @@ function HistoryPage({ user, setView, onReview, allWords }) {
             </div>
             <div className="card chart-col">
               <div className="chart-col-head">
-                <div style={{ width: "100%" }}>
-                  <div className="lbl" style={{ marginBottom: 4 }}>All Sets Quiz — Last {allSetsBarData.length} Attempts</div>
-                  {allSetsBarData.length > 0 && (() => {
-                    const totalUnlockedWords = getUnlockedWords(user.enrolledAt, user.dayProgress).length;
-                    const timeAvailable = Math.round(totalUnlockedWords * 1.5);
-                    return (
-                      <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--muted)", marginBottom: 4, flexWrap: "wrap" }}>
-                        <span>📚 <strong style={{ color: "var(--gold2)" }}>{totalUnlockedWords}</strong> total words</span>
-                        <span>⏱ <strong style={{ color: "var(--cyan2)" }}>{timeAvailable}s</strong> time available</span>
-                      </div>
-                    );
-                  })()}
-                </div>
+                <div className="lbl" style={{ marginBottom: 0 }}>All Sets Quiz — Last {allSetsBarData.length} Attempts</div>
               </div>
               <div className="chart-col-inner">
                 {allSetsBarData.length > 0 ? <ScoreBarChart data={allSetsBarData} compact mode="score" /> : <div className="chart-empty">No All Sets Quiz attempts yet</div>}
               </div>
+              {allSetsBarData.length > 0 && (() => {
+                const totalUnlockedWords = getUnlockedWords(user.enrolledAt, user.dayProgress).length;
+                const timeAvailable = Math.round(totalUnlockedWords * 1.5);
+                return (
+                  <div style={{ display: "flex", gap: 14, fontSize: 11, color: "var(--muted)", marginTop: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                    <span>📚 <strong style={{ color: "var(--gold2)" }}>{totalUnlockedWords}</strong> total words</span>
+                    <span>⏱ <strong style={{ color: "var(--cyan2)" }}>{timeAvailable}s</strong> time available</span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -3314,7 +3313,7 @@ function HistoryPage({ user, setView, onReview, allWords }) {
                   {listForTab.map((w, i) => {
                     const isOpen = expandedHistWord === `${wordTab}-${i}`;
                     const badge = (
-                      <span style={{ fontSize: 10, color: badgeColor, border: `1px solid ${badgeColor}`, borderRadius: 8, padding: "2px 7px", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 11, color: badgeColor, fontWeight: 600, padding: "2px 0", whiteSpace: "nowrap" }}>
                         {w.correct}✓ / {w.wrong}✗
                       </span>
                     );
@@ -3364,7 +3363,7 @@ function HistoryPage({ user, setView, onReview, allWords }) {
                   {allSetsListForTab.map((w, i) => {
                     const isOpen = expandedAllSetsHistWord === `${allSetsWordTab}-${i}`;
                     const badge = (
-                      <span style={{ fontSize: 10, color: allSetsBadgeColor, border: `1px solid ${allSetsBadgeColor}`, borderRadius: 8, padding: "2px 7px", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 11, color: allSetsBadgeColor, fontWeight: 600, padding: "2px 0", whiteSpace: "nowrap" }}>
                         {w.correct}✓ / {w.wrong}✗
                       </span>
                     );
