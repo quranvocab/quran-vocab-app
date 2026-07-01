@@ -724,7 +724,7 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
 .page{max-width:860px;margin:0 auto;padding:44px 22px;animation:fu .32s ease;}
 .pmd{max-width:680px;}.psm{max-width:520px;}
 @keyframes fu{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:none}}
-@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes marquee{from{transform:translateX(-50%)}to{transform:translateX(0)}}
 .lbl{font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--cyan2);display:flex;align-items:center;gap:9px;margin-bottom:13px;font-weight:600;}
 .lbl::before{content:'';width:28px;height:2px;background:var(--cyan2);border-radius:1px;}
 .lbl::before{content:'';width:26px;height:1px;background:var(--teal);}
@@ -2293,7 +2293,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
             ].map(({ label, value, onClick }) => (
               <div key={label} onClick={onClick} style={{ cursor: onClick ? "pointer" : "default", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                 <div style={{ fontSize: 11, fontWeight: 500, color: "var(--cyan2)", minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.3, whiteSpace: "nowrap" }}>{label}</div>
-                <div style={{ fontSize: 26, fontWeight: 400, color: "var(--cyan2)", fontFamily: "'Poppins',sans-serif", lineHeight: 1, textShadow: "0 0 16px rgba(0,220,255,.25)" }}>{value}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cyan2)", fontFamily: "'Poppins',sans-serif", lineHeight: 1, textShadow: "0 0 16px rgba(0,220,255,.25)" }}>{value}</div>
               </div>
             ))}
           </div>
