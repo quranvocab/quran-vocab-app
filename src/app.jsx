@@ -724,7 +724,8 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
 .page{max-width:860px;margin:0 auto;padding:44px 22px;animation:fu .32s ease;}
 .pmd{max-width:680px;}.psm{max-width:520px;}
 @keyframes fu{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:none}}
-.lbl{font-family:'Poppins',sans-serif;font-size:10px;letter-spacing:.02em;text-transform:uppercase;color:var(--cyan2);display:flex;align-items:center;gap:9px;margin-bottom:13px;}
+.lbl{font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--cyan2);display:flex;align-items:center;gap:9px;margin-bottom:13px;font-weight:600;}
+.lbl::before{content:'';width:28px;height:2px;background:var(--cyan2);border-radius:1px;}
 .lbl::before{content:'';width:26px;height:1px;background:var(--teal);}
 h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom:8px;color:var(--text);}
 .sub{color:var(--muted);font-size:17px;font-weight:300;line-height:1.85;}
@@ -862,7 +863,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 .word-card-main{display:grid;grid-template-columns:1fr auto 1.3fr auto auto;align-items:center;gap:14px;}
 .war{font-family:'Scheherazade New',serif;font-size:34px;font-weight:600;color:var(--gold2);text-align:right;text-shadow:0 0 18px rgba(255,184,0,.3);}
 .wtr{font-size:13px;color:var(--muted);font-style:italic;text-align:center;}
-.wen{font-size:17px;font-weight:400;color:var(--text);}
+.wen{font-size:17px;font-weight:400;color:var(--text);text-align:center;}
 .word-urdu{font-family:'Scheherazade New',serif;font-size:22px;color:var(--teal2);direction:rtl;text-align:right;text-shadow:0 0 12px rgba(0,212,168,.25);}
 .word-toggle{
   background:rgba(0,200,230,.08);border:1px solid rgba(0,200,230,.28);
@@ -919,6 +920,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   box-shadow:0 8px 28px rgba(0,0,0,.4),0 0 20px rgba(0,180,220,.18),inset 0 1px 0 rgba(255,255,255,.1);
 }
 .opt:active:not(:disabled){transform:translateY(1px);box-shadow:0 2px 8px rgba(0,0,0,.3),inset 0 3px 10px rgba(0,0,0,.2);}
+.opt:disabled{cursor:default;pointer-events:none;transform:none;}
 .opt.ar{font-family:'Scheherazade New',serif;font-size:30px;padding:22px 14px;}
 .opt.correct{background:rgba(0,180,220,.18)!important;border-color:var(--cyan)!important;color:var(--cyan2)!important;box-shadow:0 0 28px rgba(0,200,230,.3)!important;}
 .opt.wrong{background:rgba(255,82,82,.12)!important;border-color:var(--err)!important;color:#ff8a80!important;}
@@ -2088,6 +2090,12 @@ export default function App() {
             </div>
           ) : (
             <div className="nright">
+              <button className={`nbtn ${view === "learn" ? "on" : ""}`} onClick={() => setView("learn")}>Learn</button>
+              <button className={`nbtn ${view === "history" ? "on" : ""}`} onClick={() => setView("history")}>History</button>
+              <button className={`nbtn ${view === "leaderboard" ? "on" : ""}`} onClick={() => setView("leaderboard")}>Ranks</button>
+              <button className="ndonate" onClick={() => setShowDonate(true)}>🤲 Donate</button>
+              {!user ? <button className="ncta" onClick={() => setView("enroll")}>Login / Join Now</button>
+                : <button className="ncta" onClick={() => setView("learn")}>▶ Study</button>}
               {user && (
                 <div className="nuser-wrap">
                   <button className="nuser" onClick={() => setShowUserMenu(s => !s)}>﷽ {user.name} <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
@@ -2101,12 +2109,6 @@ export default function App() {
                   )}
                 </div>
               )}
-              <button className={`nbtn ${view === "learn" ? "on" : ""}`} onClick={() => setView("learn")}>Learn</button>
-              <button className={`nbtn ${view === "history" ? "on" : ""}`} onClick={() => setView("history")}>History</button>
-              <button className={`nbtn ${view === "leaderboard" ? "on" : ""}`} onClick={() => setView("leaderboard")}>Ranks</button>
-              <button className="ndonate" onClick={() => setShowDonate(true)}>🤲 Donate</button>
-              {!user ? <button className="ncta" onClick={() => setView("enroll")}>Login / Join Now</button>
-                : <button className="ncta" onClick={() => setView("learn")}>▶ Study</button>}
             </div>
           )}
         </nav>
@@ -2228,22 +2230,25 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
       {user && (
         <div className="card" style={{ marginTop: 16 }}>
           <div className="lbl">Your Progress</div>
-          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
-            <div onClick={() => setView("learn")} style={{ cursor: "pointer" }}>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>Current Set</div>
-              <div style={{ fontSize: 26, color: "var(--gold2)", fontFamily: "'Cinzel',serif" }}>{dayN} →</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 14 }}>
+            <div onClick={() => setView("learn")} style={{ cursor: "pointer", textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Current Set</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold2)", fontFamily: "'Poppins',sans-serif" }}>{dayN}</div>
             </div>
-            <div onClick={() => setView("learn")} style={{ cursor: "pointer" }}>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>Unlocked</div>
-              <div style={{ fontSize: 26, color: "var(--gold2)", fontFamily: "'Cinzel',serif" }}>{unlocked} →</div>
+            <div onClick={() => setView("learn")} style={{ cursor: "pointer", textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Unlocked</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold2)", fontFamily: "'Poppins',sans-serif" }}>{unlocked}</div>
             </div>
-            <div>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>Sets Completed</div>
-              <div style={{ fontSize: 26, color: "var(--gold2)", fontFamily: "'Cinzel',serif" }}>{daysCompleted}</div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Sets Completed</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold2)", fontFamily: "'Poppins',sans-serif" }}>{daysCompleted}</div>
             </div>
-            {streak > 0 && <div className="streak">🔥 {streak}-day streak</div>}
-            {best !== null && <div><div style={{ fontSize: 12, color: "var(--muted)" }}>Best score</div><div style={{ fontSize: 26, color: "var(--teal2)", fontFamily: "'Cinzel',serif" }}>{best}%</div></div>}
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Best Score</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold2)", fontFamily: "'Poppins',sans-serif" }}>{best !== null ? `${best}%` : "—"}</div>
+            </div>
           </div>
+          {streak > 0 && <div style={{ textAlign: "center", marginBottom: 10 }}><span className="streak">🔥 {streak}-day streak</span></div>}
           <div style={{ fontSize: 11, color: "var(--muted)" }}>The journey continues — new sets unlock as you complete each one.</div>
         </div>
       )}
@@ -2281,12 +2286,13 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
           ) : (
             <div className="wlist">
               {recentSessions.map((s, i) => (
-                <div key={i} className="hist-row" onClick={() => onReview(s)} style={{ padding: "10px 12px" }}>
-                  <div className="hist-pct" style={{ color: s.pct >= 70 ? "var(--ok)" : s.pct >= 50 ? "var(--gold2)" : "var(--err)" }}>{s.pct}%</div>
+                <div key={i} className="hist-row" onClick={() => onReview(s)} style={{ padding: "10px 12px", display: "grid", gridTemplateColumns: "1fr auto auto auto", alignItems: "center", gap: 12 }}>
                   <div className="hist-info">
-                    <div className="hist-title">{s.day ? `Set ${s.day}` : "All Sets Quiz"} &nbsp;·&nbsp; {s.score}/{s.total} correct</div>
+                    <div className="hist-title">{s.day ? `Set ${s.day}` : "All Sets Quiz"}</div>
                     <div className="hist-date">{new Date(s.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} at {new Date(s.date).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</div>
                   </div>
+                  <div style={{ fontSize: 13, color: "var(--muted)", whiteSpace: "nowrap" }}>{s.score}/{s.total}</div>
+                  <div className="hist-pct" style={{ color: s.pct >= 70 ? "var(--ok)" : s.pct >= 50 ? "var(--gold2)" : "var(--err)", fontSize: 16, fontWeight: 700, minWidth: 48, textAlign: "right" }}>{s.pct}%</div>
                   <div className="hist-arrow">→</div>
                 </div>
               ))}
@@ -2897,6 +2903,20 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
               No All Sets Quiz attempts yet — take one to see your best score here.
             </div>
           )}
+          {/* Show all unlocked words — same layout as individual set words */}
+          <div className="wlist" style={{ marginTop: 16 }}>
+            {getUnlockedWords(user.enrolledAt, user.dayProgress).map((w, i) => {
+              const isOpen = expandedWord === `allsets-${i}`;
+              return (
+                <WordDetailCard
+                  key={i}
+                  word={w}
+                  isOpen={isOpen}
+                  onToggle={() => setExpandedWord(isOpen ? null : `allsets-${i}`)}
+                />
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -2931,14 +2951,14 @@ function QuizPage({ quiz, onAnswer, onCancel, onTimeUp }) {
 
   return (
     <div className="page pmd qwrap">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "var(--muted)", marginBottom: 9 }}>
-        <span>Q {cur + 1} / {questions.length}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <span style={{ fontSize: 15, fontWeight: 600, color: "var(--muted)" }}>Q {cur + 1} / {questions.length}</span>
         <span style={{ display: "flex", gap: 14, alignItems: "center" }}>
           {hasTimer && (
-            <span className={`quiz-timer ${timerLow ? "low" : ""}`}>⏱ {timeLeft}s</span>
+            <span className={`quiz-timer ${timerLow ? "low" : ""}`} style={{ fontSize: 15, fontWeight: 700 }}>⏱ {timeLeft}s</span>
           )}
-          <span style={{ color: "var(--gold2)" }}>Score: {quiz.score}</span>
-          <button className="quiz-exit" onClick={() => setConfirmCancel(true)}>✕ Exit Quiz</button>
+          <span style={{ color: "var(--gold2)", fontSize: 15, fontWeight: 700 }}>Score: {quiz.score}</span>
+          <button className="quiz-exit" onClick={() => setConfirmCancel(true)} style={{ fontSize: 13, fontWeight: 600 }}>✕ Exit Quiz</button>
         </span>
       </div>
       <div className="qprog">{questions.map((_, i) => <div key={i} className={`qd ${i < cur ? "done" : i === cur ? "now" : ""}`} />)}</div>
@@ -3072,7 +3092,7 @@ function ScoreBarChart({ data, compact = false, mode = "score" }) {
         return (
           <g key={p}>
             <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-            <text x={padL - 8} y={y + 3} fontSize={compact ? 9 : 11} fill="var(--muted)" textAnchor="end" fontFamily="Spectral, serif">{p}{mode === "time" ? "s" : ""}</text>
+            <text x={padL - 8} y={y + 3} fontSize={compact ? 9 : 11} fill="var(--muted)" textAnchor="end" fontFamily="Poppins, sans-serif">{p}{mode === "time" ? "s" : ""}</text>
           </g>
         );
       })}
@@ -3094,8 +3114,8 @@ function ScoreBarChart({ data, compact = false, mode = "score" }) {
         return (
           <g key={i}>
             <rect x={x} y={y} width={barW} height={barH} rx="3" fill={color} opacity="0.85" />
-            {(!compact || data.length <= 8) && <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Cinzel, serif">{topLabel}</text>}
-            <text x={x + barW / 2} y={H - 10} fontSize={compact ? 10 : 12} fill="var(--muted)" textAnchor="middle" fontFamily="Spectral, serif">{d.label}</text>
+            {(!compact || data.length <= 8) && <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif">{topLabel}</text>}
+            <text x={x + barW / 2} y={H - 10} fontSize={compact ? 10 : 12} fill="var(--muted)" textAnchor="middle" fontFamily="Poppins, sans-serif">{d.label}</text>
           </g>
         );
       })}
@@ -3141,8 +3161,8 @@ function WordStrengthPieChart({ strong, weak, even, compact = false }) {
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: compact ? 14 : 18 }}>
       <svg viewBox={`0 0 ${size} ${size}`} style={{ width: compact ? 200 : 230, height: compact ? 200 : 230, flexShrink: 0, display: "block" }}>
         {paths.map((p, i) => <path key={i} d={p.d} fill={p.color} opacity="0.88" />)}
-        <text x={cx} y={cy - 4} textAnchor="middle" fontSize={compact ? 24 : 28} fontFamily="Cinzel, serif" fill="var(--gold3)">{total}</text>
-        <text x={cx} y={cy + 18} textAnchor="middle" fontSize={compact ? 10 : 11} fontFamily="Spectral, serif" fill="var(--muted)">words</text>
+        <text x={cx} y={cy - 4} textAnchor="middle" fontSize={compact ? 24 : 28} fontFamily="Poppins, sans-serif" fill="var(--gold3)">{total}</text>
+        <text x={cx} y={cy + 18} textAnchor="middle" fontSize={compact ? 10 : 11} fontFamily="Poppins, sans-serif" fill="var(--muted)">words</text>
       </svg>
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: compact ? "6px 16px" : "8px 20px" }}>
         {paths.map((p, i) => (
@@ -3195,15 +3215,15 @@ function HistoryPage({ user, setView, onReview, allWords }) {
         <>
           <div className="chart-row">
             <div className="card chart-col">
-              <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0, fontSize: 10 }}>Set Quizzes — Last {barData.length} Attempts</div></div>
+              <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>Set Quizzes — Last {barData.length} Attempts</div></div>
               <div className="chart-col-inner">
                 {barData.length > 0 ? <ScoreBarChart data={barData} compact mode="score" /> : <div className="chart-empty">No set quizzes yet</div>}
               </div>
             </div>
             <div className="card chart-col">
-              <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0, fontSize: 10 }}>All Sets Quiz — Last {allSetsBarData.length} Attempts</div></div>
+              <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>All Sets Quiz — Last {allSetsBarData.length} Attempts</div></div>
               <div className="chart-col-inner">
-                {allSetsBarData.length > 0 ? <ScoreBarChart data={allSetsBarData} compact mode="time" /> : <div className="chart-empty">No All Sets Quiz attempts yet</div>}
+                {allSetsBarData.length > 0 ? <ScoreBarChart data={allSetsBarData} compact mode="score" /> : <div className="chart-empty">No All Sets Quiz attempts yet</div>}
               </div>
             </div>
           </div>
@@ -3212,7 +3232,7 @@ function HistoryPage({ user, setView, onReview, allWords }) {
             <div className="chart-row" style={{ marginBottom: 16 }}>
               {wordBreakdown.totalTracked > 0 && (
                 <div className="card chart-col">
-                  <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0, fontSize: 10 }}>Set Quizzes — Word Strength</div></div>
+                  <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>Set Quizzes — Word Strength</div></div>
                   <div className="chart-col-inner">
                     <WordStrengthPieChart strong={wordBreakdown.strong.length} weak={wordBreakdown.weak.length} even={wordBreakdown.even.length} compact />
                   </div>
@@ -3220,7 +3240,7 @@ function HistoryPage({ user, setView, onReview, allWords }) {
               )}
               {allSetsWordBreakdown.totalTracked > 0 && (
                 <div className="card chart-col">
-                  <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0, fontSize: 10 }}>All Sets Quiz — Word Strength</div></div>
+                  <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>All Sets Quiz — Word Strength</div></div>
                   <div className="chart-col-inner">
                     <WordStrengthPieChart strong={allSetsWordBreakdown.strong.length} weak={allSetsWordBreakdown.weak.length} even={allSetsWordBreakdown.even.length} compact />
                   </div>
@@ -3338,12 +3358,13 @@ function HistoryPage({ user, setView, onReview, allWords }) {
       ) : (
         <div className="card">
           {sessions.map((s, i) => (
-            <div key={i} className="hist-row" onClick={() => onReview(s)}>
-              <div className="hist-pct" style={{ color: s.pct >= 70 ? "var(--ok)" : s.pct >= 50 ? "var(--gold2)" : "var(--err)" }}>{s.pct}%</div>
+            <div key={i} className="hist-row" onClick={() => onReview(s)} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", alignItems: "center", gap: 12 }}>
               <div className="hist-info">
-                <div className="hist-title">{s.day ? `Set ${s.day}` : "All Sets Quiz"} &nbsp;·&nbsp; {s.score}/{s.total} correct</div>
+                <div className="hist-title">{s.day ? `Set ${s.day}` : "All Sets Quiz"}</div>
                 <div className="hist-date">{new Date(s.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} at {new Date(s.date).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</div>
               </div>
+              <div style={{ fontSize: 13, color: "var(--muted)", whiteSpace: "nowrap" }}>{s.score}/{s.total}</div>
+              <div className="hist-pct" style={{ color: s.pct >= 70 ? "var(--ok)" : s.pct >= 50 ? "var(--gold2)" : "var(--err)", fontSize: 16, fontWeight: 700, minWidth: 48, textAlign: "right" }}>{s.pct}%</div>
               <div className="hist-arrow">→</div>
             </div>
           ))}
