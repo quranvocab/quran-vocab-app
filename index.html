@@ -1,13 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quranic Vocab — Daily Memorization</title>
-  <meta name="description" content="Daily Quranic vocabulary memorization — 10 words a day, progressively unlocked." />
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+
+    <!-- ── PWA ── -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#00c8e6" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- ── Apple / iOS ── -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Quranic Vocab" />
+    <link rel="apple-touch-icon" href="/icons/icon-180x180.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144x144.png" />
+
+    <!-- ── Favicon ── -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/icons/icon-96x96.png" />
+
+    <!-- ── SEO / Meta ── -->
+    <title>Quranic Vocab — Awami Baitulmaal Committee</title>
+    <meta name="description" content="Memorise Quranic vocabulary with this free learning platform by Awami Baitulmaal Committee." />
+    <meta name="application-name" content="Quranic Vocab" />
+
+    <!-- ── Service Worker registration ── -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(r => console.log('SW registered:', r.scope))
+            .catch(e => console.log('SW failed:', e));
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/app.jsx"></script>
+  </body>
 </html>
