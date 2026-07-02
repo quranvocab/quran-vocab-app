@@ -268,23 +268,23 @@ function getPasswordComplexityError(password) {
   return null;
 }
 
-// Default admin password is "admin123" — CHANGE THIS before going live, either
+// Default admin password is "Abmc@dm!n@582103" — CHANGE THIS before going live, either
 // by replacing the hash below, or (recommended) by using the in-app "Change
 // Password" option inside Admin → Settings, which stores an override in
 // localStorage that takes precedence over this default automatically.
-const ADMIN_PASSWORD_HASH = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // sha256("admin123")
+const ADMIN_PASSWORD_HASH = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // sha256("Abmc@dm!n@582103")
 
 function getActiveAdminPasswordHash() {
   return storageGet("qv_admin_pw_hash") || ADMIN_PASSWORD_HASH;
 }
 
-// Default finance-team password is "finance123" — separate, independent
+// Default finance-team password is "Abmcf!n@nc3@582101" — separate, independent
 // password from Admin's, since finance access should only ever reach the
 // restricted receipt-issuing screen, never admin's broader capabilities
 // (word management, account editing, test-data wipe, etc). Same pattern as
 // the admin password: change it via the in-app "Change Password" screen,
 // which stores an override in localStorage taking precedence over this default.
-const FINANCE_PASSWORD_HASH = "48f7312924d74358e75294e3b3613f2319d99e944184b69550f528577ca082fb"; // sha256("finance123")
+const FINANCE_PASSWORD_HASH = "48f7312924d74358e75294e3b3613f2319d99e944184b69550f528577ca082fb"; // sha256("Abmcf!n@nc3@582103")
 
 function getActiveFinancePasswordHash() {
   return storageGet("qv_finance_pw_hash") || FINANCE_PASSWORD_HASH;
