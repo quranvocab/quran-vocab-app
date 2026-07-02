@@ -268,23 +268,23 @@ function getPasswordComplexityError(password) {
   return null;
 }
 
-// Default admin password is "Abmc@dm!n@582103" — CHANGE THIS before going live, either
+// Default admin password is "admin123" — CHANGE THIS before going live, either
 // by replacing the hash below, or (recommended) by using the in-app "Change
 // Password" option inside Admin → Settings, which stores an override in
 // localStorage that takes precedence over this default automatically.
-const ADMIN_PASSWORD_HASH = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // sha256("Abmc@dm!n@582103")
+const ADMIN_PASSWORD_HASH = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // sha256("admin123")
 
 function getActiveAdminPasswordHash() {
   return storageGet("qv_admin_pw_hash") || ADMIN_PASSWORD_HASH;
 }
 
-// Default finance-team password is "Abmcf!n@nc3@582101" — separate, independent
+// Default finance-team password is "finance123" — separate, independent
 // password from Admin's, since finance access should only ever reach the
 // restricted receipt-issuing screen, never admin's broader capabilities
 // (word management, account editing, test-data wipe, etc). Same pattern as
 // the admin password: change it via the in-app "Change Password" screen,
 // which stores an override in localStorage taking precedence over this default.
-const FINANCE_PASSWORD_HASH = "48f7312924d74358e75294e3b3613f2319d99e944184b69550f528577ca082fb"; // sha256("Abmcf!n@nc3@582103")
+const FINANCE_PASSWORD_HASH = "48f7312924d74358e75294e3b3613f2319d99e944184b69550f528577ca082fb"; // sha256("finance123")
 
 function getActiveFinancePasswordHash() {
   return storageGet("qv_finance_pw_hash") || FINANCE_PASSWORD_HASH;
@@ -592,6 +592,23 @@ const COMMON_PROVIDERS = [
   "live.com", "aol.com", "protonmail.com", "rediffmail.com", "yandex.com",
 ];
 
+// Microsoft alias groups — all valid domains but users confuse them.
+// If someone enters one, warn them to check they use the right one.
+const MICROSOFT_ALIASES = {
+  "outlook.com": ["hotmail.com", "live.com", "msn.com"],
+  "hotmail.com": ["outlook.com", "live.com", "msn.com"],
+  "live.com":    ["outlook.com", "hotmail.com", "msn.com"],
+  "msn.com":     ["outlook.com", "hotmail.com", "live.com"],
+};
+
+// Yahoo alias group
+const YAHOO_ALIASES = {
+  "yahoo.com":   ["ymail.com", "yahoo.co.in", "yahoo.co.uk"],
+  "ymail.com":   ["yahoo.com"],
+  "yahoo.co.in": ["yahoo.com"],
+  "yahoo.co.uk": ["yahoo.com"],
+};
+
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
   const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
@@ -626,6 +643,17 @@ async function isEmailDomainValid(email) {
 
   if (KNOWN_DISPOSABLE_DOMAINS.has(domain)) {
     return { valid: false, reason: "disposable" };
+  }
+
+  // Microsoft / Yahoo alias warning — both domains are real and valid,
+  // but users frequently confuse outlook.com ↔ hotmail.com ↔ live.com
+  const msAliases = MICROSOFT_ALIASES[domain];
+  if (msAliases) {
+    return { valid: true, reason: "alias-warning", aliases: msAliases, provider: "Microsoft" };
+  }
+  const yahooAliases = YAHOO_ALIASES[domain];
+  if (yahooAliases) {
+    return { valid: true, reason: "alias-warning", aliases: yahooAliases, provider: "Yahoo" };
   }
 
   // Soft warning for likely typos of major providers (e.g. gmail.cm, gmial.com,
@@ -2456,6 +2484,10 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
       setTypoWarning({ suggestion: result.suggestion });
       return;
     }
+    if (result.reason === "alias-warning" && !ignoreTypo) {
+      setTypoWarning({ suggestion: null, aliases: result.aliases, provider: result.provider });
+      return;
+    }
 
     setChecking(true);
     const regResult = await onRegister(userId, suPw, name, email);
@@ -2588,11 +2620,27 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
             {error && <div className="enroll-error">⚠ {error}</div>}
             {typoWarning && (
               <div className="enroll-typo-warning">
-                <div>🤔 Did you mean <strong>@{typoWarning.suggestion}</strong>?</div>
-                <div className="enroll-typo-actions">
-                  <button className="btn bsm bg" onClick={acceptSuggestion}>Yes, fix it</button>
-                  <button className="btn bsm bh" onClick={useAnyway}>No, use as typed</button>
-                </div>
+                {typoWarning.suggestion ? (
+                  <>
+                    <div>🤔 Did you mean <strong>@{typoWarning.suggestion}</strong>?</div>
+                    <div className="enroll-typo-actions">
+                      <button className="btn bsm bg" onClick={acceptSuggestion}>Yes, fix it</button>
+                      <button className="btn bsm bh" onClick={useAnyway}>No, use as typed</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>⚠️ <strong>{typoWarning.provider} accounts</strong> can use different email addresses — make sure you check the right inbox!</div>
+                    <div style={{ fontSize: 12, marginTop: 6, color: "var(--muted)" }}>
+                      Your address ends in <strong style={{ color: "var(--text)" }}>@{suEmail.split("@")[1]}</strong> — the verification email will go there.
+                      If you usually check <strong style={{ color: "var(--text)" }}>{typoWarning.aliases.map(a => `@${a}`).join(", ")}</strong> instead, please update your email above.
+                    </div>
+                    <div className="enroll-typo-actions">
+                      <button className="btn bsm bg" onClick={useAnyway}>Yes, I check @{suEmail.split("@")[1]}</button>
+                      <button className="btn bsm bh" onClick={() => { setTypoWarning(null); setIgnoreTypo(false); }}>Let me change it</button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
             <button className="btn bg bfw" onClick={submitSignup} disabled={checking}>
