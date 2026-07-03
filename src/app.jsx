@@ -1579,37 +1579,13 @@ export default function App() {
   }, []);
 
   // Load user profile from Supabase users table
+  // Profile is auto-created by database trigger when auth user signs up
   const loadUserProfile = async (authId) => {
-    let { data: profile } = await supabase
+    const { data: profile, error } = await supabase
       .from("users").select("*").eq("auth_id", authId).maybeSingle();
 
-    // Profile missing — create it from auth metadata (happens after email verification)
-    if (!profile) {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
-      const meta = authUser.user_metadata || {};
-      const insertData = {
-        auth_id: authId,
-        user_id: meta.user_id || authUser.email?.split("@")[0],
-        name: meta.name || "Learner",
-        email: authUser.email,
-        enrolled_at: new Date().toISOString(),
-        role: "learner",
-        verified: true,
-      };
-      const { error: insertErr } = await supabase.from("users").insert(insertData);
-      if (insertErr) {
-        console.error("Profile insert error:", insertErr.message);
-        toast_("Account verified but profile save failed — please contact admin.");
-        return;
-      }
-      // Re-fetch the created profile
-      const { data: newProfile } = await supabase
-        .from("users").select("*").eq("auth_id", authId).maybeSingle();
-      profile = newProfile;
-    }
-
-    if (!profile) return;
+    if (error) { console.error("loadUserProfile error:", error.message); return; }
+    if (!profile) { console.warn("No profile found for auth_id:", authId); return; }
 
     const u = {
       userId: profile.user_id, name: profile.name,
@@ -1621,10 +1597,8 @@ export default function App() {
     };
     setUser(u);
     storageSet("qv_user", u);
-    setView(v => ["verifyEmail", "resetPassword"].includes(v) ? "home" : v);
-    if (["verifyEmail", "resetPassword"].includes(view)) {
-      toast_("✅ Email confirmed — welcome to Quranic Vocab! 🕌");
-    }
+    toast_(`✅ Welcome, ${u.name}! 🕌`);
+    setView("home");
   };
 
   const unlockAdmin = () => {
@@ -2184,7 +2158,7 @@ export default function App() {
               )}
               {adminUnlocked && (
                 <div className="nuser-wrap">
-                  <button className="nuser" onClick={() => setShowAdminMenu(s => !s)}>🔧 Admin <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
+                  <button className="nuser" onClick={e => { e.stopPropagation(); setShowAdminMenu(s => !s); }}>🔧 Admin <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
                   {showAdminMenu && (
                     <div className="nuser-menu" onMouseLeave={() => setShowAdminMenu(false)}>
                       <button className="nuser-menu-item" onClick={() => { setShowAdminMenu(false); setAdminProfileOpen(true); }}>⚙ Profile Settings</button>
