@@ -1580,9 +1580,37 @@ export default function App() {
 
   // Load user profile from Supabase users table
   const loadUserProfile = async (authId) => {
-    const { data: profile } = await supabase
-      .from("users").select("*").eq("auth_id", authId).single();
+    let { data: profile } = await supabase
+      .from("users").select("*").eq("auth_id", authId).maybeSingle();
+
+    // Profile missing — create it from auth metadata (happens after email verification)
+    if (!profile) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+      const meta = authUser.user_metadata || {};
+      const insertData = {
+        auth_id: authId,
+        user_id: meta.user_id || authUser.email?.split("@")[0],
+        name: meta.name || "Learner",
+        email: authUser.email,
+        enrolled_at: new Date().toISOString(),
+        role: "learner",
+        verified: true,
+      };
+      const { error: insertErr } = await supabase.from("users").insert(insertData);
+      if (insertErr) {
+        console.error("Profile insert error:", insertErr.message);
+        toast_("Account verified but profile save failed — please contact admin.");
+        return;
+      }
+      // Re-fetch the created profile
+      const { data: newProfile } = await supabase
+        .from("users").select("*").eq("auth_id", authId).maybeSingle();
+      profile = newProfile;
+    }
+
     if (!profile) return;
+
     const u = {
       userId: profile.user_id, name: profile.name,
       email: profile.email, enrolledAt: profile.enrolled_at,
@@ -1593,7 +1621,6 @@ export default function App() {
     };
     setUser(u);
     storageSet("qv_user", u);
-    // Navigate away from verify/reset screens if on them
     setView(v => ["verifyEmail", "resetPassword"].includes(v) ? "home" : v);
     if (["verifyEmail", "resetPassword"].includes(view)) {
       toast_("✅ Email confirmed — welcome to Quranic Vocab! 🕌");
@@ -2560,19 +2587,6 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
           We sent a verification link to <strong style={{ color: "var(--gold3)" }}>{pendingVerify.email}</strong>.
           Click the link to activate your account and log in.
         </p>
-
-        {/* iPhone PWA specific instruction */}
-        <div style={{ background: "rgba(0,200,230,.07)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "14px 16px", marginBottom: 16, textAlign: "left" }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cyan2)", marginBottom: 8 }}>📱 Using the app on iPhone or iPad?</div>
-          <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.8 }}>
-            When you tap the verification link in your email it will open in Safari — not in this app.
-            <br/>
-            <strong style={{ color: "var(--text)" }}>After clicking the link in Safari, come back here and tap Login.</strong>
-            <br/>
-            Your account will be verified and ready to use.
-          </div>
-        </div>
-
         <div className="card">
           {error && <div className="enroll-error" style={{ marginBottom: 14 }}>⚠ {error}</div>}
           <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
