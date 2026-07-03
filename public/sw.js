@@ -1,7 +1,7 @@
 // Quranic Vocab — Service Worker
 // Awami Baitulmaal Committee
 
-const CACHE_NAME = "quranic-vocab-v1";
+const CACHE_NAME = "quranic-vocab-v2";
 const STATIC_ASSETS = [
   "/",
   "/index.html"
@@ -25,9 +25,18 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// Fetch — network first, fallback to cache
+// Fetch — only cache same-origin requests, skip ALL external APIs
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+
+  const url = new URL(e.request.url);
+
+  // Skip external API calls — Supabase, EmailJS, fonts, CDNs
+  if (url.origin !== self.location.origin) return;
+
+  // Skip Supabase specifically (belt and braces)
+  if (e.request.url.includes("supabase.co")) return;
+
   e.respondWith(
     fetch(e.request)
       .then((res) => {
