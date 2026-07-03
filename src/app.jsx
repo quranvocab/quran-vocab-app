@@ -1672,9 +1672,10 @@ export default function App() {
       return { ok: false, reason: "error" };
     }
 
-    // Save profile to Supabase users table
+    // Insert profile immediately using open INSERT policy
+    // (trigger approach unreliable on free tier — we do it directly)
     if (data.user) {
-      await supabase.from("users").insert({
+      const { error: profileErr } = await supabase.from("users").insert({
         auth_id: data.user.id,
         user_id: userId.trim(),
         name: name.trim(),
@@ -1683,6 +1684,7 @@ export default function App() {
         role: "learner",
         verified: false,
       });
+      if (profileErr) console.error("Profile insert error:", profileErr.message);
     }
 
     return { ok: true, userId: userId.trim(), email: emailLower };
@@ -1708,22 +1710,31 @@ export default function App() {
   // ── SUPABASE AUTH: Login ──────────────────────────────────────────────────
   const loginUser = async (userId, password) => {
     // Look up email by userId from Supabase users table
-    const { data: profile } = await supabase
+    const { data: profile, error: lookupErr } = await supabase
       .from("users").select("email, user_id, name").ilike("user_id", userId.trim()).maybeSingle();
+    console.log("LOGIN LOOKUP:", { userId: userId.trim(), profile, lookupErr });
     if (!profile) {
-      toast_("No account found with that User ID.");
+      toast_(`No account found. Lookup error: ${lookupErr?.message || "no row returned"}`);
       return { ok: false, reason: "not-found" };
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email: profile.email, password,
     });
+    console.log("SIGN IN RESULT:", { data, error });
 
     if (error) {
-      if (error.message.toLowerCase().includes("email not confirmed")) {
-        return { ok: false, reason: "not-verified", userId: profile.user_id, email: profile.email };
+      console.log("SIGN IN ERROR:", error.message, error.status);
+      if (error.message.toLowerCase().includes("email not confirmed") ||
+          error.message.toLowerCase().includes("invalid login") ||
+          error.status === 400) {
+        // Check if it's an unconfirmed email issue
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser?.email_confirmed_at) {
+          return { ok: false, reason: "not-verified", userId: profile.user_id, email: profile.email };
+        }
       }
-      toast_("Incorrect password. Please try again.");
+      toast_(`Sign in error: ${error.message}`);
       return { ok: false, reason: "wrong-password" };
     }
 
