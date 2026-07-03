@@ -1714,33 +1714,24 @@ export default function App() {
       .from("users").select("email, user_id, name")
       .eq("user_id", userId.trim().toLowerCase())
       .maybeSingle();
-    console.log("LOGIN LOOKUP:", { userId: userId.trim(), profile, lookupErr });
     if (!profile) {
-      toast_(`No account found. Lookup error: ${lookupErr?.message || "no row returned"}`);
+      toast_("No account found with that User ID.");
       return { ok: false, reason: "not-found" };
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email: profile.email, password,
     });
-    console.log("SIGN IN RESULT:", { data, error });
 
     if (error) {
-      console.log("SIGN IN ERROR:", error.message, error.status);
       if (error.message.toLowerCase().includes("email not confirmed") ||
-          error.message.toLowerCase().includes("invalid login") ||
-          error.status === 400) {
-        // Check if it's an unconfirmed email issue
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (!authUser?.email_confirmed_at) {
-          return { ok: false, reason: "not-verified", userId: profile.user_id, email: profile.email };
-        }
+          error.message.toLowerCase().includes("invalid login")) {
+        return { ok: false, reason: "not-verified", userId: profile.user_id, email: profile.email };
       }
-      toast_(`Sign in error: ${error.message}`);
+      toast_("Incorrect password. Please try again.");
       return { ok: false, reason: "wrong-password" };
     }
 
-    // Profile is loaded via onAuthStateChange SIGNED_IN event
     return { ok: true };
   };
 
