@@ -1646,7 +1646,7 @@ export default function App() {
 
     // Check duplicate User ID in Supabase users table
     const { data: existingId } = await supabase
-      .from("users").select("id").ilike("user_id", idLower).maybeSingle();
+      .from("users").select("id").eq("user_id", idLower).maybeSingle();
     if (existingId) {
       toast_("That User ID is already taken. Please choose another.");
       return { ok: false, reason: "id-taken" };
@@ -1693,7 +1693,7 @@ export default function App() {
   // ── SUPABASE AUTH: Resend verification email ─────────────────────────────
   const resendVerificationEmail = async (userId) => {
     const { data: profile } = await supabase
-      .from("users").select("email").ilike("user_id", userId).maybeSingle();
+      .from("users").select("email").eq("user_id", userId.toLowerCase()).maybeSingle();
     if (!profile) return { ok: false, reason: "not-found" };
     const { error } = await supabase.auth.resend({
       type: "signup", email: profile.email,
@@ -1711,7 +1711,9 @@ export default function App() {
   const loginUser = async (userId, password) => {
     // Look up email by userId from Supabase users table
     const { data: profile, error: lookupErr } = await supabase
-      .from("users").select("email, user_id, name").ilike("user_id", userId.trim()).maybeSingle();
+      .from("users").select("email, user_id, name")
+      .eq("user_id", userId.trim().toLowerCase())
+      .maybeSingle();
     console.log("LOGIN LOOKUP:", { userId: userId.trim(), profile, lookupErr });
     if (!profile) {
       toast_(`No account found. Lookup error: ${lookupErr?.message || "no row returned"}`);
@@ -1798,7 +1800,7 @@ export default function App() {
     // Update in Supabase users table
     await supabase.from("users")
       .update({ name: newName.trim(), email: trimmedEmail })
-      .ilike("user_id", userId);
+      .eq("user_id", userId.toLowerCase());
     setParticipants(prev => prev.map(p => (p.userId || "").toLowerCase() === userId.toLowerCase() ? updated : p));
     if (user && (user.userId || "").toLowerCase() === userId.toLowerCase()) {
       setUser(updated);
@@ -1810,7 +1812,7 @@ export default function App() {
   const deleteParticipant = async (userId) => {
     // Delete from Supabase users table (cascades to auth via trigger if set)
     const { data: profile } = await supabase.from("users")
-      .select("auth_id").ilike("user_id", userId).maybeSingle();
+      .select("auth_id").eq("user_id", userId.toLowerCase()).maybeSingle();
     if (profile?.auth_id) {
       await supabase.from("users").delete().eq("auth_id", profile.auth_id);
     }
@@ -1879,7 +1881,7 @@ export default function App() {
     // Look up email by userId to confirm account exists
     const { data: profile } = await supabase
       .from("users").select("email, user_id")
-      .ilike("user_id", userId.trim()).maybeSingle();
+      .eq("user_id", userId.trim().toLowerCase()).maybeSingle();
 
     if (!profile || profile.email.toLowerCase() !== email.trim().toLowerCase()) {
       return { ok: false, reason: "no-match" };
