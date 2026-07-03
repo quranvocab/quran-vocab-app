@@ -2629,8 +2629,50 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
               {userIdHint === "taken" && <div style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>⚠ This User ID is already taken — choose another.</div>}
               {userIdHint === "ok"    && <div style={{ fontSize: 12, color: "var(--cyan)", marginTop: 4 }}>✓ User ID is available.</div>}
             </div>
-            <div className="field"><label>Choose a Password</label><input type="password" value={suPw} onChange={e => { setSuPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
-            <div className="field"><label>Confirm Password</label><input type="password" value={suPwConfirm} onChange={e => { setSuPwConfirm(e.target.value); setError(""); }} placeholder="Re-enter password" /></div>
+            <div className="field">
+              <label>Choose a Password</label>
+              <input
+                type="password"
+                value={suPw}
+                onChange={e => { setSuPw(e.target.value); setError(""); }}
+                placeholder="Min 10 chars, 1 number, 1 special char"
+                style={suPw && !getPasswordComplexityError(suPw) ? { borderColor: "var(--ok)" } :
+                       suPw && getPasswordComplexityError(suPw) ? { borderColor: "var(--err)" } : {}}
+              />
+              {suPw && (() => {
+                const checks = [
+                  { label: "10+ characters", ok: suPw.length >= 10 },
+                  { label: "1 number", ok: /[0-9]/.test(suPw) },
+                  { label: "1 special character", ok: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(suPw) },
+                ];
+                return (
+                  <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                    {checks.map(c => (
+                      <span key={c.label} style={{ fontSize: 11, color: c.ok ? "var(--ok)" : "var(--err)", display: "flex", alignItems: "center", gap: 3 }}>
+                        {c.ok ? "✓" : "✗"} {c.label}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="field">
+              <label>Confirm Password</label>
+              <input
+                type="password"
+                value={suPwConfirm}
+                onChange={e => { setSuPwConfirm(e.target.value); setError(""); }}
+                placeholder="Re-enter password"
+                style={suPwConfirm && suPw && suPwConfirm !== suPw ? { borderColor: "var(--err)" } :
+                       suPwConfirm && suPw && suPwConfirm === suPw ? { borderColor: "var(--ok)" } : {}}
+              />
+              {suPwConfirm && suPw && suPwConfirm !== suPw && (
+                <div style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>⚠ Passwords don't match</div>
+              )}
+              {suPwConfirm && suPw && suPwConfirm === suPw && (
+                <div style={{ fontSize: 12, color: "var(--ok)", marginTop: 4 }}>✓ Passwords match</div>
+              )}
+            </div>
             <div className="field"><label>Full Name</label><input value={suName} onChange={e => { setSuName(e.target.value); setError(""); }} placeholder="Your name" /></div>
             <div className="field">
               <label>Email Address</label>
@@ -2766,7 +2808,23 @@ function ResetPasswordPage({ onSetPassword, setView }) {
       <p className="sub" style={{ textAlign: "center", marginBottom: 26 }}>Choose a new password for your account.</p>
       <div className="card">
         <div className="field"><label>New Password</label><input type="password" value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" autoFocus /></div>
-        <div className="field"><label>Confirm New Password</label><input type="password" value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setError(""); }} placeholder="Re-enter password" /></div>
+        <div className="field">
+          <label>Confirm New Password</label>
+          <input
+            type="password"
+            value={confirmPw}
+            onChange={e => { setConfirmPw(e.target.value); setError(""); }}
+            placeholder="Re-enter password"
+            style={confirmPw && newPw && confirmPw !== newPw ? { borderColor: "var(--err)" } :
+                   confirmPw && newPw && confirmPw === newPw ? { borderColor: "var(--ok)" } : {}}
+          />
+          {confirmPw && newPw && confirmPw !== newPw && (
+            <div style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>⚠ Passwords don't match</div>
+          )}
+          {confirmPw && newPw && confirmPw === newPw && (
+            <div style={{ fontSize: 12, color: "var(--ok)", marginTop: 4 }}>✓ Passwords match</div>
+          )}
+        </div>
         {error && <div className="enroll-error">⚠ {error}</div>}
         <button className="btn bg bfw" onClick={submit} disabled={checking}>
           {checking ? "Updating…" : "Set New Password →"}
