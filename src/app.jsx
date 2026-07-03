@@ -1729,10 +1729,6 @@ export default function App() {
     // Profile is loaded via onAuthStateChange SIGNED_IN event
     return { ok: true };
   };
-    toast_(`Welcome back, ${existing.name}!`);
-    setView("home");
-    return { ok: true };
-  };
 
   const logout = async () => {
     await supabase.auth.signOut();
