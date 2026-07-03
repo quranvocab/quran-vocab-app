@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { supabase } from "./supabase.js";
 
 const WORD_BANK = [
   { arabic: "اللَّهُ", translit: "Allāh", english: "Allah / God", urdu: "اللہ", root: "أله", rootEnglish: "to worship, deity", rootUrdu: "عبادت کرنا، معبود" },
@@ -1504,7 +1505,7 @@ export default function App() {
   const isFinanceRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/finance";
   const resetTokenFromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("reset") : null;
   const verifyTokenFromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("verify") : null;
-  const [view, setView] = useState(isAdminRoute ? "admin" : isFinanceRoute ? "finance" : resetTokenFromUrl ? "resetPassword" : verifyTokenFromUrl ? "verifyEmail" : "home");
+  const [view, setView] = useState(isAdminRoute ? "admin" : isFinanceRoute ? "finance" : "home");
   const [user, setUser] = useState(null);
   const [customWords, setCustomWords] = useState([]);
   const [participants, setParticipants] = useState([]);
@@ -1528,15 +1529,76 @@ export default function App() {
   const [receipts, setReceipts] = useState([]);
 
   useEffect(() => {
-    const u = storageGet("qv_user");
     const cw = storageGet("qv_custom") || [];
-    const ps = storageGet("qv_parts") || [];
-    if (u) setUser(u);
     setCustomWords(cw);
-    setParticipants(ps);
     setMessages(getMessages());
     setReceipts(getReceipts());
+
+    // ── Supabase: restore session on page load ──────────────────────────────
+    const loadSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) await loadUserProfile(session.user.id);
+
+      // Load participants from Supabase users table
+      const { data: parts } = await supabase.from("users").select("*");
+      if (parts) setParticipants(parts.map(p => ({
+        userId: p.user_id, name: p.name, email: p.email,
+        enrolledAt: p.enrolled_at, role: p.role || "learner",
+        scores: storageGet(`qv_scores_${p.user_id}`) || [],
+        dayProgress: storageGet(`qv_progress_${p.user_id}`) || {},
+        emailVerified: true, supabaseId: p.auth_id,
+      })));
+    };
+    loadSession();
+
+    // ── Supabase: listen for auth events (login, verify, logout) ───────────
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        // User clicked password reset link — show reset password page
+        setView("resetPassword");
+        return;
+      }
+      if (event === "SIGNED_IN" && session) {
+        await loadUserProfile(session.user.id);
+        // Reload participants
+        const { data: parts } = await supabase.from("users").select("*");
+        if (parts) setParticipants(parts.map(p => ({
+          userId: p.user_id, name: p.name, email: p.email,
+          enrolledAt: p.enrolled_at, role: p.role || "learner",
+          scores: storageGet(`qv_scores_${p.user_id}`) || [],
+          dayProgress: storageGet(`qv_progress_${p.user_id}`) || {},
+          emailVerified: true, supabaseId: p.auth_id,
+        })));
+      }
+      if (event === "SIGNED_OUT") {
+        setUser(null);
+        storageRemove("qv_user");
+      }
+    });
+    return () => subscription.unsubscribe();
   }, []);
+
+  // Load user profile from Supabase users table
+  const loadUserProfile = async (authId) => {
+    const { data: profile } = await supabase
+      .from("users").select("*").eq("auth_id", authId).single();
+    if (!profile) return;
+    const u = {
+      userId: profile.user_id, name: profile.name,
+      email: profile.email, enrolledAt: profile.enrolled_at,
+      role: profile.role || "learner",
+      scores: storageGet(`qv_scores_${profile.user_id}`) || [],
+      dayProgress: storageGet(`qv_progress_${profile.user_id}`) || {},
+      emailVerified: true, supabaseId: authId,
+    };
+    setUser(u);
+    storageSet("qv_user", u);
+    // Navigate away from verify/reset screens if on them
+    setView(v => ["verifyEmail", "resetPassword"].includes(v) ? "home" : v);
+    if (["verifyEmail", "resetPassword"].includes(view)) {
+      toast_("✅ Email confirmed — welcome to Quranic Vocab! 🕌");
+    }
+  };
 
   const unlockAdmin = () => {
     setAdminUnlocked(true);
@@ -1563,127 +1625,117 @@ export default function App() {
   const saveUser = (u) => {
     setUser(u);
     storageSet("qv_user", u);
+    // Store progress and scores per-user in localStorage (Phase 3 migrates to Supabase)
+    if (u.userId) {
+      storageSet(`qv_scores_${u.userId}`, u.scores || []);
+      storageSet(`qv_progress_${u.userId}`, u.dayProgress || {});
+    }
     setParticipants(prev => {
-      const key = u.userId || u.email; // legacy accounts without userId still key by email
-      const next = prev.find(p => (p.userId || p.email) === key)
-        ? prev.map(p => (p.userId || p.email) === key ? u : p)
+      const next = prev.find(p => p.userId === u.userId)
+        ? prev.map(p => p.userId === u.userId ? u : p)
         : [...prev, u];
-      storageSet("qv_parts", next);
       return next;
     });
   };
 
-  // Register a brand-new account with userId + password.
+  // ── SUPABASE AUTH: Register new account ───────────────────────────────────
   const registerUser = async (userId, password, name, email) => {
     const idLower    = userId.trim().toLowerCase();
     const emailLower = email.trim().toLowerCase();
 
-    // Check duplicate User ID
-    const idTaken = participants.some(p => (p.userId || "").toLowerCase() === idLower);
-    if (idTaken) { toast_("That User ID is already taken. Please choose another."); return { ok: false, reason: "id-taken" }; }
+    // Check duplicate User ID in Supabase users table
+    const { data: existingId } = await supabase
+      .from("users").select("id").ilike("user_id", idLower).maybeSingle();
+    if (existingId) {
+      toast_("That User ID is already taken. Please choose another.");
+      return { ok: false, reason: "id-taken" };
+    }
 
-    // Check duplicate Email — no two accounts may share an email address
-    const emailTaken = participants.some(p => (p.email || "").toLowerCase() === emailLower);
-    if (emailTaken) { toast_("That email is already registered. Please log in or use a different email."); return { ok: false, reason: "email-taken" }; }
-
-    const passwordHash = await hashPassword(password);
-    const trimmedEmail = email.trim();
-    const u = {
-      userId: userId.trim(), passwordHash, name: name.trim(), email: trimmedEmail,
-      enrolledAt: new Date().toISOString(), scores: [], dayProgress: {},
-      emailVerified: false,
-    };
-
-    // Save the account in pending state — NOT logged in yet (no saveUser call,
-    // so no active session starts) until the email link is clicked.
-    setParticipants(prev => {
-      const next = [...prev, u];
-      storageSet("qv_parts", next);
-      return next;
+    // Sign up via Supabase Auth — sends verification email via Titan SMTP
+    const { data, error } = await supabase.auth.signUp({
+      email: emailLower,
+      password,
+      options: {
+        data: { name: name.trim(), user_id: userId.trim() },
+        emailRedirectTo: `${window.location.origin}/`,
+      },
     });
 
-    const token = createVerifyToken(u.userId);
-    const verifyLink = `${window.location.origin}/?verify=${token}`;
-    try {
-      await sendVerificationEmail({ toEmail: trimmedEmail, learnerName: u.name, verifyLink });
-      return { ok: true, userId: u.userId, email: trimmedEmail };
-    } catch (err) {
-      console.error("Verification email failed to send:", err);
-      // Account still exists in pending state — they can use "Resend" on the
-      // verify-pending screen, or admin can fix the email and we resend.
-      return { ok: true, userId: u.userId, email: trimmedEmail, emailFailed: true };
+    if (error) {
+      if (error.message.toLowerCase().includes("already registered") ||
+          error.message.toLowerCase().includes("already been registered")) {
+        toast_("That email is already registered. Please log in or use a different email.");
+        return { ok: false, reason: "email-taken" };
+      }
+      toast_(`Sign up failed: ${error.message}`);
+      return { ok: false, reason: "error" };
     }
+
+    // Save profile to Supabase users table
+    if (data.user) {
+      await supabase.from("users").insert({
+        auth_id: data.user.id,
+        user_id: userId.trim(),
+        name: name.trim(),
+        email: emailLower,
+        enrolled_at: new Date().toISOString(),
+        role: "learner",
+        verified: false,
+      });
+    }
+
+    return { ok: true, userId: userId.trim(), email: emailLower };
   };
 
-  // Resend a verification email for an account that hasn't verified yet —
-  // generates a fresh token (old links remain separately valid until they
-  // individually expire, which is fine since each is single-use anyway).
+  // ── SUPABASE AUTH: Resend verification email ─────────────────────────────
   const resendVerificationEmail = async (userId) => {
-    const target = participants.find(p => (p.userId || "").toLowerCase() === userId.toLowerCase());
-    if (!target) return { ok: false, reason: "not-found" };
-    if (target.emailVerified) return { ok: false, reason: "already-verified" };
-
-    const token = createVerifyToken(target.userId);
-    const verifyLink = `${window.location.origin}/?verify=${token}`;
-    try {
-      await sendVerificationEmail({ toEmail: target.email, learnerName: target.name, verifyLink });
-      return { ok: true };
-    } catch (err) {
-      console.error("Resend verification failed:", err);
-      return { ok: false, reason: "send-failed" };
-    }
+    const { data: profile } = await supabase
+      .from("users").select("email").ilike("user_id", userId).maybeSingle();
+    if (!profile) return { ok: false, reason: "not-found" };
+    const { error } = await supabase.auth.resend({
+      type: "signup", email: profile.email,
+      options: { emailRedirectTo: `${window.location.origin}/` },
+    });
+    if (error) return { ok: false, reason: "send-failed" };
+    return { ok: true };
   };
 
-  // Called when the user opens their emailed verification link.
-  const verifyEmailFromToken = (token) => {
-    const check = validateVerifyToken(token);
-    if (!check.valid) return { ok: false, reason: check.reason };
 
-    // Read participants directly from localStorage rather than the React
-    // `participants` state — when this page is opened fresh via the emailed
-    // link (a brand-new page load, not navigation within an already-running
-    // app), App's own mount effect that populates `participants` may not
-    // have finished yet, making the state variable briefly stale/empty and
-    // causing a valid token to incorrectly fail with "not-found".
-    const currentParticipants = storageGet("qv_parts") || [];
-    const target = currentParticipants.find(p => (p.userId || "").toLowerCase() === check.userId.toLowerCase());
-    if (!target) return { ok: false, reason: "not-found" };
+  // ── Supabase handles email verification automatically via onAuthStateChange ─
+  // The old verifyEmailFromToken is no longer needed.
 
-    const updated = { ...target, emailVerified: true };
-    const next = currentParticipants.map(p => (p.userId || "").toLowerCase() === check.userId.toLowerCase() ? updated : p);
-    storageSet("qv_parts", next);
-    setParticipants(next);
-    consumeVerifyToken(token);
-    // Now log them in, since verification is complete.
-    saveUser(updated);
-    return { ok: true, name: updated.name };
-  };
-
-  // Log in an existing account with userId + password.
+  // ── SUPABASE AUTH: Login ──────────────────────────────────────────────────
   const loginUser = async (userId, password) => {
-    const idLower = userId.trim().toLowerCase();
-    const existing = participants.find(p => (p.userId || "").toLowerCase() === idLower);
-    if (!existing) { toast_("No account found with that User ID."); return { ok: false, reason: "not-found" }; }
-
-    const hash = await hashPassword(password);
-    if (hash !== existing.passwordHash) { toast_("Incorrect password."); return { ok: false, reason: "wrong-password" }; }
-
-    // emailVerified === false specifically means this account was created
-    // after verification existed and hasn't completed it yet. Accounts from
-    // before this feature existed have emailVerified === undefined, which we
-    // treat as already-verified (grandfathered in) rather than locking out
-    // everyone who signed up previously.
-    if (existing.emailVerified === false) {
-      return { ok: false, reason: "not-verified", userId: existing.userId, email: existing.email };
+    // Look up email by userId from Supabase users table
+    const { data: profile } = await supabase
+      .from("users").select("email, user_id, name").ilike("user_id", userId.trim()).maybeSingle();
+    if (!profile) {
+      toast_("No account found with that User ID.");
+      return { ok: false, reason: "not-found" };
     }
 
-    saveUser(existing);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: profile.email, password,
+    });
+
+    if (error) {
+      if (error.message.toLowerCase().includes("email not confirmed")) {
+        return { ok: false, reason: "not-verified", userId: profile.user_id, email: profile.email };
+      }
+      toast_("Incorrect password. Please try again.");
+      return { ok: false, reason: "wrong-password" };
+    }
+
+    // Profile is loaded via onAuthStateChange SIGNED_IN event
+    return { ok: true };
+  };
     toast_(`Welcome back, ${existing.name}!`);
     setView("home");
     return { ok: true };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
     storageRemove("qv_user");
     setQuiz(null);
@@ -1735,11 +1787,11 @@ export default function App() {
     }
 
     const updated = { ...target, name: newName.trim(), email: trimmedEmail };
-    setParticipants(prev => {
-      const next = prev.map(p => (p.userId || "").toLowerCase() === userId.toLowerCase() ? updated : p);
-      storageSet("qv_parts", next);
-      return next;
-    });
+    // Update in Supabase users table
+    await supabase.from("users")
+      .update({ name: newName.trim(), email: trimmedEmail })
+      .ilike("user_id", userId);
+    setParticipants(prev => prev.map(p => (p.userId || "").toLowerCase() === userId.toLowerCase() ? updated : p));
     if (user && (user.userId || "").toLowerCase() === userId.toLowerCase()) {
       setUser(updated);
       storageSet("qv_user", updated);
@@ -1747,16 +1799,16 @@ export default function App() {
     return { ok: true };
   };
 
-  // Admin-only: permanently remove a participant account (e.g. an abandoned
-  // signup with an unfixable bad email). This does not affect Admin's own
-  // account — only learner participant records.
-  const deleteParticipant = (userId) => {
-    setParticipants(prev => {
-      const next = prev.filter(p => (p.userId || "").toLowerCase() !== userId.toLowerCase());
-      storageSet("qv_parts", next);
-      return next;
-    });
+  const deleteParticipant = async (userId) => {
+    // Delete from Supabase users table (cascades to auth via trigger if set)
+    const { data: profile } = await supabase.from("users")
+      .select("auth_id").ilike("user_id", userId).maybeSingle();
+    if (profile?.auth_id) {
+      await supabase.from("users").delete().eq("auth_id", profile.auth_id);
+    }
+    setParticipants(prev => prev.filter(p => (p.userId || "").toLowerCase() !== userId.toLowerCase()));
     if (user && (user.userId || "").toLowerCase() === userId.toLowerCase()) {
+      await supabase.auth.signOut();
       setUser(null);
       storageRemove("qv_user");
     }
@@ -1769,8 +1821,15 @@ export default function App() {
   // does NOT touch qv_admin_email, since that's a real configuration value,
   // not test data. Admin is logged out of the unlocked session as part of
   // this, since the password they were using is no longer valid.
-  const resetAllTestData = () => {
-    storageRemove("qv_parts");
+  const resetAllTestData = async () => {
+    // Clear Supabase users table (auth users remain — admin can delete manually)
+    await supabase.from("users").delete().neq("role", "admin");
+    await supabase.from("scores").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await supabase.from("progress").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await supabase.from("messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    // Sign out current user if any
+    await supabase.auth.signOut();
+    // Clear localStorage
     storageRemove("qv_user");
     storageRemove("qv_messages");
     storageRemove("qv_reset_tokens");
@@ -1791,45 +1850,14 @@ export default function App() {
 
   // Sets a learner's password directly from a valid reset token (used by the
   // "Set New Password" screen the reset link opens) — not by admin typing it.
+  // ── SUPABASE AUTH: Set new password (called from reset password page) ─────
   const setPasswordFromToken = async (token, newPassword) => {
-    const check = validateResetToken(token);
-    if (!check.valid) return { ok: false, reason: check.reason };
-
-    // Read participants directly from localStorage rather than the React
-    // `participants` state — see the identical note in verifyEmailFromToken
-    // above for why this matters when the page is opened fresh via an
-    // emailed link rather than from inside an already-running app session.
-    const currentParticipants = storageGet("qv_parts") || [];
-    const target = currentParticipants.find(p => (p.userId || "").toLowerCase() === check.userId.toLowerCase());
-    if (!target) return { ok: false, reason: "not-found" };
-
-    const passwordHash = await hashPassword(newPassword);
-    const updated = { ...target, passwordHash };
-    const next = currentParticipants.map(p => (p.userId || "").toLowerCase() === check.userId.toLowerCase() ? updated : p);
-    storageSet("qv_parts", next);
-    setParticipants(next);
-    consumeResetToken(token);
-    if (user && (user.userId || "").toLowerCase() === check.userId.toLowerCase()) {
-      setUser(updated);
-      storageSet("qv_user", updated);
-    }
-
-    // If this reset link was sent from a Message Center request, auto-resolve
-    // that request now and leave an acknowledgment so admin sees confirmation
-    // it was actually completed by the learner, not just sent.
-    if (check.messageId) {
-      markMessageResolved(check.messageId);
-      addMessage({
-        type: "password_reset_completed",
-        userId: target.userId,
-        learnerName: target.name,
-        note: "Password reset completed by the learner.",
-        resolved: true, // acknowledgment itself doesn't need action
-      });
-      setMessages(getMessages());
-    }
-
-    return { ok: true, name: target.name };
+    // With Supabase, the user is already signed in via the reset link
+    // Just update the password directly
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { ok: false, reason: "error" };
+    toast_("Password updated successfully!");
+    return { ok: true };
   };
 
   // Forgot-password request from the Login screen → lands in Admin's Message
@@ -1838,23 +1866,27 @@ export default function App() {
   // Requires User ID + registered Email to match the SAME account. If they
   // don't match, reject immediately client-side — no admin message is created,
   // since there's nothing valid for admin to act on.
-  const submitForgotPasswordRequest = (userId, email, note) => {
-    const target = participants.find(p =>
-      (p.userId || "").toLowerCase() === userId.trim().toLowerCase() &&
-      (p.email || "").toLowerCase() === email.trim().toLowerCase()
-    );
-    if (!target) {
+  // ── SUPABASE AUTH: Forgot password — sends reset email directly ──────────
+  const submitForgotPasswordRequest = async (userId, email, note) => {
+    // Look up email by userId to confirm account exists
+    const { data: profile } = await supabase
+      .from("users").select("email, user_id")
+      .ilike("user_id", userId.trim()).maybeSingle();
+
+    if (!profile || profile.email.toLowerCase() !== email.trim().toLowerCase()) {
       return { ok: false, reason: "no-match" };
     }
-    addMessage({
-      type: "password_reset",
-      userId: userId.trim(),
-      email: email.trim(),
-      learnerName: target.name,
-      note: note.trim(),
+
+    const { error } = await supabase.auth.resetPasswordForEmail(profile.email, {
+      redirectTo: `${window.location.origin}/`,
     });
-    setMessages(getMessages());
-    toast_("Request sent to the admin. You'll receive a reset link by email once approved.");
+
+    if (error) {
+      toast_("Failed to send reset email. Please try again.");
+      return { ok: false, reason: "error" };
+    }
+
+    toast_("Password reset email sent! Check your inbox.");
     return { ok: true };
   };
 
@@ -2196,8 +2228,8 @@ export default function App() {
             {view === "history" && <HistoryPage user={user} setView={setView} onReview={reviewSession} allWords={allWords} onStart={startQuiz} />}
             {view === "review" && reviewing && <ReviewPage rec={reviewing} setView={setView} allWords={allWords} />}
             {view === "leaderboard" && <LBPage participants={participants} user={user} />}
-            {view === "resetPassword" && <ResetPasswordPage token={resetTokenFromUrl} onSetPassword={setPasswordFromToken} setView={setView} />}
-            {view === "verifyEmail" && <VerifyEmailPage token={verifyTokenFromUrl} onVerify={verifyEmailFromToken} setView={setView} />}
+            {view === "resetPassword" && <ResetPasswordPage onSetPassword={setPasswordFromToken} setView={setView} />}
+            {/* Email verification handled automatically by Supabase via onAuthStateChange */}
           </>
         )}
 
@@ -2532,6 +2564,19 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
           We sent a verification link to <strong style={{ color: "var(--gold3)" }}>{pendingVerify.email}</strong>.
           Click the link to activate your account and log in.
         </p>
+
+        {/* iPhone PWA specific instruction */}
+        <div style={{ background: "rgba(0,200,230,.07)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "14px 16px", marginBottom: 16, textAlign: "left" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cyan2)", marginBottom: 8 }}>📱 Using the app on iPhone or iPad?</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.8 }}>
+            When you tap the verification link in your email it will open in Safari — not in this app.
+            <br/>
+            <strong style={{ color: "var(--text)" }}>After clicking the link in Safari, come back here and tap Login.</strong>
+            <br/>
+            Your account will be verified and ready to use.
+          </div>
+        </div>
+
         <div className="card">
           {error && <div className="enroll-error" style={{ marginBottom: 14 }}>⚠ {error}</div>}
           <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
@@ -2690,16 +2735,13 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
   );
 }
 
-// ─── Reset Password Page (opened via emailed reset link) ─────────────────────
-function ResetPasswordPage({ token, onSetPassword, setView }) {
+// ─── Reset Password Page (Supabase handles token via URL hash automatically) ──
+function ResetPasswordPage({ onSetPassword, setView }) {
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
   const [done, setDone] = useState(false);
-  const [learnerName, setLearnerName] = useState("");
-
-  const tokenCheck = token ? validateResetToken(token) : { valid: false, reason: "not-found" };
 
   const submit = async () => {
     setError("");
@@ -2707,42 +2749,23 @@ function ResetPasswordPage({ token, onSetPassword, setView }) {
     const pwError = getPasswordComplexityError(newPw);
     if (pwError) { setError(pwError); return; }
     if (newPw !== confirmPw) { setError("Passwords don't match."); return; }
-
     setChecking(true);
-    const result = await onSetPassword(token, newPw);
+    const result = await onSetPassword(null, newPw);
     setChecking(false);
     if (result.ok) {
-      setLearnerName(result.name);
       setDone(true);
-      // Clean the token out of the URL so refreshing doesn't re-trigger this page
       window.history.replaceState({}, "", window.location.pathname);
     } else {
-      setError("This link is no longer valid. Please request a new one.");
+      setError("Could not update password. Please request a new reset link.");
     }
   };
-
-  if (!tokenCheck.valid && !done) {
-    const messages = {
-      "not-found": "This reset link is invalid.",
-      "used": "This reset link has already been used.",
-      "expired": "This reset link has expired (links are valid for 24 hours).",
-    };
-    return (
-      <div className="page psm" style={{ textAlign: "center", paddingTop: 80 }}>
-        <div style={{ fontSize: 44, marginBottom: 14 }}>⚠️</div>
-        <h2>Link Not Valid</h2>
-        <p className="sub" style={{ marginBottom: 24 }}>{messages[tokenCheck.reason] || "This reset link can't be used."} Please request a new one from the Login page.</p>
-        <button className="btn bg" onClick={() => { window.history.replaceState({}, "", window.location.pathname); setView("enroll"); }}>Go to Login</button>
-      </div>
-    );
-  }
 
   if (done) {
     return (
       <div className="page psm" style={{ textAlign: "center", paddingTop: 80 }}>
         <div style={{ fontSize: 44, marginBottom: 14 }}>✅</div>
         <h2>Password Updated</h2>
-        <p className="sub" style={{ marginBottom: 24 }}>{learnerName ? `Welcome back, ${learnerName}. ` : ""}Your password has been set. You can now log in with it.</p>
+        <p className="sub" style={{ marginBottom: 24 }}>Your password has been set. You can now log in.</p>
         <button className="btn bg" onClick={() => setView("enroll")}>Go to Login</button>
       </div>
     );
