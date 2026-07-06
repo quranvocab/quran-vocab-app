@@ -754,6 +754,7 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
 .pmd{max-width:680px;}.psm{max-width:520px;}
 @keyframes fu{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:none}}
 @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes confettiFall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
 @keyframes glow{from{box-shadow:0 0 20px rgba(0,200,230,.4)}to{box-shadow:0 0 40px rgba(0,200,230,.8),0 0 60px rgba(0,200,230,.3)}}
 .lbl{font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--cyan2);display:flex;align-items:center;gap:9px;margin-bottom:13px;font-weight:600;}
 .lbl::before{content:'';width:28px;height:2px;background:var(--cyan2);border-radius:1px;}
@@ -2253,7 +2254,7 @@ export default function App() {
             {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} />}
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
             {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} />}
-            {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} />}
+            {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} setSelectedDay={setSelectedDay} />}
             {view === "history" && <HistoryPage user={user} setView={setView} onReview={reviewSession} allWords={allWords} onStart={startQuiz} />}
             {view === "review" && reviewing && <ReviewPage rec={reviewing} setView={setView} allWords={allWords} />}
             {view === "leaderboard" && <LBPage participants={participants} user={user} />}
@@ -2716,44 +2717,16 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
                 type="email"
                 value={suEmail}
                 onChange={e => { setSuEmail(e.target.value); setError(""); setTypoWarning(null); setIgnoreTypo(false); setEmailHint(""); }}
-                onBlur={() => {
-                  const v = suEmail.trim().toLowerCase();
-                  if (!v || !v.includes("@")) return;
-                  const taken = participants.some(p => (p.email || "").toLowerCase() === v);
-                  setEmailHint(taken ? "taken" : "ok");
-                }}
                 placeholder="your@email.com"
-                style={emailHint === "taken" ? { borderColor: "var(--err)" } : emailHint === "ok" ? { borderColor: "var(--cyan)" } : {}}
               />
-              {emailHint === "taken" && <div style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>⚠ This email is already registered — please log in or use a different email.</div>}
-              {emailHint === "ok"    && <div style={{ fontSize: 12, color: "var(--cyan)", marginTop: 4 }}>✓ Email is available.</div>}
+              {suEmail && suEmail.includes("@") && (() => {
+                const domain = suEmail.split("@")[1]?.toLowerCase();
+                const aliases = { "outlook.com": "hotmail.com", "hotmail.com": "outlook.com", "live.com": "outlook.com", "ymail.com": "yahoo.com" };
+                const alt = aliases[domain];
+                return alt ? <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>💡 Verification goes to <strong style={{ color: "var(--text)" }}>@{domain}</strong> — not @{alt}</div> : null;
+              })()}
             </div>
             {error && <div className="enroll-error">⚠ {error}</div>}
-            {typoWarning && (
-              <div className="enroll-typo-warning">
-                {typoWarning.suggestion ? (
-                  <>
-                    <div>🤔 Did you mean <strong>@{typoWarning.suggestion}</strong>?</div>
-                    <div className="enroll-typo-actions">
-                      <button className="btn bsm bg" onClick={acceptSuggestion}>Yes, fix it</button>
-                      <button className="btn bsm bh" onClick={useAnyway}>No, use as typed</button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>⚠️ <strong>{typoWarning.provider} accounts</strong> can use different email addresses — make sure you check the right inbox!</div>
-                    <div style={{ fontSize: 12, marginTop: 6, color: "var(--muted)" }}>
-                      Your address ends in <strong style={{ color: "var(--text)" }}>@{suEmail.split("@")[1]}</strong> — the verification email will go there.
-                      If you usually check <strong style={{ color: "var(--text)" }}>{typoWarning.aliases.map(a => `@${a}`).join(", ")}</strong> instead, please update your email above.
-                    </div>
-                    <div className="enroll-typo-actions">
-                      <button className="btn bsm bg" onClick={useAnyway}>Yes, I check @{suEmail.split("@")[1]}</button>
-                      <button className="btn bsm bh" onClick={() => { setTypoWarning(null); setIgnoreTypo(false); }}>Let me change it</button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
             <button className="btn bg bfw" onClick={submitSignup} disabled={checking}>
               {checking ? "Checking…" : "Create Account →"}
             </button>
@@ -3216,7 +3189,32 @@ function QuizPage({ quiz, onAnswer, onCancel, onTimeUp }) {
   );
 }
 
-function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview }) {
+// ── Confetti component ────────────────────────────────────────────────────────
+function Confetti() {
+  const pieces = Array.from({ length: 60 }, (_, i) => ({
+    id: i,
+    color: ["#00c8e6","#ffd96b","#ff6b6b","#51cf66","#ff922b","#cc5de8","#1ae6ff"][i % 7],
+    left: `${Math.random() * 100}%`,
+    delay: `${Math.random() * 2}s`,
+    duration: `${2.5 + Math.random() * 2}s`,
+    size: `${8 + Math.random() * 8}px`,
+    shape: i % 3 === 0 ? "50%" : i % 3 === 1 ? "2px" : "0%",
+  }));
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 9999, overflow: "hidden" }}>
+      {pieces.map(p => (
+        <div key={p.id} style={{
+          position: "absolute", top: "-20px", left: p.left,
+          width: p.size, height: p.size,
+          background: p.color, borderRadius: p.shape,
+          animation: `confettiFall ${p.duration} ${p.delay} ease-in forwards`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview, setSelectedDay }) {
   const { result, missed } = quiz;
   const { score, total, pct } = result;
   const msg = pct >= 90 ? { t: "Excellent! ما شاء الله", c: "var(--ok)" }
@@ -3230,6 +3228,8 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview }) {
 
   return (
     <div className="page psm" style={{ textAlign: "center" }}>
+      {/* Confetti celebration on pass */}
+      {quiz.passed && <Confetti />}
       <div className="lbl" style={{ justifyContent: "center" }}>Session Complete</div>
       {result.timedOut && (
         <div style={{ background: "rgba(192,80,74,.08)", border: "1px solid rgba(192,80,74,.25)", borderRadius: 8, padding: "8px 14px", marginBottom: 16, fontSize: 13, color: "#e0a098" }}>
@@ -3279,7 +3279,11 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview }) {
         {/* Go to Next Set if passed */}
         {quiz.passed && quiz.day && quiz.day !== "weak-practice" && (
           <button className="btn bg" style={{ fontSize: 16, padding: "12px 28px", boxShadow: "0 0 28px rgba(0,200,230,.5)", animation: "glow 1.5s ease-in-out infinite alternate" }}
-            onClick={() => { setView("learn"); }}>
+            onClick={() => {
+              const nextDay = typeof quiz.day === "number" ? quiz.day + 1 : parseInt(quiz.day) + 1;
+              setSelectedDay(nextDay);
+              setView("learn");
+            }}>
             🎉 Go to Next Set →
           </button>
         )}
