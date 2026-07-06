@@ -1286,11 +1286,11 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   .lbl{font-size:9px;}
   .card{padding:16px 14px;}
 
-  /* STATS GRID — 2 columns */
-  .srow{grid-template-columns:repeat(2,1fr);gap:8px;}
-  .sn{font-size:20px;}
-  .sl{font-size:9px;}
-  .sbox{padding:12px 10px;}
+  /* STATS GRID — 2 columns, big numbers */
+  .srow{grid-template-columns:repeat(2,1fr);gap:10px;}
+  .sn{font-size:15vw;}
+  .sl{font-size:10px;padding:0 4px;}
+  .sbox{padding:8px;}
 
   /* WORD CARD — 3-col on mobile too */
   .word-card-main{
@@ -1363,10 +1363,10 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   .bism{font-size:28px;}
   .hero h2{font-size:19px;}
   .qq{font-size:40px;}
-  .sn{font-size:20px;}
+  .sn{font-size:14vw;}
   .war{font-size:23px;}
   .ncta{font-size:10px;padding:5px 10px;}
-  .srow{gap:6px;}
+  .srow{gap:8px;}
   .card{padding:13px 11px;}
 }
 /* ── ACCESS GATE ── */
