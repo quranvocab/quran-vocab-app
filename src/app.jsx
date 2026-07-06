@@ -754,6 +754,7 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
 .pmd{max-width:680px;}.psm{max-width:520px;}
 @keyframes fu{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:none}}
 @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes optsReset{from{opacity:.01}to{opacity:1}}
 @keyframes confettiFall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
 @keyframes glow{from{box-shadow:0 0 20px rgba(0,200,230,.4)}to{box-shadow:0 0 40px rgba(0,200,230,.8),0 0 60px rgba(0,200,230,.3)}}
 .lbl{font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--cyan2);display:flex;align-items:center;gap:9px;margin-bottom:13px;font-weight:600;}
@@ -855,7 +856,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   position:relative;
 }
 .sbox:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.4),0 0 30px rgba(0,200,230,.15),inset 0 1px 0 rgba(255,255,255,.1);}
-.sn{font-family:'Poppins',sans-serif;font-size:clamp(20px,5vw,38px);font-weight:700;color:var(--gold2);}
+.sn{font-family:'Poppins',sans-serif;font-size:clamp(20px,5vw,38px);font-weight:300;color:var(--gold2);}
 .sl{font-size:clamp(9px,1.6vw,11px);color:var(--muted);letter-spacing:.04em;margin-top:4px;text-transform:uppercase;text-align:center;line-height:1.3;}
 .cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:5px;}
 .cc{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;transition:all .14s;border:1px solid transparent;}
@@ -948,6 +949,8 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   font-family:'Poppins',sans-serif;font-size:17px;cursor:pointer;
   transition:all .15s;line-height:1.5;
   backdrop-filter:blur(8px);
+  -webkit-tap-highlight-color:transparent;
+  -webkit-touch-callout:none;
   box-shadow:0 4px 16px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.08);
 }
 .opt:hover:not(:disabled){
@@ -1609,12 +1612,23 @@ export default function App() {
     if (error) { console.error("loadUserProfile error:", error.message); return; }
     if (!profile) { console.warn("No profile found for auth_id:", authId); return; }
 
+    // Detect re-created account: compare enrolled_at with cached data
+    // If account was deleted and re-created, clear stale localStorage
+    const cachedUser = storageGet("qv_user");
+    const cachedEnrolledAt = cachedUser?.userId === profile.user_id ? cachedUser?.enrolledAt : null;
+    const isReCreated = cachedEnrolledAt && new Date(profile.enrolled_at) > new Date(cachedEnrolledAt);
+    if (isReCreated) {
+      storageRemove(`qv_scores_${profile.user_id}`);
+      storageRemove(`qv_progress_${profile.user_id}`);
+      storageRemove("qv_user");
+    }
+
     const u = {
       userId: profile.user_id, name: profile.name,
       email: profile.email, enrolledAt: profile.enrolled_at,
       role: profile.role || "learner",
-      scores: storageGet(`qv_scores_${profile.user_id}`) || [],
-      dayProgress: storageGet(`qv_progress_${profile.user_id}`) || {},
+      scores: isReCreated ? [] : (storageGet(`qv_scores_${profile.user_id}`) || []),
+      dayProgress: isReCreated ? {} : (storageGet(`qv_progress_${profile.user_id}`) || {}),
       emailVerified: true, supabaseId: authId,
     };
     setUser(u);
@@ -3159,7 +3173,7 @@ function QuizPage({ quiz, onAnswer, onCancel, onTimeUp }) {
         <div className={`qq arabic ${isArQ ? "" : "en"}`}>{q.word[q.qf]}</div>
         {isArQ && <div className="qtr">{q.word.translit}</div>}
         {!isArQ && <div style={{ marginBottom: 34 }} />}
-        <div className="opts" key={`q-${cur}`}>
+        <div className="opts" key={`q-${cur}`} style={{ animation: "optsReset .01s" }}>
           {q.options.map((opt, i) => {
             let c = `opt${!isArQ ? " ar" : ""}`;
             if (q.chosen !== null) { if (opt === q.word[q.af]) c += " correct"; else if (opt === q.chosen) c += " wrong"; }
