@@ -754,6 +754,7 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
 .pmd{max-width:680px;}.psm{max-width:520px;}
 @keyframes fu{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:none}}
 @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes glow{from{box-shadow:0 0 20px rgba(0,200,230,.4)}to{box-shadow:0 0 40px rgba(0,200,230,.8),0 0 60px rgba(0,200,230,.3)}}
 .lbl{font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--cyan2);display:flex;align-items:center;gap:9px;margin-bottom:13px;font-weight:600;}
 .lbl::before{content:'';width:28px;height:2px;background:var(--cyan2);border-radius:1px;}
 .lbl::before{content:'';width:26px;height:1px;background:var(--teal);}
@@ -839,19 +840,22 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 .bh:hover{border-color:var(--cyan);color:var(--cyan2);background:rgba(0,200,230,.08);}
 .bsm{padding:7px 16px;font-size:13px;}.bfw{width:100%;}
 .btn:disabled{opacity:.35;cursor:not-allowed;transform:none!important;box-shadow:none!important;}
-.srow{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+.srow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px;}
 .sbox{
   background:rgba(0,200,230,.07);
   border:1px solid rgba(0,200,230,.28);
-  border-radius:14px;padding:20px 14px;text-align:center;
+  border-radius:14px;
+  aspect-ratio:1;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:8px;
   backdrop-filter:blur(10px);
   box-shadow:0 6px 24px rgba(0,0,0,.35),0 0 20px rgba(0,200,230,.08),inset 0 1px 0 rgba(255,255,255,.07);
   transition:transform .2s,box-shadow .2s;cursor:default;
   position:relative;
 }
 .sbox:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.4),0 0 30px rgba(0,200,230,.15),inset 0 1px 0 rgba(255,255,255,.1);}
-.sn{font-family:'Poppins',sans-serif;font-size:36px;font-weight:700;color:var(--gold2);}
-.sl{font-size:11px;color:var(--muted);letter-spacing:.07em;margin-top:4px;text-transform:uppercase;}
+.sn{font-family:'Poppins',sans-serif;font-size:clamp(20px,5vw,38px);font-weight:700;color:var(--gold2);}
+.sl{font-size:clamp(9px,1.6vw,11px);color:var(--muted);letter-spacing:.04em;margin-top:4px;text-transform:uppercase;text-align:center;line-height:1.3;}
 .cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:5px;}
 .cc{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;transition:all .14s;border:1px solid transparent;}
 .cc.locked{background:rgba(0,0,0,.04);color:rgba(0,0,0,.18);cursor:default;}
@@ -1536,6 +1540,15 @@ export default function App() {
 
     // ── Supabase: restore session on page load ──────────────────────────────
     const loadSession = async () => {
+      // Check if this is a password recovery or email confirmation flow
+      // via URL hash — let onAuthStateChange handle these, don't load existing session
+      const hash = window.location.hash;
+      if (hash.includes("type=recovery") || hash.includes("type=signup")) {
+        isPasswordRecovery.current = hash.includes("type=recovery");
+        if (hash.includes("type=recovery")) setView("resetPassword");
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (session) await loadUserProfile(session.user.id);
 
@@ -1554,13 +1567,17 @@ export default function App() {
     // ── Supabase: listen for auth events (login, verify, logout) ───────────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "PASSWORD_RECOVERY") {
-        // User clicked password reset link — show reset password page
+        isPasswordRecovery.current = true;
+        // Clear any existing logged-in user so wrong account doesn't show
+        setUser(null);
+        storageRemove("qv_user");
         setView("resetPassword");
         return;
       }
       if (event === "SIGNED_IN" && session) {
+        // Don't auto-login during password recovery — user must set new password first
+        if (isPasswordRecovery.current) return;
         await loadUserProfile(session.user.id);
-        // Reload participants
         const { data: parts } = await supabase.from("users").select("*");
         if (parts) setParticipants(parts.map(p => ({
           userId: p.user_id, name: p.name, email: p.email,
@@ -1573,10 +1590,14 @@ export default function App() {
       if (event === "SIGNED_OUT") {
         setUser(null);
         storageRemove("qv_user");
+        isPasswordRecovery.current = false;
       }
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Track if we're in password recovery flow — prevents SIGNED_IN from auto-logging in
+  const isPasswordRecovery = React.useRef(false);
 
   // Load user profile from Supabase users table
   // Profile is auto-created by database trigger when auth user signs up
@@ -1657,7 +1678,7 @@ export default function App() {
       email: emailLower,
       password,
       options: {
-        data: { name: name.trim(), user_id: userId.trim() },
+        data: { name: name.trim(), user_id: userId.trim().toLowerCase() },
         emailRedirectTo: `${window.location.origin}/`,
       },
     });
@@ -1677,7 +1698,7 @@ export default function App() {
     if (data.user) {
       const { error: profileErr } = await supabase.from("users").insert({
         auth_id: data.user.id,
-        user_id: userId.trim(),
+        user_id: userId.trim().toLowerCase(),
         name: name.trim(),
         email: emailLower,
         enrolled_at: new Date().toISOString(),
@@ -1699,7 +1720,13 @@ export default function App() {
       type: "signup", email: profile.email,
       options: { emailRedirectTo: `${window.location.origin}/` },
     });
-    if (error) return { ok: false, reason: "send-failed" };
+    if (error) {
+      if (error.message?.toLowerCase().includes("already confirmed") ||
+          error.message?.toLowerCase().includes("already been confirmed")) {
+        return { ok: false, reason: "already-verified" };
+      }
+      return { ok: false, reason: "send-failed" };
+    }
     return { ok: true };
   };
 
@@ -1853,11 +1880,12 @@ export default function App() {
   // "Set New Password" screen the reset link opens) — not by admin typing it.
   // ── SUPABASE AUTH: Set new password (called from reset password page) ─────
   const setPasswordFromToken = async (token, newPassword) => {
-    // With Supabase, the user is already signed in via the reset link
-    // Just update the password directly
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { ok: false, reason: "error" };
-    toast_("Password updated successfully!");
+    // Sign out after reset — user must login fresh with new password
+    isPasswordRecovery.current = false;
+    await supabase.auth.signOut();
+    toast_("Password updated! Please log in with your new password.");
     return { ok: true };
   };
 
@@ -2333,7 +2361,13 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
             <div className="sl">Words Unlocked</div>
           </div>
         ) : (
-          <div className="sbox"><div className="sn">{participants.length}</div><div className="sl">Members Enrolled</div></div>
+          <div className="sbox" onClick={() => user ? setView("leaderboard") : setView("enroll")}
+            style={{ cursor: "pointer" }}
+            title={user ? "View Leaderboard" : "Join to see the leaderboard"}>
+            <div className="sn">{participants.length}</div>
+            <div className="sl">Members Enrolled</div>
+            <div style={{ fontSize: 10, color: "var(--cyan2)", marginTop: 4, opacity: .7 }}>{user ? "View Ranks →" : "Join →"}</div>
+          </div>
         )}
       </div>
 
@@ -2462,10 +2496,12 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
 
   const isValidUserId = (id) => /^[a-zA-Z0-9_]{4,20}$/.test(id.trim());
 
-  const submitForgot = () => {
+  const submitForgot = async () => {
     setForgotError("");
     if (!forgotId.trim() || !forgotEmail.trim()) return;
-    const result = onForgotPassword(forgotId, forgotEmail, forgotNote);
+    setChecking(true);
+    const result = await onForgotPassword(forgotId, forgotEmail, forgotNote);
+    setChecking(false);
     if (result.ok) {
       setForgotSent(true);
     } else {
@@ -2487,7 +2523,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
       if (result.reason === "not-verified") {
         setPendingVerify({ userId: result.userId, email: result.email });
       } else {
-        setError("Login failed. Check your User ID and password, or contact admin if you've forgotten your password.");
+        setError("Login failed. Check your User ID and password, or contact support@awamibaitulmaal.org.in for help.");
       }
     }
   };
@@ -2528,7 +2564,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
     if (regResult.ok) {
       setPendingVerify({ userId: regResult.userId, email: regResult.email });
       if (regResult.emailFailed) {
-        setError("Account created, but the verification email failed to send. Try 'Resend' below, or contact admin.");
+        setError("Account created, but the verification email failed to send. Try 'Resend' below, or contact support@awamibaitulmaal.org.in");
       }
     } else if (regResult.reason === "id-taken") {
       setError("That User ID is already taken. Please choose a different one.");
@@ -2574,7 +2610,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
             {resendStatus === "sending" ? "Sending…" : "Resend Verification Email"}
           </button>
           {resendStatus === "sent" && <p style={{ fontSize: 12, color: "var(--ok)", marginTop: 10 }}>✅ New link sent — check your inbox.</p>}
-          {resendStatus === "failed" && <p style={{ fontSize: 12, color: "var(--err)", marginTop: 10 }}>⚠ Failed to send. Please contact admin for help.</p>}
+          {resendStatus === "failed" && <p style={{ fontSize: 12, color: "var(--err)", marginTop: 10 }}>⚠ Your email may already be verified — try logging in, or contact <a href="mailto:support@awamibaitulmaal.org.in" style={{ color: "var(--cyan2)" }}>support@awamibaitulmaal.org.in</a></p>}
           <button className="btn bh bfw" style={{ marginTop: 10 }} onClick={() => { setPendingVerify(null); setError(""); setResendStatus(""); setMode("login"); }}>
             Back to Login
           </button>
@@ -3027,12 +3063,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
               🎯 <strong>{setMastery.mastered}</strong> of <strong>{setMastery.totalInSet}</strong> words mastered in this set
               {setMastery.mastered >= setMastery.totalInSet
                 ? <> — all words mastered! 🎉</>
-                : <> — highlighted words below still need {MASTERY_STREAK_REQUIRED} correct answers in a row.</>}
-              {done(selectedDay) && setMastery.mastered < setMastery.totalInSet && (
-                <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
-                  Note: passing this set's quiz (80%+) unlocks the next set, but "mastered" tracks each word individually and takes longer to build up — they're measuring different things.
-                </div>
-              )}
+                : <> — highlighted words still need {MASTERY_STREAK_REQUIRED} correct answers in a row.</>}
             </div>
           )}
           <div className="wlist" style={{ marginTop: 16 }}>
@@ -3245,18 +3276,28 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview }) {
         </div>
       )}
       <div style={{ display: "flex", gap: 9, justifyContent: "center", flexWrap: "wrap", marginBottom: 12 }}>
-        <button className="btn bg" onClick={onRetry}>Retry</button>
-        <button className="btn bt" onClick={() => setView("learn")}>Sets</button>
+        {/* Go to Next Set if passed */}
+        {quiz.passed && quiz.day && quiz.day !== "weak-practice" && (
+          <button className="btn bg" style={{ fontSize: 16, padding: "12px 28px", boxShadow: "0 0 28px rgba(0,200,230,.5)", animation: "glow 1.5s ease-in-out infinite alternate" }}
+            onClick={() => { setView("learn"); }}>
+            🎉 Go to Next Set →
+          </button>
+        )}
+        <button className="btn bt" onClick={onRetry}>Retry</button>
+        <button className="btn bh" onClick={() => setView("learn")}>Sets</button>
         <button className="btn bh" onClick={() => setView("leaderboard")}>Ranks</button>
       </div>
       <div style={{ marginBottom: 22 }}>
         <button className="btn bh" style={{ width: "100%" }} onClick={() => onReview(result)}>📋 Review Full Answer Breakdown</button>
       </div>
-      {/* Donate nudge after completing a session */}
-      <div style={{ background: "rgba(0,200,230,.06)", border: "1px solid rgba(0,200,230,.15)", borderRadius: 10, padding: "16px 18px", textAlign: "center" }}>
-        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10 }}>جَزَاكَ اللَّهُ خَيْرًا — Enjoying this? Consider supporting the cause.</div>
-        <button className="btn-donate" onClick={onDonate}>🤲 Donate to {DONATE.charityName}</button>
-      </div>
+      {/* Celebration banner on pass */}
+      {quiz.passed && (
+        <div style={{ background: "rgba(0,200,230,.08)", border: "1px solid rgba(0,200,230,.3)", borderRadius: 10, padding: "14px 18px", textAlign: "center", marginBottom: 12, animation: "tagIn .4s ease" }}>
+          <div style={{ fontSize: 22, marginBottom: 4 }}>🏆✨🎊</div>
+          <div style={{ fontSize: 14, color: "var(--cyan2)", fontWeight: 600 }}>ما شاء الله — Set unlocked!</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Your next set of words is now available.</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3707,15 +3748,26 @@ function ReviewPage({ rec, setView, allWords }) {
 }
 
 function LBPage({ participants, user }) {
-  const ranked = [...participants].filter(p => p.scores?.length > 0)
-    .map(p => ({ ...p, best: Math.max(...p.scores.map(s => s.pct)), sessions: p.scores.length }))
-    .sort((a, b) => b.best - a.best || b.sessions - a.sessions);
+  // Rank by mastery progress: mastered words / unlocked words %
+  // Falls back to best quiz score if no mastery data
+  const ranked = [...participants]
+    .map(p => {
+      const scores = p.scores || [];
+      const unlocked = getUnlockedDays(p.enrolledAt, p.dayProgress) * WORDS_PER_DAY || 1;
+      const { masteredSet } = buildStrictMastery(scores);
+      const masteryPct = Math.round((masteredSet.size / unlocked) * 100);
+      const bestQuiz = scores.length > 0 ? Math.max(...scores.map(s => s.pct)) : 0;
+      return { ...p, masteryPct, bestQuiz, unlockedWords: unlocked, masteredWords: masteredSet.size, sessions: scores.length };
+    })
+    .filter(p => p.unlockedWords > 0)
+    .sort((a, b) => b.masteryPct - a.masteryPct || b.masteredWords - a.masteredWords || b.bestQuiz - a.bestQuiz);
+
   const userKey = user ? (user.userId || user.email) : null;
   return (
     <div className="page pmd">
       <div className="lbl">Leaderboard</div>
       <h2>Top Learners</h2>
-      <p className="sub" style={{ marginBottom: 26 }}>Ranked by best quiz score</p>
+      <p className="sub" style={{ marginBottom: 26 }}>Ranked by words mastered out of words unlocked</p>
       {ranked.length === 0
         ? <div className="card" style={{ textAlign: "center", color: "var(--muted)", padding: 44 }}>No scores yet — complete a quiz to appear here!</div>
         : <div className="card">
@@ -3727,9 +3779,9 @@ function LBPage({ participants, user }) {
                 <div className={`lbrank ${i < 3 ? "top" : ""}`}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</div>
                 <div className="lbinfo">
                   <div className="lbname">{p.userId || p.name} {isYou && <span style={{ color: "var(--teal2)", fontSize: 11 }}>(you)</span>}</div>
-                  <div className="lbmeta">{p.sessions} sessions · {Object.keys(p.dayProgress || {}).filter(k => k !== "free").length} sets done</div>
+                  <div className="lbmeta">{p.masteredWords} of {p.unlockedWords} words mastered · {p.sessions} sessions</div>
                 </div>
-                <div className="lbsc">{p.best}%</div>
+                <div className="lbsc">{p.masteryPct}%</div>
                 <div className="lbbadge">{calcStreak(p.scores) > 0 ? `🔥${calcStreak(p.scores)}` : "—"}</div>
               </div>
             );
