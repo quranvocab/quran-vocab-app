@@ -364,9 +364,9 @@ function addReceipt(receipt) {
 // connected through EmailJS. No backend server needed — EmailJS's public key is
 // safe to expose client-side by design (see EmailJS docs); their free tier caps
 // abuse at 200 emails/month.
-const EMAILJS_SERVICE_ID = "service_u97pazt";
-const EMAILJS_RESET_TEMPLATE_ID = "template_hbjl6yv";
-// Free EmailJS tier allows only 2 templates total. Reset uses one slot;
+const EMAILJS_SERVICE_ID    = "service_u97pazt";
+const EMAILJS_RECEIPT_TEMPLATE_ID = "template_hbjl6yv"; // dedicated receipt/invoice template
+const EMAILJS_PUBLIC_KEY    = "lVfbS-yLSA3hkGGT5";// Free EmailJS tier allows only 2 templates total. Reset uses one slot;
 // this Verify template is reused as a GENERIC SHELL for both email
 // verification AND donation receipts (see sendVerificationEmail and
 // sendReceiptEmail below) — it needs these variables in EmailJS's dashboard:
@@ -508,66 +508,89 @@ async function sendVerificationEmail({ toEmail, learnerName, verifyLink }) {
 
 async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donationDate, purpose, note }) {
   const emailjs = await loadEmailJS();
-  // Registration details: only includes what's actually been confirmed and
-  // filled in DONATE above. Starts with just PAN; will automatically pick up
-  // 80G/12A details the moment those are filled in, with no code changes.
+
   const regParts = [];
   if (DONATE.pan && DONATE.pan !== "PASTE_TRUST_PAN_HERE") regParts.push(`PAN: ${DONATE.pan}`);
-  if (DONATE.reg12A) regParts.push(`12A Reg. No: ${DONATE.reg12A}`);
+  if (DONATE.reg12A) regParts.push(`12A Reg: ${DONATE.reg12A}`);
   if (DONATE.reg80G) {
-    let line = `80G Reg. No: ${DONATE.reg80G}`;
+    let line = `80G Reg: ${DONATE.reg80G}`;
     if (DONATE.reg80GValidTo) line += ` (valid till ${DONATE.reg80GValidTo})`;
     regParts.push(line);
   }
-  const registrationLine = regParts.join(" &middot; ");
-  // Only mention tax-deduction eligibility once 80G is confirmed AND the
-  // trust has actually filed Form 10BD for the relevant year — printing this
-  // prematurely is exactly the kind of claim that needs to be accurate.
-  const taxNote = (DONATE.reg80G && DONATE.form10BDFiled)
-    ? "This donation may be eligible for tax deduction under Section 80G. Your Form 10BE certificate (if applicable) will be issued separately by the Income Tax Department portal."
-    : "";
-
   const formattedDate = new Date(donationDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-
-  // Real HTML invoice table — sent as raw HTML (see {{{email_body_html}}}
-  // in the template, triple braces = unescaped) rather than plain text, so
-  // it actually looks like a structured receipt/invoice instead of a list
-  // of lines. A row only appears if its value exists.
-  const row = (label, value) => value
-    ? `<tr><td style="padding:9px 14px;border-bottom:1px solid #f0e3d3;color:#777;font-size:13px;">${label}</td><td style="padding:9px 14px;border-bottom:1px solid #f0e3d3;color:#222;font-size:14px;text-align:right;font-weight:600;">${value}</td></tr>`
+  const taxNote = (DONATE.reg80G && DONATE.form10BDFiled)
+    ? "This donation qualifies for tax deduction under Section 80G of the Income Tax Act. Form 10BE certificate will be issued by the Income Tax Department portal."
     : "";
 
-  const tableRows = [
-    row("Receipt No.", `<span style="font-family:monospace;color:#0eab23;">${receiptNo}</span>`),
-    row("Donor Name", donorName),
-    row("Amount", `&#8377;${amount}`),
-    row("Date Received", formattedDate),
-    row("Purpose", purpose),
-    note ? row("Note", note) : "",
-  ].join("");
+  const row = (label, value, highlight = false) => value
+    ? `<tr>
+        <td style="padding:11px 18px;border-bottom:1px solid #e8f0eb;font-size:13px;color:#5a7a65;width:40%">${label}</td>
+        <td style="padding:11px 18px;border-bottom:1px solid #e8f0eb;font-size:14px;color:${highlight ? "#0c7a3a" : "#1a2820"};font-weight:${highlight ? "700" : "500"};text-align:right">${value}</td>
+       </tr>`
+    : "";
 
-  const emailBodyHtml = `
-    <p style="margin:0 0 16px;">Thank you for your generous contribution to <strong>${DONATE.charityName}</strong> (Quranic Vocab &mdash; Awami Baitulmaal Committee).</p>
-    <table style="width:100%;border-collapse:collapse;background:#fffdfa;border:1px solid #f0e3d3;border-radius:8px;overflow:hidden;margin-bottom:16px;">
-      <tbody>${tableRows}</tbody>
-    </table>
-    ${registrationLine ? `<p style="margin:0 0 10px;font-size:12px;color:#888;">${registrationLine}</p>` : ""}
-    ${taxNote ? `<p style="margin:0 0 16px;font-size:13px;color:#0eab23;">${taxNote}</p>` : ""}
-    <p style="margin:0;">This receipt confirms funds received as reported by our finance team. May Allah accept your contribution and reward you abundantly.</p>
-  `;
+  const invoiceHtml = `
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #d4e8db;">
 
-  // Shares the same EmailJS template slot as verification emails (see note
-  // above sendVerificationEmail) — uses the same generic shell variables,
-  // plus email_body_html specifically for this invoice-style table.
-  return emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_VERIFY_TEMPLATE_ID, {
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#0c7a3a,#1a9e50);padding:28px 24px;text-align:center;">
+      <div style="font-size:32px;margin-bottom:6px">📖</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.75);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">Donation Receipt</div>
+      <div style="font-size:22px;font-weight:700;color:#ffffff">${DONATE.charityName || "Awami Baitulmaal Committee"}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.65);margin-top:4px">Quranic Vocab Learning Platform</div>
+    </div>
+
+    <!-- Receipt Number Banner -->
+    <div style="background:#f0faf4;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #d4e8db;">
+      <span style="font-size:12px;color:#5a7a65;letter-spacing:.08em;text-transform:uppercase">Receipt Number</span>
+      <span style="font-family:monospace;font-size:18px;font-weight:700;color:#0c7a3a;letter-spacing:.05em">${receiptNo}</span>
+    </div>
+
+    <!-- Invoice Table -->
+    <div style="padding:0 0 8px">
+      <table style="width:100%;border-collapse:collapse;">
+        <tbody>
+          ${row("Donor Name", donorName)}
+          ${row("Donor Email", toEmail)}
+          ${row("Amount Received", `<span style="font-size:18px">₹${Number(amount).toLocaleString("en-IN")}</span>`, true)}
+          ${row("Date Received", formattedDate)}
+          ${row("Purpose", purpose)}
+          ${note ? row("Note", note) : ""}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Registration Details -->
+    ${regParts.length > 0 ? `
+    <div style="margin:0 18px 16px;padding:12px 16px;background:#f8fdf9;border:1px solid #d4e8db;border-radius:8px;font-size:12px;color:#5a7a65;line-height:1.8">
+      ${regParts.join(" &nbsp;·&nbsp; ")}
+    </div>` : ""}
+
+    <!-- Tax Note -->
+    ${taxNote ? `
+    <div style="margin:0 18px 16px;padding:12px 16px;background:#e8f8ef;border-left:3px solid #0c7a3a;border-radius:0 6px 6px 0;font-size:12.5px;color:#0c7a3a;line-height:1.7">
+      ${taxNote}
+    </div>` : ""}
+
+    <!-- Thank You -->
+    <div style="padding:16px 24px 20px;text-align:center;background:#f8fdf9;border-top:1px solid #d4e8db">
+      <p style="margin:0 0 6px;font-size:15px;color:#1a2820">جَزَاكَ اللَّهُ خَيْرًا</p>
+      <p style="margin:0;font-size:13px;color:#5a7a65;line-height:1.6">Thank you for your generous contribution. May Allah accept it and reward you abundantly.</p>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:12px 24px;background:#0c7a3a;text-align:center">
+      <p style="margin:0;font-size:11px;color:rgba(255,255,255,.65)">${DONATE.charityName} &nbsp;·&nbsp; support@awamibaitulmaal.org.in</p>
+    </div>
+
+  </div>`;
+
+  return emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_RECEIPT_TEMPLATE_ID, {
     to_email: toEmail,
-    // Generic shell variables, populated for the receipt case specifically:
     recipient_name: donorName,
-    email_heading: `Donation Receipt — ${receiptNo}`,
-    email_body: "", // unused for receipts — real content is in email_body_html
-    email_body_html: emailBodyHtml,
-    cta_label: "",
-    cta_link: "",
+    receipt_no: receiptNo,
+    email_heading: `Donation Receipt ${receiptNo} — ${DONATE.charityName || "Awami Baitulmaal Committee"}`,
+    email_body_html: invoiceHtml,
   });
 }
 
@@ -844,22 +867,28 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 .btn:disabled{opacity:.35;cursor:not-allowed;transform:none!important;box-shadow:none!important;}
 .srow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px;}
 .sbox{
-  background:rgba(0,200,230,.07);
-  border:1px solid rgba(0,200,230,.28);
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.15);
+  border-top:1px solid rgba(255,255,255,.25);
   border-radius:14px;
   aspect-ratio:1;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:8px;
-  backdrop-filter:blur(10px);
-  box-shadow:0 6px 24px rgba(0,0,0,.35),0 0 20px rgba(0,200,230,.08),inset 0 1px 0 rgba(255,255,255,.07);
+  backdrop-filter:blur(20px) saturate(1.5);
+  -webkit-backdrop-filter:blur(20px) saturate(1.5);
+  box-shadow:0 8px 32px rgba(0,0,0,.3),0 0 0 1px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.15),inset 0 -1px 0 rgba(0,0,0,.1);
   transition:transform .2s,box-shadow .2s;cursor:default;
   position:relative;
 }
-.sbox:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.4),0 0 30px rgba(0,200,230,.15),inset 0 1px 0 rgba(255,255,255,.1);}
+.sbox:hover{transform:translateY(-3px);background:rgba(255,255,255,.1);box-shadow:0 16px 40px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.08),inset 0 1px 0 rgba(255,255,255,.2);}
 .sn{font-family:'Poppins',sans-serif;font-size:clamp(20px,5vw,38px);font-weight:300;color:var(--gold2);}
 .sl{font-size:clamp(9px,1.6vw,11px);color:var(--muted);letter-spacing:.04em;margin-top:4px;text-transform:uppercase;text-align:center;line-height:1.3;}
 .cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:5px;}
-.cc{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;transition:all .14s;border:1px solid transparent;}
+.cal-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:rgba(0,200,230,.3) transparent;}
+.cal-scroll::-webkit-scrollbar{height:4px;}
+.cal-scroll::-webkit-scrollbar-track{background:transparent;}
+.cal-scroll::-webkit-scrollbar-thumb{background:rgba(0,200,230,.3);border-radius:2px;}
+.cc{aspect-ratio:1;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;cursor:pointer;transition:all .14s;border:1px solid transparent;min-width:40px;}
 .cc.locked{background:rgba(0,0,0,.04);color:rgba(0,0,0,.18);cursor:default;}
 .cc.done{background:rgba(0,200,230,.12);color:var(--ok);border-color:rgba(0,200,230,.28);}
 .cc.today{background:rgba(0,180,220,.18);color:var(--cyan2);border-color:var(--cyan2);font-weight:600;}
@@ -1518,6 +1547,7 @@ export default function App() {
   const [customWords, setCustomWords] = useState([]);
   const [participants, setParticipants] = useState([]);
   const [quiz, setQuiz] = useState(null);
+  const [optsVisible, setOptsVisible] = useState(true);
   const [toast, setToast] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showDonate, setShowDonate] = useState(false);
@@ -1612,15 +1642,15 @@ export default function App() {
     if (error) { console.error("loadUserProfile error:", error.message); return; }
     if (!profile) { console.warn("No profile found for auth_id:", authId); return; }
 
-    // Detect re-created account: compare enrolled_at with cached data
-    // If account was deleted and re-created, clear stale localStorage
+    // Detect re-created account using Supabase auth UUID (always unique per account)
+    // If same user_id but different auth UUID → deleted and re-created → clear old localStorage
     const cachedUser = storageGet("qv_user");
-    const cachedEnrolledAt = cachedUser?.userId === profile.user_id ? cachedUser?.enrolledAt : null;
-    const isReCreated = cachedEnrolledAt && new Date(profile.enrolled_at) > new Date(cachedEnrolledAt);
+    const isReCreated = cachedUser?.userId === profile.user_id && cachedUser?.supabaseId !== authId;
     if (isReCreated) {
       storageRemove(`qv_scores_${profile.user_id}`);
       storageRemove(`qv_progress_${profile.user_id}`);
       storageRemove("qv_user");
+      console.log("Re-created account detected — cleared old localStorage for", profile.user_id);
     }
 
     const u = {
@@ -2001,10 +2031,6 @@ export default function App() {
           isCorrect: qq.chosen === qq.word[qq.af],
         }));
         const rec = { score: ns, total: updQs.length, pct, day: quiz.day, date: new Date().toISOString(), detail, timeUsedSec: Math.round((Date.now() - quiz.startedAt) / 1000) };
-        // A set unlocks the next one via EITHER path — see the constants'
-        // comment above for the full reasoning. The All Sets Quiz (quiz.day
-        // is null, stored under "free") isn't gated by either path, since it
-        // doesn't unlock a specific set; it's a review/practice mode.
         const passed = pct >= PASSING_SCORE_PCT;
         const allScoresForGate = [...(user.scores || []), rec];
         const masteryGateMet = quiz.day ? hasMetMasteryGate(quiz.day, allScoresForGate, allWords) : false;
@@ -2017,7 +2043,13 @@ export default function App() {
         setQuiz({ ...quiz, questions: updQs, score: ns, done: true, result: rec, missed: nm, passed, masteryGateMet });
         setView("results");
       } else {
-        setQuiz({ ...quiz, questions: updQs, score: ns, cur: quiz.cur + 1, missed: nm });
+        // Briefly hide opts before showing next question — forces iOS to
+        // fully clear any residual touch/active visual state on mobile
+        setOptsVisible(false);
+        requestAnimationFrame(() => {
+          setQuiz({ ...quiz, questions: updQs, score: ns, cur: quiz.cur + 1, missed: nm });
+          requestAnimationFrame(() => setOptsVisible(true));
+        });
       }
     }, 860);
     setQuiz({ ...quiz, questions: updQs, score: ns });
@@ -2209,7 +2241,7 @@ export default function App() {
                   {showAdminMenu && (
                     <div className="nuser-menu" onMouseLeave={() => setShowAdminMenu(false)}>
                       <button className="nuser-menu-item" onClick={() => { setShowAdminMenu(false); setAdminProfileOpen(true); }}>⚙ Profile Settings</button>
-                      <button className="nuser-menu-item logout" onClick={() => { setShowAdminMenu(false); lockAdmin(); }}>🔒 Lock</button>
+                      <button className="nuser-menu-item logout" onClick={() => { setShowAdminMenu(false); lockAdmin(); }}>👤 Logoff</button>
                     </div>
                   )}
                 </div>
@@ -2219,11 +2251,11 @@ export default function App() {
             <div className="nright">
               {financeUnlocked && (
                 <div className="nuser-wrap">
-                  <button className="nuser" onClick={() => setShowFinanceMenu(s => !s)}>🧾 Finance <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
+                  <button className="nuser" onClick={e => { e.stopPropagation(); setShowFinanceMenu(s => !s); }}>🧾 Finance <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
                   {showFinanceMenu && (
                     <div className="nuser-menu" onMouseLeave={() => setShowFinanceMenu(false)}>
                       <button className="nuser-menu-item" onClick={() => { setShowFinanceMenu(false); setFinanceProfileOpen(true); }}>⚙ Profile Settings</button>
-                      <button className="nuser-menu-item logout" onClick={() => { setShowFinanceMenu(false); lockFinance(); }}>🔒 Lock</button>
+                      <button className="nuser-menu-item logout" onClick={() => { setShowFinanceMenu(false); lockFinance(); }}>👤 Logoff</button>
                     </div>
                   )}
                 </div>
@@ -2260,14 +2292,14 @@ export default function App() {
             : <AdminGate onUnlock={unlockAdmin} />
         ) : isFinanceRoute ? (
           financeUnlocked
-            ? <FinancePage receipts={receipts} onIssueReceipt={issueReceipt} toast_={toast_} />
+            ? <FinancePage receipts={receipts} onIssueReceipt={issueReceipt} toast_={toast_} participants={participants} />
             : <FinanceGate onUnlock={unlockFinance} />
         ) : (
           <>
             {view === "home" && <HomePage user={user} allWords={allWords} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} />}
             {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} />}
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
-            {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} />}
+            {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} optsVisible={optsVisible} />}
             {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} setSelectedDay={setSelectedDay} />}
             {view === "history" && <HistoryPage user={user} setView={setView} onReview={reviewSession} allWords={allWords} onStart={startQuiz} />}
             {view === "review" && reviewing && <ReviewPage rec={reviewing} setView={setView} allWords={allWords} />}
@@ -2568,10 +2600,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
       setTypoWarning({ suggestion: result.suggestion });
       return;
     }
-    if (result.reason === "alias-warning" && !ignoreTypo) {
-      setTypoWarning({ suggestion: null, aliases: result.aliases, provider: result.provider });
-      return;
-    }
+    // alias-warning (hotmail/outlook/yahoo) — shown inline below the field already, don't block signup
 
     setChecking(true);
     const regResult = await onRegister(userId, suPw, name, email);
@@ -3012,25 +3041,31 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
       <p className="sub" style={{ marginBottom: 26 }}>Set {unlocked} unlocked so far · {unlocked * WORDS_PER_DAY} words available</p>
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="lbl" style={{ marginBottom: 13 }}>Progress Calendar</div>
-        <div className="cal" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(34px, 1fr)) auto" }}>
-          {Array.from({ length: totalDays }, (_, i) => i + 1).map(d => {
-            const locked = d > unlocked, isDone = done(d), isToday = d === unlocked;
-            return (
-              <div key={d} className={`cc ${locked ? "locked" : isDone ? "done" : isToday ? "today" : "avail"} ${selectedDay === d ? "selected" : ""}`}
-                title={locked ? `Unlocks once Set ${d - 1} is completed` : `Set ${d}`}
-                onClick={() => !locked && selectSet(d)}>
-                {isDone ? "✓" : d}
-              </div>
-            );
-          })}
-          <div className="cc cc-continues" title="More sets will be added as the word bank grows">⋯</div>
-          <button
-            className={`cc-allsets ${viewingAllSets ? "selected" : ""}`}
-            onClick={selectAllSets}
-            title="See your best All Sets Quiz attempt"
-          >
-            All Sets
-          </button>
+        {/* Scrollable calendar with prev/next navigation */}
+        <div style={{ position: "relative" }}>
+          <div className="cal-scroll" style={{ overflowX: "auto", paddingBottom: 4 }}>
+            <div className="cal" style={{ gridTemplateColumns: `repeat(${totalDays + 2}, minmax(42px, 42px)) auto`, width: "max-content", minWidth: "100%" }}>
+              {Array.from({ length: totalDays }, (_, i) => i + 1).map(d => {
+                const locked = d > unlocked, isDone = done(d), isToday = d === unlocked;
+                return (
+                  <div key={d} className={`cc ${locked ? "locked" : isDone ? "done" : isToday ? "today" : "avail"} ${selectedDay === d ? "selected" : ""}`}
+                    title={locked ? `Unlocks once Set ${d - 1} is completed` : `Set ${d}`}
+                    onClick={() => !locked && selectSet(d)}>
+                    <div style={{ fontSize: isDone ? 10 : 12, fontWeight: 600, lineHeight: 1 }}>{isDone ? "✓" : d}</div>
+                    {isDone && <div style={{ fontSize: 8, opacity: .75, marginTop: 1 }}>{d}</div>}
+                  </div>
+                );
+              })}
+              <div className="cc cc-continues" title="More sets will be added as the word bank grows">⋯</div>
+              <button
+                className={`cc-allsets ${viewingAllSets ? "selected" : ""}`}
+                onClick={selectAllSets}
+                title="See your best All Sets Quiz attempt"
+              >
+                All Sets
+              </button>
+            </div>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 11, color: "var(--muted)" }}>
           <span><span style={{ color: "var(--gold3)" }}>■</span> Current</span>
@@ -3135,7 +3170,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
   );
 }
 
-function QuizPage({ quiz, onAnswer, onCancel, onTimeUp }) {
+function QuizPage({ quiz, onAnswer, onCancel, onTimeUp, optsVisible = true }) {
   const { questions, cur } = quiz;
   const q = questions[cur];
   const isArQ = q.qf === "arabic";
@@ -3173,13 +3208,13 @@ function QuizPage({ quiz, onAnswer, onCancel, onTimeUp }) {
         <div className={`qq arabic ${isArQ ? "" : "en"}`}>{q.word[q.qf]}</div>
         {isArQ && <div className="qtr">{q.word.translit}</div>}
         {!isArQ && <div style={{ marginBottom: 34 }} />}
-        <div className="opts" key={`q-${cur}`} style={{ animation: "optsReset .01s" }}>
+        {optsVisible && <div className="opts" key={`q-${cur}`} style={{ animation: "optsReset .01s" }}>
           {q.options.map((opt, i) => {
             let c = `opt${!isArQ ? " ar" : ""}`;
             if (q.chosen !== null) { if (opt === q.word[q.af]) c += " correct"; else if (opt === q.chosen) c += " wrong"; }
             return <button key={`${cur}-${i}`} className={c} onClick={() => onAnswer(opt)} disabled={q.chosen !== null}>{opt}</button>;
           })}
-        </div>
+        </div>}
       </div>
 
       {confirmCancel && (
@@ -3957,7 +3992,7 @@ function ChangePasswordModal({ label, getCurrentHash, storageKey, onClose, toast
 // ─── Shared Receipt Manager — used inside Admin's Receipts tab AND the ───────
 // standalone Finance Panel, so both stay in sync with one implementation
 // instead of two copies to maintain separately.
-function ReceiptManager({ receipts, onIssueReceipt, toast_ }) {
+function ReceiptManager({ receipts, onIssueReceipt, toast_, participants = [] }) {
   const [rcptName, setRcptName] = useState("");
   const [rcptEmail, setRcptEmail] = useState("");
   const [rcptAmount, setRcptAmount] = useState("");
@@ -3967,6 +4002,25 @@ function ReceiptManager({ receipts, onIssueReceipt, toast_ }) {
   const [rcptError, setRcptError] = useState("");
   const [rcptSending, setRcptSending] = useState(false);
   const [rcptSuccess, setRcptSuccess] = useState(null);
+
+  // User search for auto-populate
+  const [userSearch, setUserSearch] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestions = userSearch.length >= 1
+    ? participants.filter(p =>
+        p.name?.toLowerCase().includes(userSearch.toLowerCase()) ||
+        p.userId?.toLowerCase().includes(userSearch.toLowerCase()) ||
+        p.email?.toLowerCase().includes(userSearch.toLowerCase())
+      ).slice(0, 6)
+    : [];
+
+  const selectUser = (p) => {
+    setRcptName(p.name || "");
+    setRcptEmail(p.email || "");
+    setUserSearch(p.name || "");
+    setShowSuggestions(false);
+    setRcptError("");
+  };
 
   const submitReceipt = async () => {
     setRcptError("");
@@ -4003,8 +4057,37 @@ function ReceiptManager({ receipts, onIssueReceipt, toast_ }) {
       <div className="card" style={{ maxWidth: 480, marginBottom: 16 }}>
         <div className="lbl">Issue Donation Receipt</div>
         <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
-          Only issue this after the finance team confirms the payment was actually received. This is a bookkeeping record, not an automated payment verification — the app has no way to independently confirm a UPI transfer occurred.
+          Only issue after the finance team confirms payment was received.
         </p>
+
+        {/* User search — auto-populates name + email from registered members */}
+        <div className="field" style={{ position: "relative" }}>
+          <label>Search Registered Member (optional)</label>
+          <input
+            value={userSearch}
+            onChange={e => { setUserSearch(e.target.value); setShowSuggestions(true); }}
+            onFocus={() => setShowSuggestions(true)}
+            placeholder="Type name, user ID or email..."
+            autoComplete="off"
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, background: "rgba(9,30,46,.97)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,.5)" }}>
+              {suggestions.map(p => (
+                <div key={p.userId} onClick={() => selectUser(p)}
+                  style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid rgba(0,200,230,.08)", transition: "background .12s" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(0,200,230,.08)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <div style={{ fontSize: 14, color: "var(--text)", fontWeight: 500 }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{p.userId} · {p.email}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {userSearch && suggestions.length === 0 && showSuggestions && (
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>No matching member — fill details manually below</div>
+          )}
+        </div>
+
         <div className="field"><label>Donor Name</label><input value={rcptName} onChange={e => { setRcptName(e.target.value); setRcptError(""); }} placeholder="Full name" /></div>
         <div className="field"><label>Donor Email</label><input type="email" value={rcptEmail} onChange={e => { setRcptEmail(e.target.value); setRcptError(""); }} placeholder="donor@email.com" /></div>
         <div style={{ display: "flex", gap: 12 }}>
@@ -4051,14 +4134,14 @@ function ReceiptManager({ receipts, onIssueReceipt, toast_ }) {
 }
 
 // ─── Finance Panel — restricted to receipt issuing only, nothing else ────────
-function FinancePage({ receipts, onIssueReceipt, toast_ }) {
+function FinancePage({ receipts, onIssueReceipt, toast_, participants = [] }) {
   return (
     <div className="page">
       <div style={{ marginBottom: 20 }}>
         <div className="lbl" style={{ marginBottom: 4 }}>Finance Panel</div>
         <h2 style={{ fontSize: 20 }}>Donation Receipts</h2>
       </div>
-      <ReceiptManager receipts={receipts} onIssueReceipt={onIssueReceipt} toast_={toast_} />
+      <ReceiptManager receipts={receipts} onIssueReceipt={onIssueReceipt} toast_={toast_} participants={participants} />
     </div>
   );
 }
