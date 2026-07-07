@@ -366,19 +366,10 @@ function addReceipt(receipt) {
 // abuse at 200 emails/month.
 const EMAILJS_SERVICE_ID    = "service_u97pazt";
 const EMAILJS_RECEIPT_TEMPLATE_ID = "template_hbjl6yv"; // dedicated receipt/invoice template
-const EMAILJS_PUBLIC_KEY    = "lVfbS-yLSA3hkGGT5";// Free EmailJS tier allows only 2 templates total. Reset uses one slot;
-// this Verify template is reused as a GENERIC SHELL for both email
-// verification AND donation receipts (see sendVerificationEmail and
-// sendReceiptEmail below) — it needs these variables in EmailJS's dashboard:
-//   {{to_email}}, {{recipient_name}}, {{email_heading}}, {{email_body}},
-//   {{{email_body_html}}} (triple braces — unescaped HTML, used only for
-//   the receipt's invoice table), {{cta_label}}, {{cta_link}}
-// If donations become regular, upgrading EmailJS to a paid tier ($9/mo,
-// Personal plan) unlocks a dedicated receipt template — at that point,
-// give receipts their own EMAILJS_RECEIPT_TEMPLATE_ID instead of sharing
-// this one, and point sendReceiptEmail at it.
-const EMAILJS_VERIFY_TEMPLATE_ID = "template_s5mtjrc";
-const EMAILJS_PUBLIC_KEY = "lVfbS-yLSA3hkGGT5";
+const EMAILJS_PUBLIC_KEY    = "lVfbS-yLSA3hkGGT5";
+// Supabase now handles verification + password reset emails via Titan SMTP.
+// EmailJS is only used for donation receipts (sendReceiptEmail below).
+// template_hbjl6yv is dedicated to receipts only.
 
 let _emailjsLoaded = null;
 async function loadEmailJS() {
@@ -397,114 +388,8 @@ async function loadEmailJS() {
   return _emailjsLoaded;
 }
 
-async function sendResetEmail({ toEmail, learnerName, resetLink }) {
-  const emailjs = await loadEmailJS();
-  return emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_RESET_TEMPLATE_ID, {
-    to_email: toEmail,
-    learner_name: learnerName,
-    reset_link: resetLink,
-  });
-}
-
-// ── Password reset tokens ──────────────────────────────────────────────────────
-// Single-use, time-limited tokens. A reset link looks like:
-//   https://quranvocab.awamibaitulmaal.org.in/?reset=TOKEN
-// Opening that link lets the learner set their own new password directly —
-// the actual password is never written into the email itself.
-const RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-function generateResetToken() {
-  const bytes = crypto.getRandomValues(new Uint8Array(24));
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-function getResetTokens() {
-  return storageGet("qv_reset_tokens") || {};
-}
-function createResetToken(userId, messageId = null) {
-  const tokens = getResetTokens();
-  const token = generateResetToken();
-  tokens[token] = { userId, messageId, createdAt: Date.now(), used: false };
-  storageSet("qv_reset_tokens", tokens);
-  return token;
-}
-function validateResetToken(token) {
-  const tokens = getResetTokens();
-  const entry = tokens[token];
-  if (!entry) return { valid: false, reason: "not-found" };
-  if (entry.used) return { valid: false, reason: "used" };
-  if (Date.now() - entry.createdAt > RESET_TOKEN_TTL_MS) return { valid: false, reason: "expired" };
-  return { valid: true, userId: entry.userId, messageId: entry.messageId };
-}
-function consumeResetToken(token) {
-  const tokens = getResetTokens();
-  if (tokens[token]) {
-    tokens[token].used = true;
-    storageSet("qv_reset_tokens", tokens);
-  }
-}
-
-// ── Email verification tokens ──────────────────────────────────────────────────
-// Separate token store from password-reset tokens (different purpose, should
-// never be interchangeable). A verification link looks like:
-//   https://quranvocab.awamibaitulmaal.org.in/?verify=TOKEN
-// New accounts are created with emailVerified:false and can't log in until
-// the link is opened — this catches typo'd/unreachable emails (e.g. gmail.cm)
-// at the moment of signup, instead of discovering it later when something
-// needs to be emailed to them.
-const VERIFY_TOKEN_TTL_MS = 48 * 60 * 60 * 1000; // 48 hours — longer than reset, since it's less urgent
-
-function getVerifyTokens() {
-  return storageGet("qv_verify_tokens") || {};
-}
-function createVerifyToken(userId) {
-  const tokens = getVerifyTokens();
-  const token = generateResetToken(); // same secure random generator, different store
-  tokens[token] = { userId, createdAt: Date.now(), used: false };
-  storageSet("qv_verify_tokens", tokens);
-  return token;
-}
-function validateVerifyToken(token) {
-  const tokens = getVerifyTokens();
-  const entry = tokens[token];
-  if (!entry) return { valid: false, reason: "not-found" };
-  if (entry.used) return { valid: false, reason: "used" };
-  if (Date.now() - entry.createdAt > VERIFY_TOKEN_TTL_MS) return { valid: false, reason: "expired" };
-  return { valid: true, userId: entry.userId };
-}
-function consumeVerifyToken(token) {
-  const tokens = getVerifyTokens();
-  if (tokens[token]) {
-    tokens[token].used = true;
-    storageSet("qv_verify_tokens", tokens);
-  }
-}
-
-// Verification emails and receipt emails share ONE EmailJS template slot
-// (EMAILJS_VERIFY_TEMPLATE_ID), since the free EmailJS tier only allows 2
-// templates total and Reset + Verify already use both. The shared template
-// must be built generically in EmailJS's dashboard with these variables:
-//   {{to_email}}, {{recipient_name}}, {{email_heading}}, {{email_body}},
-//   {{cta_label}}, {{cta_link}}
-// — so it can render either a "verify your email" message or a donation
-// receipt, depending on what this function passes in. If donations start
-// coming in regularly, upgrading EmailJS to a paid tier (for a dedicated
-// receipt template) is the natural next step — see DONATE comments below.
-async function sendVerificationEmail({ toEmail, learnerName, verifyLink }) {
-  const emailjs = await loadEmailJS();
-  return emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_VERIFY_TEMPLATE_ID, {
-    to_email: toEmail,
-    learner_name: learnerName,
-    verify_link: verifyLink,
-    // Generic shell variables, populated for the verification case specifically:
-    recipient_name: learnerName,
-    email_heading: "Verify Your Email",
-    email_body: `Welcome to Quranic Vocab — a daily journey into the words of the Qur'an, brought to you by Awami Baitulmaal Committee. Before you begin, please confirm this is your email address by clicking the link below. Once verified, you'll be logged in automatically and your first set of words will be ready and waiting. This link is valid for 48 hours. If you didn't create this account, you can safely ignore this email.`,
-    email_body_html: "", // unused for verification — plain email_body is used instead
-    cta_label: "Verify My Email",
-    cta_link: verifyLink,
-  });
-}
+// ── All auth emails (verification + password reset) handled by Supabase ───────
+// EmailJS is now used ONLY for donation receipts (sendReceiptEmail below).
 
 async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donationDate, purpose, note }) {
   const emailjs = await loadEmailJS();
