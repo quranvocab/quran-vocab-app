@@ -394,7 +394,9 @@ async function loadEmailJS() {
 async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donationDate, purpose, note }) {
   const emailjs = await loadEmailJS();
 
-  const regParts = [];
+  const charityName = DONATE.charityName && DONATE.charityName !== "Your Charity Name Here"
+    ? DONATE.charityName
+    : "Awami Baitulmaal Committee (Reg.)";
   if (DONATE.pan && DONATE.pan !== "PASTE_TRUST_PAN_HERE") regParts.push(`PAN: ${DONATE.pan}`);
   if (DONATE.reg12A) regParts.push(`12A Reg: ${DONATE.reg12A}`);
   if (DONATE.reg80G) {
@@ -409,35 +411,35 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
 
   const row = (label, value, highlight = false) => value
     ? `<tr>
-        <td style="padding:11px 18px;border-bottom:1px solid #e8f0eb;font-size:13px;color:#5a7a65;width:40%">${label}</td>
-        <td style="padding:11px 18px;border-bottom:1px solid #e8f0eb;font-size:14px;color:${highlight ? "#0c7a3a" : "#1a2820"};font-weight:${highlight ? "700" : "500"};text-align:right">${value}</td>
+        <td style="padding:11px 18px;border-bottom:1px solid rgba(0,200,230,.1);font-size:13px;color:#7ab8d4;width:40%">${label}</td>
+        <td style="padding:11px 18px;border-bottom:1px solid rgba(0,200,230,.1);font-size:14px;color:${highlight ? "#ffd96b" : "#f0f8ff"};font-weight:${highlight ? "700" : "500"};text-align:right">${value}</td>
        </tr>`
     : "";
 
   const invoiceHtml = `
-  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #d4e8db;">
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(0,200,230,.25);">
 
     <!-- Header -->
-    <div style="background:linear-gradient(135deg,#0c7a3a,#1a9e50);padding:28px 24px;text-align:center;">
+    <div style="background:linear-gradient(135deg,#071c2a,#0d2d40);padding:28px 24px;text-align:center;border-bottom:1px solid rgba(0,200,230,.2);">
       <div style="font-size:32px;margin-bottom:6px">📖</div>
-      <div style="font-size:13px;color:rgba(255,255,255,.75);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">Donation Receipt</div>
-      <div style="font-size:22px;font-weight:700;color:#ffffff">${DONATE.charityName || "Awami Baitulmaal Committee"}</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.65);margin-top:4px">Quranic Vocab Learning Platform</div>
+      <div style="font-size:13px;color:rgba(0,200,230,.7);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">Donation Receipt</div>
+      <div style="font-size:22px;font-weight:700;color:#f0f8ff">${charityName}</div>
+      <div style="font-size:12px;color:rgba(122,184,212,.65);margin-top:4px">Quranic Vocab Learning Platform</div>
     </div>
 
     <!-- Receipt Number Banner -->
-    <div style="background:#f0faf4;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #d4e8db;">
-      <span style="font-size:12px;color:#5a7a65;letter-spacing:.08em;text-transform:uppercase">Receipt Number</span>
-      <span style="font-family:monospace;font-size:18px;font-weight:700;color:#0c7a3a;letter-spacing:.05em">${receiptNo}</span>
+    <div style="background:rgba(0,200,230,.08);padding:14px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(0,200,230,.15);">
+      <span style="font-size:12px;color:#7ab8d4;letter-spacing:.08em;text-transform:uppercase">Receipt Number</span>
+      <span style="font-family:monospace;font-size:18px;font-weight:700;color:#00c8e6;letter-spacing:.05em">${receiptNo}</span>
     </div>
 
     <!-- Invoice Table -->
-    <div style="padding:0 0 8px">
+    <div style="padding:0 0 8px;background:#0d1f2d;">
       <table style="width:100%;border-collapse:collapse;">
         <tbody>
           ${row("Donor Name", donorName)}
           ${row("Donor Email", toEmail)}
-          ${row("Amount Received", `<span style="font-size:18px">₹${Number(amount).toLocaleString("en-IN")}</span>`, true)}
+          ${row("Amount Received", `<span style="font-size:18px;color:#ffd96b;font-weight:700">₹${Number(amount).toLocaleString("en-IN")}</span>`, true)}
           ${row("Date Received", formattedDate)}
           ${row("Purpose", purpose)}
           ${note ? row("Note", note) : ""}
@@ -447,25 +449,25 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
 
     <!-- Registration Details -->
     ${regParts.length > 0 ? `
-    <div style="margin:0 18px 16px;padding:12px 16px;background:#f8fdf9;border:1px solid #d4e8db;border-radius:8px;font-size:12px;color:#5a7a65;line-height:1.8">
+    <div style="margin:0 18px 16px;padding:12px 16px;background:rgba(0,200,230,.06);border:1px solid rgba(0,200,230,.15);border-radius:8px;font-size:12px;color:#7ab8d4;line-height:1.8">
       ${regParts.join(" &nbsp;·&nbsp; ")}
     </div>` : ""}
 
     <!-- Tax Note -->
     ${taxNote ? `
-    <div style="margin:0 18px 16px;padding:12px 16px;background:#e8f8ef;border-left:3px solid #0c7a3a;border-radius:0 6px 6px 0;font-size:12.5px;color:#0c7a3a;line-height:1.7">
+    <div style="margin:0 18px 16px;padding:12px 16px;background:rgba(0,200,230,.06);border-left:3px solid #00c8e6;border-radius:0 6px 6px 0;font-size:12.5px;color:#00c8e6;line-height:1.7">
       ${taxNote}
     </div>` : ""}
 
     <!-- Thank You -->
-    <div style="padding:16px 24px 20px;text-align:center;background:#f8fdf9;border-top:1px solid #d4e8db">
-      <p style="margin:0 0 6px;font-size:15px;color:#1a2820">جَزَاكَ اللَّهُ خَيْرًا</p>
-      <p style="margin:0;font-size:13px;color:#5a7a65;line-height:1.6">Thank you for your generous contribution. May Allah accept it and reward you abundantly.</p>
+    <div style="padding:16px 24px 20px;text-align:center;background:rgba(0,0,0,.2);border-top:1px solid rgba(0,200,230,.12)">
+      <p style="margin:0 0 6px;font-size:18px;color:#ffd96b">جَزَاكَ اللَّهُ خَيْرًا</p>
+      <p style="margin:0;font-size:13px;color:#7ab8d4;line-height:1.6">Thank you for your generous contribution.<br/>May Allah accept it and reward you abundantly.</p>
     </div>
 
     <!-- Footer -->
-    <div style="padding:12px 24px;background:#0c7a3a;text-align:center">
-      <p style="margin:0;font-size:11px;color:rgba(255,255,255,.65)">${DONATE.charityName} &nbsp;·&nbsp; support@awamibaitulmaal.org.in</p>
+    <div style="padding:12px 24px;background:#071c2a;text-align:center;border-top:1px solid rgba(0,200,230,.1)">
+      <p style="margin:0;font-size:11px;color:rgba(122,184,212,.5)">${charityName} &nbsp;·&nbsp; support@awamibaitulmaal.org.in</p>
     </div>
 
   </div>`;
@@ -474,7 +476,8 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
     to_email: toEmail,
     recipient_name: donorName,
     receipt_no: receiptNo,
-    email_heading: `Donation Receipt ${receiptNo} — ${DONATE.charityName || "Awami Baitulmaal Committee"}`,
+    from_email: "support@awamibaitulmaal.org.in",
+    email_heading: `Donation Receipt ${receiptNo} — ${charityName}`,
     email_body_html: invoiceHtml,
   });
 }
@@ -1681,11 +1684,12 @@ export default function App() {
     });
 
     if (error) {
-      if (error.message.toLowerCase().includes("email not confirmed") ||
-          error.message.toLowerCase().includes("invalid login")) {
+      // Only "email not confirmed" should show resend verification screen
+      // "invalid login credentials" = wrong password - show error message
+      if (error.message.toLowerCase().includes("email not confirmed")) {
         return { ok: false, reason: "not-verified", userId: profile.user_id, email: profile.email };
       }
-      toast_("Incorrect password. Please try again.");
+      toast_("⚠ Incorrect User ID or password. Please try again.");
       return { ok: false, reason: "wrong-password" };
     }
 
@@ -2148,12 +2152,12 @@ export default function App() {
             </div>
           ) : (
             <div className="nright">
-              <button className={`nbtn ${view === "learn" ? "on" : ""}`} onClick={() => setView("learn")}>Learn</button>
+              <button className={`nbtn ${view === "home" ? "on" : ""}`} onClick={() => setView("home")}>🏠 Home</button>
+              <button className={`ncta ${view === "learn" ? "on" : ""}`} onClick={() => setView("learn")}>📚 Learn</button>
               <button className={`nbtn ${view === "history" ? "on" : ""}`} onClick={() => setView("history")}>History</button>
               <button className={`nbtn ${view === "leaderboard" ? "on" : ""}`} onClick={() => setView("leaderboard")}>Ranks</button>
               <button className="ndonate" onClick={() => setShowDonate(true)}>🤲 Donate</button>
-              {!user ? <button className="ncta" onClick={() => setView("enroll")}>Login / Join Now</button>
-                : <button className="ncta" onClick={() => setView("learn")}>▶ Study</button>}
+              {!user && <button className="ncta" onClick={() => setView("enroll")}>Login / Join Now</button>}
               {user && (
                 <div className="nuser-wrap">
                   <button className="nuser" onClick={e => { e.stopPropagation(); setShowUserMenu(s => !s); }}>﷽ {user.name} <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
@@ -2162,6 +2166,7 @@ export default function App() {
                       {user.userId && <div className="nuser-menu-email" style={{ color: "var(--gold3)", fontWeight: 500 }}>ID: {user.userId}</div>}
                       <div className="nuser-menu-email">{user.email}</div>
                       <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("history"); }}>📋 My History</button>
+                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("resetRequest"); }}>🔑 Reset Password</button>
                       <button className="nuser-menu-item logout" onClick={() => { setShowUserMenu(false); logout(); }}>↪ Log Out</button>
                     </div>
                   )}
@@ -2325,8 +2330,8 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
             ))}
           </div>
           <div style={{ overflow: "hidden", marginTop: 4, direction: "ltr" }}>
-            <div style={{ display: "inline-block", whiteSpace: "nowrap", animation: "marquee 18s linear infinite", fontSize: 11, color: "var(--muted)" }}>
-              Keep going — each quiz unlocks more words on your path to the Quran. &nbsp;&nbsp;&nbsp;✦&nbsp;&nbsp;&nbsp; Keep going — each quiz unlocks more words on your path to the Quran.
+            <div style={{ display: "inline-block", whiteSpace: "nowrap", animation: "marquee 20s linear infinite", fontSize: 11, color: "var(--muted)" }}>
+              Keep going — each quiz unlocks more words on your path to the Quran. &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Keep going — each quiz unlocks more words on your path to the Quran. &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
             </div>
           </div>
         </div>
