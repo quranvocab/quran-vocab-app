@@ -2153,10 +2153,10 @@ export default function App() {
           ) : (
             <div className="nright">
               <button className={`nbtn ${view === "home" ? "on" : ""}`} onClick={() => setView("home")}>🏠 Home</button>
-              <button className={`ncta ${view === "learn" ? "on" : ""}`} onClick={() => setView("learn")}>📚 Learn</button>
               <button className={`nbtn ${view === "history" ? "on" : ""}`} onClick={() => setView("history")}>History</button>
               <button className={`nbtn ${view === "leaderboard" ? "on" : ""}`} onClick={() => setView("leaderboard")}>Ranks</button>
               <button className="ndonate" onClick={() => setShowDonate(true)}>🤲 Donate</button>
+              <button className={`ncta ${view === "learn" ? "on" : ""}`} onClick={() => setView("learn")}>📚 Learn</button>
               {!user && <button className="ncta" onClick={() => setView("enroll")}>Login / Join Now</button>}
               {user && (
                 <div className="nuser-wrap">
@@ -2165,8 +2165,8 @@ export default function App() {
                     <div className="nuser-menu" onMouseLeave={() => setShowUserMenu(false)}>
                       {user.userId && <div className="nuser-menu-email" style={{ color: "var(--gold3)", fontWeight: 500 }}>ID: {user.userId}</div>}
                       <div className="nuser-menu-email">{user.email}</div>
+                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("profile"); }}>👤 Profile Settings</button>
                       <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("history"); }}>📋 My History</button>
-                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("resetRequest"); }}>🔑 Reset Password</button>
                       <button className="nuser-menu-item logout" onClick={() => { setShowUserMenu(false); logout(); }}>↪ Log Out</button>
                     </div>
                   )}
@@ -2187,7 +2187,7 @@ export default function App() {
         ) : (
           <>
             {view === "home" && <HomePage user={user} allWords={allWords} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} />}
-            {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} />}
+            {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} onAdminLogin={async (pw) => { const h = await hashPassword(pw); if (h === getActiveAdminPasswordHash()) { sessionStorage.setItem("qv_admin_unlocked","1"); setAdminUnlocked(true); setView("admin"); return true; } return false; }} onFinanceLogin={async (pw) => { const h = await hashPassword(pw); if (h === getActiveFinancePasswordHash()) { sessionStorage.setItem("qv_finance_unlocked","1"); setFinanceUnlocked(true); setView("finance"); return true; } return false; }} />}
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
             {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} optsVisible={optsVisible} />}
             {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} setSelectedDay={setSelectedDay} />}
@@ -2195,6 +2195,7 @@ export default function App() {
             {view === "review" && reviewing && <ReviewPage rec={reviewing} setView={setView} allWords={allWords} />}
             {view === "leaderboard" && <LBPage participants={participants} user={user} />}
             {view === "resetPassword" && <ResetPasswordPage onSetPassword={setPasswordFromToken} setView={setView} />}
+            {view === "profile" && user && <ProfilePage user={user} saveUser={saveUser} setView={setView} toast_={toast_} />}
             {/* Email verification handled automatically by Supabase via onAuthStateChange */}
           </>
         )}
@@ -2245,6 +2246,7 @@ export default function App() {
 }
 
 function HomePage({ user, allWords, participants, onStart, setView, onDonate, onReview }) {
+  const [showAllSetsReady, setShowAllSetsReady] = useState(false);
   const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress).length : 0;
   const dayN = user ? getUnlockedDays(user.enrolledAt, user.dayProgress) : 0;
   const best = user?.scores?.length ? Math.max(...user.scores.map(s => s.pct)) : null;
@@ -2278,10 +2280,45 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
         {user ? (
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <button className="btn bg" onClick={() => setView("learn")}>Continue — Set {dayN}</button>
-            <button className="btn bh" onClick={() => onStart()}>All Sets Quiz</button>
+            <button className="btn bh" onClick={() => {
+              if (unlocked < 10) {
+                toast_("⚠ Complete at least Set 1 first to unlock All Sets Quiz!");
+                return;
+              }
+              setShowAllSetsReady(true);
+            }}>All Sets Quiz</button>
           </div>
         ) : <button className="btn bg" onClick={() => setView("enroll")}>Begin Your Journey →</button>}
       </div>
+
+      {/* All Sets Quiz Ready Modal */}
+      {showAllSetsReady && (
+        <div className="modal-overlay" onClick={() => setShowAllSetsReady(false)}>
+          <div className="modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>🏆 All Sets Quiz</h3>
+              <button className="modal-close" onClick={() => setShowAllSetsReady(false)}>×</button>
+            </div>
+            <div className="modal-body" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🎯</div>
+              <p style={{ fontSize: 15, color: "var(--text)", marginBottom: 8, fontWeight: 500 }}>
+                You're about to quiz on <strong style={{ color: "var(--cyan2)" }}>{unlocked}</strong> unlocked words
+              </p>
+              <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 20, lineHeight: 1.7 }}>
+                The timer starts as soon as you begin.<br/>
+                You have <strong style={{ color: "var(--gold2)" }}>~{Math.round(unlocked * 1.5)}s</strong> total — about 1.5s per word.<br/>
+                Find a quiet moment and stay focused.
+              </p>
+              <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                <button className="btn bh" onClick={() => setShowAllSetsReady(false)}>Not yet</button>
+                <button className="btn bg" onClick={() => { setShowAllSetsReady(false); onStart(); }}>
+                  I'm Ready — Start! →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="srow">
         <div className="sbox">
@@ -2330,8 +2367,11 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
             ))}
           </div>
           <div style={{ overflow: "hidden", marginTop: 4, direction: "ltr" }}>
-            <div style={{ display: "inline-block", whiteSpace: "nowrap", animation: "marquee 20s linear infinite", fontSize: 11, color: "var(--muted)" }}>
-              Keep going — each quiz unlocks more words on your path to the Quran. &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Keep going — each quiz unlocks more words on your path to the Quran. &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            <div style={{ display: "inline-flex", whiteSpace: "nowrap", animation: "marquee 22s linear infinite", fontSize: 11, color: "var(--muted)" }}>
+              <span>Keep going — each quiz unlocks more words on your path to the Quran.</span>
+              <span style={{ margin: "0 20px", color: "var(--cyan2)", opacity: .5 }}>✦</span>
+              <span>Keep going — each quiz unlocks more words on your path to the Quran.</span>
+              <span style={{ margin: "0 20px", color: "var(--cyan2)", opacity: .5 }}>✦</span>
             </div>
           </div>
         </div>
@@ -2394,7 +2434,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
   );
 }
 
-function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onResendVerification }) {
+function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onResendVerification, onAdminLogin, onFinanceLogin }) {
   // mode: "login" | "signup"
   const [mode, setMode] = useState("login");
 
@@ -2454,6 +2494,22 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
     setError("");
     if (!loginId.trim() || !loginPw) { setError("Enter your User ID and password."); return; }
     setChecking(true);
+
+    // Check admin/finance credentials first
+    const idLower = loginId.trim().toLowerCase();
+    if (idLower === "admin" && onAdminLogin) {
+      const ok = await onAdminLogin(loginPw);
+      setChecking(false);
+      if (!ok) setError("Incorrect admin password.");
+      return;
+    }
+    if (idLower === "finance" && onFinanceLogin) {
+      const ok = await onFinanceLogin(loginPw);
+      setChecking(false);
+      if (!ok) setError("Incorrect finance password.");
+      return;
+    }
+
     const result = await onLogin(loginId, loginPw);
     setChecking(false);
     if (!result.ok) {
@@ -2708,6 +2764,136 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
 }
 
 // ─── Reset Password Page (Supabase handles token via URL hash automatically) ──
+// ─── Profile Settings Page ────────────────────────────────────────────────────
+function ProfilePage({ user, saveUser, setView, toast_ }) {
+  const [section, setSection] = useState(null); // "userid" | "email" | "password"
+  const [val1, setVal1] = useState("");
+  const [val2, setVal2] = useState("");
+  const [pw, setPw] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState("");
+
+  const reset = () => { setVal1(""); setVal2(""); setPw(""); setError(""); setSuccess(""); setSaving(false); };
+  const open = (s) => { setSection(s); reset(); };
+
+  const submitUserId = async () => {
+    setError(""); setSaving(true);
+    const newId = val1.trim().toLowerCase();
+    if (!newId || !/^[a-z0-9_]{4,20}$/.test(newId)) { setError("User ID must be 4-20 characters, letters/numbers/underscore only."); setSaving(false); return; }
+    if (newId === user.userId) { setError("That's already your current User ID."); setSaving(false); return; }
+    const { data: existing } = await supabase.from("users").select("id").eq("user_id", newId).maybeSingle();
+    if (existing) { setError("That User ID is already taken."); setSaving(false); return; }
+    const { error: err } = await supabase.from("users").update({ user_id: newId }).eq("auth_id", user.supabaseId);
+    if (err) { setError("Failed to update User ID. Try again."); setSaving(false); return; }
+    saveUser({ ...user, userId: newId });
+    toast_("✅ User ID updated successfully!");
+    setSuccess("User ID changed to: " + newId);
+    setSaving(false);
+  };
+
+  const submitEmail = async () => {
+    setError(""); setSaving(true);
+    const newEmail = val1.trim().toLowerCase();
+    if (!newEmail.includes("@")) { setError("Enter a valid email address."); setSaving(false); return; }
+    if (newEmail === user.email) { setError("That's already your current email."); setSaving(false); return; }
+    const { error: err } = await supabase.auth.updateUser({ email: newEmail });
+    if (err) { setError("Failed to update email: " + err.message); setSaving(false); return; }
+    await supabase.from("users").update({ email: newEmail }).eq("auth_id", user.supabaseId);
+    toast_("✅ Verification sent to new email. Click the link to confirm.");
+    setSuccess("Verification email sent to: " + newEmail);
+    setSaving(false);
+  };
+
+  const submitPassword = async () => {
+    setError(""); setSaving(true);
+    if (!val1 || val1.length < 10) { setError("Password must be at least 10 characters."); setSaving(false); return; }
+    if (val1 !== val2) { setError("Passwords don't match."); setSaving(false); return; }
+    const pwErr = getPasswordComplexityError(val1);
+    if (pwErr) { setError(pwErr); setSaving(false); return; }
+    const { error: err } = await supabase.auth.updateUser({ password: val1 });
+    if (err) { setError("Failed to update password: " + err.message); setSaving(false); return; }
+    toast_("✅ Password updated successfully!");
+    setSuccess("Password changed successfully.");
+    setSaving(false);
+  };
+
+  return (
+    <div className="page pmd">
+      <div className="lbl">Account</div>
+      <h2>Profile Settings</h2>
+      <p className="sub" style={{ marginBottom: 24 }}>Manage your account details</p>
+
+      {/* Current info */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>User ID</span>
+            <span style={{ fontWeight: 600, color: "var(--gold2)" }}>{user.userId}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>Email</span>
+            <span style={{ fontSize: 13, color: "var(--text)" }}>{user.email}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>Name</span>
+            <span style={{ fontSize: 13, color: "var(--text)" }}>{user.name}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Action cards */}
+      {[
+        { key: "userid", label: "Change User ID", icon: "🪪", desc: "Update your login username" },
+        { key: "email", label: "Change Email Address", icon: "📧", desc: "A verification link will be sent to the new email" },
+        { key: "password", label: "Change Password", icon: "🔑", desc: "Must be 10+ chars with a number and special character" },
+      ].map(item => (
+        <div key={item.key} className="card" style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: section === item.key ? 16 : 0 }}>
+            <div>
+              <div style={{ fontWeight: 500 }}>{item.icon} {item.label}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{item.desc}</div>
+            </div>
+            <button className="btn bh bsm" onClick={() => section === item.key ? open(null) : open(item.key)}>
+              {section === item.key ? "Cancel" : "Change"}
+            </button>
+          </div>
+
+          {section === item.key && (
+            <div>
+              {success ? (
+                <div style={{ color: "var(--ok)", fontSize: 13, padding: "8px 0" }}>✅ {success}</div>
+              ) : (
+                <>
+                  {item.key === "userid" && (
+                    <div className="field"><label>New User ID</label><input value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="4-20 chars, letters/numbers/underscore" autoFocus /></div>
+                  )}
+                  {item.key === "email" && (
+                    <div className="field"><label>New Email Address</label><input type="email" value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="new@email.com" autoFocus /></div>
+                  )}
+                  {item.key === "password" && (<>
+                    <div className="field"><label>New Password</label><input type="password" value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" autoFocus /></div>
+                    <div className="field"><label>Confirm New Password</label><input type="password" value={val2} onChange={e => { setVal2(e.target.value); setError(""); }} placeholder="Re-enter password"
+                      style={val2 && val1 && val2 !== val1 ? { borderColor: "var(--err)" } : val2 && val1 && val2 === val1 ? { borderColor: "var(--ok)" } : {}} />
+                      {val2 && val1 && val2 !== val1 && <div style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>⚠ Passwords don't match</div>}
+                    </div>
+                  </>)}
+                  {error && <div className="enroll-error" style={{ marginBottom: 10 }}>⚠ {error}</div>}
+                  <button className="btn bg" onClick={item.key === "userid" ? submitUserId : item.key === "email" ? submitEmail : submitPassword} disabled={saving}>
+                    {saving ? "Saving…" : "Save Changes"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+
+      <button className="btn bh" style={{ marginTop: 8 }} onClick={() => setView("home")}>← Back to Home</button>
+    </div>
+  );
+}
+
 function ResetPasswordPage({ onSetPassword, setView }) {
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -2931,30 +3117,38 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
       <p className="sub" style={{ marginBottom: 26 }}>Set {unlocked} unlocked so far · {unlocked * WORDS_PER_DAY} words available</p>
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="lbl" style={{ marginBottom: 13 }}>Progress Calendar</div>
-        {/* Scrollable calendar with prev/next navigation */}
-        <div style={{ position: "relative" }}>
-          <div className="cal-scroll" style={{ overflowX: "auto", paddingBottom: 4 }}>
-            <div className="cal" style={{ gridTemplateColumns: `repeat(${totalDays + 2}, minmax(42px, 42px)) auto`, width: "max-content", minWidth: "100%" }}>
-              {Array.from({ length: totalDays }, (_, i) => i + 1).map(d => {
-                const locked = d > unlocked, isDone = done(d), isToday = d === unlocked;
-                return (
-                  <div key={d} className={`cc ${locked ? "locked" : isDone ? "done" : isToday ? "today" : "avail"} ${selectedDay === d ? "selected" : ""}`}
-                    title={locked ? `Unlocks once Set ${d - 1} is completed` : `Set ${d}`}
-                    onClick={() => !locked && selectSet(d)}>
-                    <div style={{ fontSize: isDone ? 10 : 12, fontWeight: 600, lineHeight: 1 }}>{isDone ? "✓" : d}</div>
-                    {isDone && <div style={{ fontSize: 8, opacity: .75, marginTop: 1 }}>{d}</div>}
-                  </div>
-                );
-              })}
-              <div className="cc cc-continues" title="More sets will be added as the word bank grows">⋯</div>
-              <button
-                className={`cc-allsets ${viewingAllSets ? "selected" : ""}`}
-                onClick={selectAllSets}
-                title="See your best All Sets Quiz attempt"
-              >
-                All Sets
-              </button>
-            </div>
+        <div className="cal-scroll" style={{ overflowX: "auto", paddingBottom: 6 }}>
+          <div style={{ display: "flex", gap: 8, width: "max-content", alignItems: "stretch" }}>
+            {Array.from({ length: totalDays }, (_, i) => i + 1).map(d => {
+              const locked = d > unlocked, isDone = done(d), isToday = d === unlocked;
+              return (
+                <div key={d}
+                  className={`cc ${locked ? "locked" : isDone ? "done" : isToday ? "today" : "avail"} ${selectedDay === d ? "selected" : ""}`}
+                  style={{ position: "relative", minWidth: 44, width: 44, height: 44 }}
+                  title={locked ? `Unlocks once Set ${d - 1} is completed` : `Set ${d}`}
+                  onClick={() => !locked && selectSet(d)}>
+                  {/* Tick in top-right corner for completed sets */}
+                  {isDone && (
+                    <span style={{
+                      position: "absolute", top: 3, right: 4,
+                      fontSize: 9, fontWeight: 900, color: "var(--ok)",
+                      lineHeight: 1, textShadow: "0 0 6px rgba(0,200,230,.4)"
+                    }}>✓</span>
+                  )}
+                  {/* Set number - same size whether done or not */}
+                  <span style={{ fontSize: 12, fontWeight: 600, lineHeight: 1 }}>{d}</span>
+                </div>
+              );
+            })}
+            <div className="cc cc-continues" style={{ minWidth: 44, width: 44, height: 44 }}
+              title="More sets coming">⋯</div>
+            <button
+              className={`cc-allsets ${viewingAllSets ? "selected" : ""}`}
+              style={{ height: 44, minWidth: 80 }}
+              onClick={selectAllSets}
+              title="All Sets Quiz">
+              All Sets
+            </button>
           </div>
         </div>
         <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 11, color: "var(--muted)" }}>
@@ -4036,6 +4230,163 @@ function FinancePage({ receipts, onIssueReceipt, toast_, participants = [] }) {
   );
 }
 
+// ─── Words Table with inline editing ─────────────────────────────────────────
+function WordsTable({ allWords, customWords, saveWords }) {
+  const [editIdx, setEditIdx] = useState(null);
+  const [editForm, setEditForm] = useState({});
+
+  const openEdit = (w, i) => {
+    setEditIdx(i);
+    setEditForm({ ...w });
+  };
+  const cancelEdit = () => { setEditIdx(null); setEditForm({}); };
+  const saveEdit = () => {
+    const updated = customWords.map(w => w === allWords[editIdx] ? { ...editForm } : w);
+    saveWords(updated);
+    setEditIdx(null);
+    setEditForm({});
+  };
+
+  return (
+    <div style={{ maxHeight: 500, overflowY: "auto" }}>
+      <table className="tbl">
+        <thead><tr><th>Arabic</th><th>Translit</th><th>English</th><th>Urdu</th><th>Root</th><th></th></tr></thead>
+        <tbody>
+          {allWords.map((w, i) => {
+            const isCust = customWords.includes(w);
+            if (editIdx === i) {
+              return (
+                <tr key={i} style={{ background: "rgba(0,200,230,.06)" }}>
+                  <td><input value={editForm.arabic || ""} onChange={e => setEditForm(f => ({ ...f, arabic: e.target.value }))} style={{ direction: "rtl", fontSize: 18, fontFamily: "serif", width: 90, background: "transparent", border: "1px solid var(--cyan2)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
+                  <td><input value={editForm.translit || ""} onChange={e => setEditForm(f => ({ ...f, translit: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
+                  <td><input value={editForm.english || ""} onChange={e => setEditForm(f => ({ ...f, english: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
+                  <td><input value={editForm.urdu || ""} onChange={e => setEditForm(f => ({ ...f, urdu: e.target.value }))} style={{ direction: "rtl", fontFamily: "serif", width: 70, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
+                  <td><input value={editForm.root || ""} onChange={e => setEditForm(f => ({ ...f, root: e.target.value }))} style={{ direction: "rtl", fontFamily: "serif", width: 60, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
+                  <td style={{ display: "flex", gap: 4 }}>
+                    <button className="btn bg bsm" onClick={saveEdit}>✓</button>
+                    <button className="btn bh bsm" onClick={cancelEdit}>✕</button>
+                  </td>
+                </tr>
+              );
+            }
+            return (
+              <tr key={i}>
+                <td><span className="arabic" style={{ fontSize: 20 }}>{w.arabic}</span></td>
+                <td style={{ color: "var(--muted)", fontStyle: "italic" }}>{w.translit}</td>
+                <td>{w.english}</td>
+                <td><span className="arabic" style={{ fontSize: 14, color: "var(--teal2)" }}>{w.urdu || "—"}</span></td>
+                <td><span className="arabic" style={{ fontSize: 13, color: "var(--teal2)" }}>{w.root}</span></td>
+                <td style={{ display: "flex", gap: 4 }}>
+                  {isCust && <button className="btn bh bsm" style={{ fontSize: 10 }} onClick={() => openEdit(w, i)}>✏</button>}
+                  {isCust ? <button className="del" onClick={() => saveWords(customWords.filter(x => x !== w))}>✕</button> : <span style={{ fontSize: 10, color: "var(--muted)" }}>built-in</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Rewards Tab — Certificate for 100+ mastered words ───────────────────────
+function RewardsTab({ participants, toast_ }) {
+  const [selected, setSelected] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState({});
+
+  // Find eligible users — those with scores (mastery computed from scores)
+  const eligible = participants.filter(p => (p.scores || []).length > 0);
+
+  const getMastered = (p) => {
+    const { masteredSet } = buildStrictMastery(p.scores || []);
+    return masteredSet.size;
+  };
+
+  const sendCertificate = async (p) => {
+    setSending(true);
+    const masteredCount = getMastered(p);
+    const date = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+    const certHtml = `
+    <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(255,210,80,.3);">
+      <div style="background:linear-gradient(135deg,#071c2a,#1a2d1a);padding:28px 24px;text-align:center;border-bottom:1px solid rgba(255,210,80,.2);">
+        <div style="font-size:40px;margin-bottom:8px">🏆</div>
+        <div style="font-size:13px;color:rgba(255,210,80,.7);letter-spacing:.15em;text-transform:uppercase;margin-bottom:4px">Certificate of Achievement</div>
+        <div style="font-size:22px;font-weight:700;color:#f0f8ff">Quranic Vocab</div>
+        <div style="font-size:12px;color:rgba(122,184,212,.6);margin-top:4px">Awami Baitulmaal Committee (Reg.)</div>
+      </div>
+      <div style="padding:32px 24px;text-align:center;background:#0d1f2d;">
+        <p style="color:#7ab8d4;font-size:14px;margin:0 0 6px">This is to certify that</p>
+        <h2 style="color:#ffd96b;font-size:26px;margin:0 0 6px;font-weight:700">${p.name}</h2>
+        <p style="color:#7ab8d4;font-size:14px;margin:0 0 20px">has successfully mastered</p>
+        <div style="background:rgba(255,210,80,.08);border:1px solid rgba(255,210,80,.25);border-radius:10px;padding:18px;display:inline-block;margin-bottom:20px;">
+          <div style="font-size:48px;font-weight:300;color:#ffd96b;line-height:1">${masteredCount}</div>
+          <div style="font-size:13px;color:rgba(255,210,80,.7);margin-top:4px">Quranic Vocabulary Words</div>
+        </div>
+        <p style="font-family:serif;font-size:22px;color:#ffd96b;margin:0 0 8px">مَاشَاءَ اللَّه</p>
+        <p style="color:#7ab8d4;font-size:13px;margin:0 0 20px;line-height:1.6">May Allah grant you continued growth in understanding His Noble Book.</p>
+        <p style="color:rgba(122,184,212,.5);font-size:12px;margin:0">Awarded on ${date}</p>
+      </div>
+      <div style="padding:12px 24px;background:#071c2a;text-align:center;border-top:1px solid rgba(255,210,80,.1)">
+        <p style="margin:0;font-size:11px;color:rgba(122,184,212,.4)">Awami Baitulmaal Committee (Reg.) · support@awamibaitulmaal.org.in</p>
+      </div>
+    </div>`;
+
+    try {
+      const emailjs = await loadEmailJS();
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_RECEIPT_TEMPLATE_ID, {
+        to_email: p.email,
+        recipient_name: p.name,
+        from_email: "support@awamibaitulmaal.org.in",
+        email_heading: `🏆 Certificate of Achievement — Quranic Vocab`,
+        email_body_html: certHtml,
+      });
+      setSent(prev => ({ ...prev, [p.userId]: true }));
+      toast_(`✅ Certificate sent to ${p.name}!`);
+    } catch (err) {
+      toast_("⚠ Failed to send certificate — check EmailJS connection.");
+    }
+    setSending(false);
+  };
+
+  return (
+    <div className="card">
+      <div className="lbl" style={{ marginBottom: 8 }}>🏆 Mastery Certificates</div>
+      <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+        Send a personalised certificate to learners who have mastered <strong style={{ color: "var(--gold2)" }}>100+</strong> words. Each certificate is emailed directly to the learner.
+      </p>
+      {eligible.length === 0 ? (
+        <div style={{ textAlign: "center", color: "var(--muted)", padding: 40 }}>No participants with quiz history yet.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {eligible.map(p => {
+            const mastered = getMastered(p);
+            const isEligible = mastered >= 100;
+            const alreadySent = sent[p.userId];
+            return (
+              <div key={p.userId} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "rgba(255,255,255,.03)", borderRadius: 8, border: `1px solid ${isEligible ? "rgba(255,210,80,.2)" : "rgba(255,255,255,.06)"}` }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 500, color: "var(--text)" }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>{p.userId} · {mastered} words mastered</div>
+                </div>
+                {isEligible ? (
+                  <button className="btn bg bsm" disabled={sending || alreadySent}
+                    onClick={() => sendCertificate(p)}>
+                    {alreadySent ? "✅ Sent" : sending ? "Sending…" : "🏆 Send Certificate"}
+                  </button>
+                ) : (
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{mastered}/100 words</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData }) {
   const [resetTarget, setResetTarget] = useState(null); // userId being reset, or null
   const [resetMessageId, setResetMessageId] = useState(null); // linked message, if reset was triggered from Messages tab
@@ -4130,29 +4481,12 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
         <button className={`tab ${tab === "words" ? "on" : ""}`} onClick={() => setTab("words")}>All Words ({allWords.length})</button>
         <button className={`tab ${tab === "add" ? "on" : ""}`} onClick={() => setTab("add")}>Add Word</button>
         <button className={`tab ${tab === "parts" ? "on" : ""}`} onClick={() => setTab("parts")}>Participants ({participants.length})</button>
-        <button className={`tab ${tab === "messages" ? "on" : ""}`} onClick={() => setTab("messages")}>
-          ✉ Messages {messages.filter(m => !m.resolved).length > 0 && <span className="tab-badge">{messages.filter(m => !m.resolved).length}</span>}
-        </button>
+        <button className={`tab ${tab === "rewards" ? "on" : ""}`} onClick={() => setTab("rewards")}>🏆 Rewards</button>
         <button className={`tab ${tab === "settings" ? "on" : ""}`} onClick={() => setTab("settings")}>⚙ Settings</button>
       </div>
       {tab === "words" && (
         <div className="card">
-          <div style={{ maxHeight: 460, overflowY: "auto" }}>
-            <table className="tbl">
-              <thead><tr><th>Arabic</th><th>Transliteration</th><th>English</th><th>Urdu</th><th>Root</th><th></th></tr></thead>
-              <tbody>{allWords.map((w, i) => {
-                const isCust = customWords.includes(w);
-                return <tr key={i}>
-                  <td><span className="arabic" style={{ fontSize: 22 }}>{w.arabic}</span></td>
-                  <td style={{ color: "var(--muted)", fontStyle: "italic" }}>{w.translit}</td>
-                  <td>{w.english}</td>
-                  <td><span className="arabic" style={{ fontSize: 15, color: "var(--teal2)" }}>{w.urdu || "—"}</span></td>
-                  <td><span className="arabic" style={{ fontSize: 13, color: "var(--teal2)" }}>{w.root}</span></td>
-                  <td>{isCust ? <button className="del" onClick={() => saveWords(customWords.filter(x => x !== w))}>✕</button> : <span style={{ fontSize: 10, color: "var(--muted)" }}>built-in</span>}</td>
-                </tr>;
-              })}</tbody>
-            </table>
-          </div>
+          <WordsTable allWords={allWords} customWords={customWords} saveWords={saveWords} />
         </div>
       )}
       {tab === "add" && (
@@ -4211,51 +4545,9 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
             </table>}
         </div>
       )}
-      {tab === "messages" && (
-        <div className="card">
-          {messages.length === 0 ? (
-            <div style={{ textAlign: "center", color: "var(--muted)", padding: 40 }}>No messages yet. Password reset requests from learners will appear here.</div>
-          ) : (
-            <div className="msg-list">
-              {messages.map(m => {
-                const accountUnknown = m.learnerName?.startsWith("(unknown");
-                const isAck = m.type === "password_reset_completed";
-                return (
-                <div key={m.id} className={`msg-item ${m.resolved ? "resolved" : !m.read ? "unread" : ""}`} onClick={() => !m.read && onMarkRead(m.id)}>
-                  <div className="msg-icon">{isAck ? "✅" : m.resolved ? "✅" : accountUnknown ? "⚠️" : "🔑"}</div>
-                  <div className="msg-body">
-                    <div className="msg-title">
-                      {isAck ? "Reset completed" : "Password reset request"} — <strong>{m.userId}</strong>
-                      {!m.resolved && !m.read && <span className="msg-new-dot" />}
-                    </div>
-                    {accountUnknown ? (
-                      <div className="msg-sub" style={{ color: "var(--err)" }}>⚠ No account found with this User ID — likely a typo. {m.note ? `Note: ${m.note}` : ""}</div>
-                    ) : isAck ? (
-                      <div className="msg-sub" style={{ color: "var(--ok)" }}>{m.learnerName} successfully set their new password.</div>
-                    ) : (
-                      <div className="msg-sub">{m.learnerName}{m.note ? ` · ${m.note}` : ""}</div>
-                    )}
-                    <div className="msg-date">{new Date(m.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
-                  </div>
-                  <div className="msg-actions">
-                    {!m.resolved && !accountUnknown && !isAck && (
-                      <>
-                        <button className="btn bg bsm" onClick={(e) => { e.stopPropagation(); setResetTarget(m.userId); setResetMessageId(m.id); setResetError(""); setResetSent(false); }}>Send Reset Link</button>
-                        <button className="btn bh bsm" onClick={(e) => { e.stopPropagation(); onMarkResolved(m.id); }}>Mark Resolved</button>
-                      </>
-                    )}
-                    {!m.resolved && accountUnknown && (
-                      <button className="btn bh bsm" onClick={(e) => { e.stopPropagation(); onMarkResolved(m.id); }}>Dismiss (No Account)</button>
-                    )}
-                    {(m.resolved || isAck) && <span style={{ fontSize: 11, color: "var(--ok)" }}>{isAck ? "Acknowledged" : "Resolved"}</span>}
-                  </div>
-                </div>
-              );})}
-            </div>
-          )}
-        </div>
+      {tab === "rewards" && (
+        <RewardsTab participants={participants} toast_={toast_} />
       )}
-      {tab === "settings" && <AdminEmailSettings toast_={toast_} />}
       {tab === "settings" && <ResetTestDataPanel onResetAllTestData={onResetAllTestData} />}
 
       {resetTarget && (
@@ -4334,62 +4626,6 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── Admin Email Settings (one-time setup, edit requires password confirm) ────
-function AdminEmailSettings({ toast_ }) {
-  const [savedEmail, setSavedEmail] = useState(getAdminEmail());
-  const [editing, setEditing] = useState(!savedEmail);
-  const [newEmail, setNewEmail] = useState(savedEmail);
-  const [confirmPw, setConfirmPw] = useState("");
-  const [error, setError] = useState("");
-  const [checking, setChecking] = useState(false);
-
-  const submit = async () => {
-    setError("");
-    const trimmed = newEmail.trim();
-    if (!trimmed || !trimmed.includes("@")) { setError("Enter a valid email address."); return; }
-    // Re-confirm admin password before allowing the change, since this is
-    // already inside the unlocked Admin panel.
-    if (!confirmPw) { setError("Enter your admin password to confirm this change."); return; }
-    setChecking(true);
-    const hash = await hashPassword(confirmPw);
-    setChecking(false);
-    if (hash !== getActiveAdminPasswordHash()) { setError("Incorrect admin password."); return; }
-
-    setAdminEmail(trimmed);
-    setSavedEmail(trimmed);
-    setEditing(false);
-    setConfirmPw("");
-    toast_("Admin notification email saved.");
-  };
-
-  return (
-    <div className="card" style={{ maxWidth: 440, marginTop: 16 }}>
-      <div className="lbl">Admin Notification Email</div>
-      {!editing ? (
-        <>
-          <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 12 }}>
-            Current email: <strong style={{ color: "var(--gold3)" }}>{savedEmail}</strong>
-          </p>
-          <button className="btn bh bsm" onClick={() => { setEditing(true); setNewEmail(savedEmail); setError(""); }}>Change Email</button>
-        </>
-      ) : (
-        <>
-          <div className="field"><label>Email Address</label><input type="email" value={newEmail} onChange={e => { setNewEmail(e.target.value); setError(""); }} placeholder="admin@example.com" /></div>
-          <div className="field"><label>Confirm Admin Password</label><input type="password" value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setError(""); }} placeholder="Required to save changes" /></div>
-          {error && <div className="enroll-error">⚠ {error}</div>}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn bg" onClick={submit} disabled={checking}>{checking ? "Saving…" : "Save Email"}</button>
-            {savedEmail && <button className="btn bh" onClick={() => { setEditing(false); setError(""); }}>Cancel</button>}
-          </div>
-        </>
-      )}
-      <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 12, lineHeight: 1.6 }}>
-        This is a record-keeping address — password reset and verification emails to learners are already sent automatically via EmailJS. This address is just where you, as admin, can be reached if that's wired up separately later.
-      </p>
     </div>
   );
 }
