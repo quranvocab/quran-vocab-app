@@ -1446,8 +1446,16 @@ export default function App() {
   const resetTokenFromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("reset") : null;
   const verifyTokenFromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("verify") : null;
   const [view, setView] = useState(isAdminRoute ? "admin" : isFinanceRoute ? "finance" : "home");
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => storageGet("qv_user") || null); // instant restore on PWA reload — Supabase session reconciles async
+  const userRef = React.useRef(null);
+  React.useEffect(() => { userRef.current = user; }, [user]);
   const [customWords, setCustomWords] = useState([]);
+  const [wordOverrides, setWordOverrides] = useState(() => storageGet("qv_word_overrides") || {});
+  const saveWordOverride = (arabicKey, form) => {
+    const next = { ...wordOverrides, [arabicKey]: form };
+    setWordOverrides(next);
+    storageSet("qv_word_overrides", next);
+  };
   const [participants, setParticipants] = useState([]);
   const [quiz, setQuiz] = useState(null);
   const quizRef = React.useRef(null);
@@ -1488,8 +1496,21 @@ export default function App() {
         return;
       }
 
+      // ── PWA reload fix: restore user INSTANTLY from localStorage so an
+      // iPhone app-switch (which often fully reloads the PWA) never shows a
+      // logged-out flash. Supabase then verifies the session in background —
+      // if it's genuinely gone, we sign the user out properly.
+      const cached = storageGet("qv_user");
+      if (cached?.userId) setUser(cached);
+
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) await loadUserProfile(session.user.id);
+      if (session) {
+        await loadUserProfile(session.user.id, { silent: !!cached });
+      } else if (cached) {
+        // Supabase session truly expired — clear the optimistic restore
+        setUser(null);
+        storageRemove("qv_user");
+      }
 
       // Load participants from Supabase users table
       const { data: parts } = await supabase.from("users").select("*");
@@ -1516,7 +1537,11 @@ export default function App() {
       if (event === "SIGNED_IN" && session) {
         // Don't auto-login during password recovery — user must set new password first
         if (isPasswordRecovery.current) return;
-        await loadUserProfile(session.user.id);
+        // iOS/PWA fires SIGNED_IN on every token refresh when the app regains
+        // focus — if this user is already logged in, reload silently (no toast,
+        // no navigation) so they stay exactly where they were.
+        const alreadyLoggedIn = userRef.current?.supabaseId === session.user.id;
+        await loadUserProfile(session.user.id, { silent: alreadyLoggedIn });
         const { data: parts } = await supabase.from("users").select("*");
         if (parts) setParticipants(parts.map(p => ({
           userId: p.user_id, name: p.name, email: p.email,
@@ -1525,6 +1550,10 @@ export default function App() {
           dayProgress: storageGet(`qv_progress_${p.user_id}`) || {},
           emailVerified: true, supabaseId: p.auth_id,
         })));
+      }
+      if (event === "USER_UPDATED" && session?.user) {
+        // Email change confirmed — sync public.users with the new auth email
+        await supabase.from("users").update({ email: session.user.email }).eq("auth_id", session.user.id);
       }
       if (event === "SIGNED_OUT") {
         setUser(null);
@@ -1540,7 +1569,7 @@ export default function App() {
 
   // Load user profile from Supabase users table
   // Profile is auto-created by database trigger when auth user signs up
-  const loadUserProfile = async (authId) => {
+  const loadUserProfile = async (authId, opts = {}) => {
     const { data: profile, error } = await supabase
       .from("users").select("*").eq("auth_id", authId).maybeSingle();
 
@@ -1568,8 +1597,10 @@ export default function App() {
     };
     setUser(u);
     storageSet("qv_user", u);
-    toast_(`✅ Welcome, ${u.name}! 🕌`);
-    setView("home");
+    if (!opts.silent) {
+      toast_(`✅ Welcome, ${u.name}! 🕌`);
+      setView("home");
+    }
   };
 
   const unlockAdmin = () => {
@@ -1614,6 +1645,15 @@ export default function App() {
   const registerUser = async (userId, password, name, email) => {
     const idLower    = userId.trim().toLowerCase();
     const emailLower = email.trim().toLowerCase();
+
+    // Check duplicate EMAIL first — if the email is already registered,
+    // that's the error the person needs to see (not a user-id clash)
+    const { data: existingEmail } = await supabase
+      .from("users").select("id").eq("email", emailLower).maybeSingle();
+    if (existingEmail) {
+      toast_("That email is already registered. Please log in or use a different email.");
+      return { ok: false, reason: "email-taken" };
+    }
 
     // Check duplicate User ID in Supabase users table
     const { data: existingId } = await supabase
@@ -1898,7 +1938,7 @@ export default function App() {
     }
   };
 
-  const allWords = [...WORD_BANK, ...customWords];
+  const allWords = [...WORD_BANK.map(w => wordOverrides[w.arabic] ? { ...w, ...wordOverrides[w.arabic] } : w), ...customWords];
 
   const startQuiz = (day = null, customPool = null) => {
     if (!user) { toast_("Please enroll first"); return; }
@@ -2230,7 +2270,7 @@ export default function App() {
 
         {isAdminRoute || view === "admin" ? (
           adminUnlocked
-            ? <AdminPage customWords={customWords} saveWords={saveCW} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} />
+            ? <AdminPage customWords={customWords} saveWords={saveCW} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} wordOverrides={wordOverrides} onSaveOverride={saveWordOverride} />
             : <AdminGate onUnlock={unlockAdmin} />
         ) : isFinanceRoute || view === "finance" ? (
           financeUnlocked
@@ -2866,9 +2906,13 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
     if (oldScores) { storageSet(`qv_scores_${newId}`, oldScores); storageRemove(`qv_scores_${user.userId}`); }
     if (oldProgress) { storageSet(`qv_progress_${newId}`, oldProgress); storageRemove(`qv_progress_${user.userId}`); }
     saveUser({ ...user, userId: newId });
-    toast_("✅ User ID updated successfully!");
-    setSuccess("User ID changed to: " + newId);
+    toast_("✅ User ID updated — please log in again with your new ID.");
+    setSuccess("User ID changed to: " + newId + ". Logging you out…");
     setSaving(false);
+    setTimeout(async () => {
+      await supabase.auth.signOut();
+      setView("enroll");
+    }, 2000);
   };
 
   const submitEmail = async () => {
@@ -2876,12 +2920,33 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
     const newEmail = val1.trim().toLowerCase();
     if (!newEmail.includes("@")) { setError("Enter a valid email address."); setSaving(false); return; }
     if (newEmail === user.email) { setError("That's already your current email."); setSaving(false); return; }
+    // Check the new email isn't already registered to another account
+    const { data: emailExists } = await supabase.from("users").select("id").eq("email", newEmail).maybeSingle();
+    if (emailExists) { setError("That email is already registered to another account."); setSaving(false); return; }
+    const oldEmail = user.email;
     const { error: err } = await supabase.auth.updateUser({ email: newEmail });
     if (err) { setError("Failed to update email: " + err.message); setSaving(false); return; }
-    await supabase.from("users").update({ email: newEmail }).eq("auth_id", user.supabaseId);
-    toast_("✅ Verification sent to new email. Click the link to confirm.");
-    setSuccess("Verification email sent to: " + newEmail);
+    // Note: public.users email is synced automatically after the user
+    // confirms the link (see USER_UPDATED handler) — not before.
+    // Send a courtesy notice to the OLD email so the owner is aware.
+    try {
+      const emailjs = await loadEmailJS();
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_RECEIPT_TEMPLATE_ID, {
+        to_email: oldEmail,
+        recipient_name: user.name,
+        from_email: "support@awamibaitulmaal.org.in",
+        email_heading: "Security notice — email change requested on your Quranic Vocab account",
+        email_body_html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(0,200,230,.25);"><div style="padding:28px 24px;text-align:center;"><div style="font-size:34px;margin-bottom:10px">🔔</div><h2 style="color:#00c8e6;font-size:20px;margin:0 0 12px">Email Change Requested</h2><p style="color:#7ab8d4;font-size:14px;line-height:1.8;margin:0">A request was made to change the email on your Quranic Vocab account from <strong style="color:#f0f8ff">${oldEmail}</strong> to <strong style="color:#f0f8ff">${newEmail}</strong>.<br/><br/>If this was you, no action is needed — just confirm via the link sent to the new address.<br/><br/>If this was NOT you, contact <a href="mailto:support@awamibaitulmaal.org.in" style="color:#00c8e6">support@awamibaitulmaal.org.in</a> immediately.</p></div></div>`,
+      });
+    } catch (e) { console.warn("Old-email notice failed:", e); }
+    toast_("✅ Verification sent to your new email. You'll be logged out — log in again after confirming.");
+    setSuccess("Verification sent to: " + newEmail + ". Logging you out…");
     setSaving(false);
+    // Force re-login after a credential change
+    setTimeout(async () => {
+      await supabase.auth.signOut();
+      setView("enroll");
+    }, 2500);
   };
 
   const submitPassword = async () => {
@@ -2896,9 +2961,13 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
     if (verifyErr) { setError("Current password is incorrect."); setSaving(false); return; }
     const { error: err } = await supabase.auth.updateUser({ password: val1 });
     if (err) { setError("Failed to update password: " + err.message); setSaving(false); return; }
-    toast_("✅ Password updated successfully!");
-    setSuccess("Password changed successfully.");
+    toast_("✅ Password updated — please log in again with your new password.");
+    setSuccess("Password changed. Logging you out…");
     setSaving(false);
+    setTimeout(async () => {
+      await supabase.auth.signOut();
+      setView("enroll");
+    }, 2000);
   };
 
   return (
@@ -4366,19 +4435,28 @@ function FinancePage({ receipts, onIssueReceipt, toast_, participants = [] }) {
 }
 
 // ─── Words Table with inline editing ─────────────────────────────────────────
-function WordsTable({ allWords, customWords, saveWords }) {
+function WordsTable({ allWords, customWords, saveWords, onSaveOverride }) {
   const [editIdx, setEditIdx] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [editKey, setEditKey] = useState(null); // original arabic — stable key for overrides
 
   const openEdit = (w, i) => {
     setEditIdx(i);
+    setEditKey(w.arabic);
     setEditForm({ ...w });
   };
-  const cancelEdit = () => { setEditIdx(null); setEditForm({}); };
+  const cancelEdit = () => { setEditIdx(null); setEditKey(null); setEditForm({}); };
   const saveEdit = () => {
-    const updated = customWords.map(w => w === allWords[editIdx] ? { ...editForm } : w);
-    saveWords(updated);
+    const target = allWords[editIdx];
+    const isCust = customWords.includes(target);
+    if (isCust) {
+      saveWords(customWords.map(w => w === target ? { ...editForm } : w));
+    } else if (onSaveOverride) {
+      // Built-in word — persist edit as an override keyed by original arabic
+      onSaveOverride(editKey, { ...editForm });
+    }
     setEditIdx(null);
+    setEditKey(null);
     setEditForm({});
   };
 
@@ -4412,7 +4490,7 @@ function WordsTable({ allWords, customWords, saveWords }) {
                 <td><span className="arabic" style={{ fontSize: 14, color: "var(--teal2)" }}>{w.urdu || "—"}</span></td>
                 <td><span className="arabic" style={{ fontSize: 13, color: "var(--teal2)" }}>{w.root}</span></td>
                 <td style={{ display: "flex", gap: 4 }}>
-                  {isCust && <button className="btn bh bsm" style={{ fontSize: 10 }} onClick={() => openEdit(w, i)}>✏</button>}
+                  <button className="btn bh bsm" style={{ fontSize: 10 }} onClick={() => openEdit(w, i)}>✏</button>
                   {isCust ? <button className="del" onClick={() => saveWords(customWords.filter(x => x !== w))}>✕</button> : <span style={{ fontSize: 10, color: "var(--muted)" }}>built-in</span>}
                 </td>
               </tr>
@@ -4522,7 +4600,7 @@ function RewardsTab({ participants, toast_ }) {
   );
 }
 
-function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData }) {
+function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData, wordOverrides = {}, onSaveOverride }) {
   const [resetTarget, setResetTarget] = useState(null); // userId being reset, or null
   const [resetMessageId, setResetMessageId] = useState(null); // linked message, if reset was triggered from Messages tab
   const [resetSending, setResetSending] = useState(false);
@@ -4538,7 +4616,7 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
   const [arabic, setArabic] = useState(""), [translit, setTranslit] = useState(""), [english, setEnglish] = useState("");
   const [urdu, setUrdu] = useState(""), [root, setRootField] = useState(""), [rootEnglish, setRootEnglish] = useState(""), [rootUrdu, setRootUrdu] = useState("");
   const [ayahRef, setAyahRef] = useState("");
-  const allWords = [...WORD_BANK, ...customWords];
+  const allWords = [...WORD_BANK.map(w => (wordOverrides[w.arabic] ? { ...w, ...wordOverrides[w.arabic] } : w)), ...customWords];
 
   const submitReset = async () => {
     setResetError("");
@@ -4621,7 +4699,7 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
       </div>
       {tab === "words" && (
         <div className="card">
-          <WordsTable allWords={allWords} customWords={customWords} saveWords={saveWords} />
+          <WordsTable allWords={allWords} customWords={customWords} saveWords={saveWords} onSaveOverride={onSaveOverride} />
         </div>
       )}
       {tab === "add" && (
