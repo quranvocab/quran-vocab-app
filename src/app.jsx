@@ -373,6 +373,37 @@ function addReceipt(receipt) {
   return record;
 }
 
+// ── Supabase: scores + progress (Phase 3) ──────────────────────────────────
+// A `scores` row -> the shape the rest of the app already expects everywhere
+// (Home, History, Leaderboard, Admin) so those screens need zero changes.
+function mapScoreRow(row) {
+  return {
+    score: row.score, total: row.total, pct: row.pct, day: row.day,
+    date: row.quiz_date, detail: row.detail || [],
+    timeUsedSec: row.time_used_sec, timedOut: row.timed_out || false,
+  };
+}
+
+async function insertScore(dbUserId, rec) {
+  const { error } = await supabase.from("scores").insert({
+    user_id: dbUserId, day: rec.day != null ? String(rec.day) : null,
+    score: rec.score, total: rec.total, pct: rec.pct,
+    time_used_sec: rec.timeUsedSec ?? null, passed: rec.pct >= PASSING_SCORE_PCT,
+    detail: rec.detail || [], quiz_date: rec.date, timed_out: !!rec.timedOut,
+  });
+  if (error) console.error("insertScore error:", error.message);
+  return !error;
+}
+
+async function upsertProgress(dbUserId, dayProgress) {
+  const { error } = await supabase.from("progress").upsert(
+    { user_id: dbUserId, day_progress: dayProgress, last_activity: new Date().toISOString() },
+    { onConflict: "user_id" }
+  );
+  if (error) console.error("upsertProgress error:", error.message);
+  return !error;
+}
+
 // ── EmailJS configuration ──────────────────────────────────────────────────────
 // Sends transactional emails via Titan SMTP (support@awamibaitulmaal.org.in),
 // connected through EmailJS. No backend server needed — EmailJS's public key is
@@ -1485,6 +1516,24 @@ export default function App() {
     setMessages(getMessages());
     setReceipts(getReceipts());
 
+    // ── Supabase: load every participant's profile + scores + progress ──────
+    // Two bulk queries (not one per participant) — RLS means a regular
+    // learner's queries only ever return their own scores/progress rows,
+    // while admin/finance see everyone's (see scores_select/progress_select
+    // policies). Either way this fetch pattern is correct as-is.
+    const loadParticipants = async () => {
+      const { data: parts } = await supabase.from("users").select("*");
+      const { data: allScores } = await supabase.from("scores").select("*").order("quiz_date", { ascending: true });
+      const { data: allProgress } = await supabase.from("progress").select("*");
+      if (parts) setParticipants(parts.map(p => ({
+        userId: p.user_id, name: p.name, email: p.email,
+        enrolledAt: p.enrolled_at, role: p.role || "learner", dbId: p.id,
+        scores: (allScores || []).filter(s => s.user_id === p.id).map(mapScoreRow),
+        dayProgress: (allProgress || []).find(pr => pr.user_id === p.id)?.day_progress || {},
+        emailVerified: true, supabaseId: p.auth_id,
+      })));
+    };
+
     // ── Supabase: restore session on page load ──────────────────────────────
     const loadSession = async () => {
       // Check if this is a password recovery or email confirmation flow
@@ -1512,15 +1561,8 @@ export default function App() {
         storageRemove("qv_user");
       }
 
-      // Load participants from Supabase users table
-      const { data: parts } = await supabase.from("users").select("*");
-      if (parts) setParticipants(parts.map(p => ({
-        userId: p.user_id, name: p.name, email: p.email,
-        enrolledAt: p.enrolled_at, role: p.role || "learner",
-        scores: storageGet(`qv_scores_${p.user_id}`) || [],
-        dayProgress: storageGet(`qv_progress_${p.user_id}`) || {},
-        emailVerified: true, supabaseId: p.auth_id,
-      })));
+      // Load participants (profiles + scores + progress) from Supabase
+      await loadParticipants();
     };
     loadSession();
 
@@ -1542,14 +1584,7 @@ export default function App() {
         // no navigation) so they stay exactly where they were.
         const alreadyLoggedIn = userRef.current?.supabaseId === session.user.id;
         await loadUserProfile(session.user.id, { silent: alreadyLoggedIn });
-        const { data: parts } = await supabase.from("users").select("*");
-        if (parts) setParticipants(parts.map(p => ({
-          userId: p.user_id, name: p.name, email: p.email,
-          enrolledAt: p.enrolled_at, role: p.role || "learner",
-          scores: storageGet(`qv_scores_${p.user_id}`) || [],
-          dayProgress: storageGet(`qv_progress_${p.user_id}`) || {},
-          emailVerified: true, supabaseId: p.auth_id,
-        })));
+        await loadParticipants();
       }
       if (event === "USER_UPDATED" && session?.user) {
         // Email change confirmed — sync public.users with the new auth email
@@ -1577,22 +1612,27 @@ export default function App() {
     if (!profile) { console.warn("No profile found for auth_id:", authId); return; }
 
     // Detect re-created account using Supabase auth UUID (always unique per account)
-    // If same user_id but different auth UUID → deleted and re-created → clear old localStorage
+    // If same user_id but different auth UUID → deleted and re-created → clear stale cache.
+    // (Scores/progress no longer need clearing here — they live in Supabase keyed to the
+    // immutable users.id, and deleteParticipant already removes them when an account is deleted.)
     const cachedUser = storageGet("qv_user");
     const isReCreated = cachedUser?.userId === profile.user_id && cachedUser?.supabaseId !== authId;
     if (isReCreated) {
-      storageRemove(`qv_scores_${profile.user_id}`);
-      storageRemove(`qv_progress_${profile.user_id}`);
       storageRemove("qv_user");
-      console.log("Re-created account detected — cleared old localStorage for", profile.user_id);
+      console.log("Re-created account detected — cleared stale local cache for", profile.user_id);
     }
+
+    const [{ data: scoreRows }, { data: progressRow }] = await Promise.all([
+      supabase.from("scores").select("*").eq("user_id", profile.id).order("quiz_date", { ascending: true }),
+      supabase.from("progress").select("day_progress").eq("user_id", profile.id).maybeSingle(),
+    ]);
 
     const u = {
       userId: profile.user_id, name: profile.name,
       email: profile.email, enrolledAt: profile.enrolled_at,
-      role: profile.role || "learner",
-      scores: isReCreated ? [] : (storageGet(`qv_scores_${profile.user_id}`) || []),
-      dayProgress: isReCreated ? {} : (storageGet(`qv_progress_${profile.user_id}`) || {}),
+      role: profile.role || "learner", dbId: profile.id,
+      scores: (scoreRows || []).map(mapScoreRow),
+      dayProgress: progressRow?.day_progress || {},
       emailVerified: true, supabaseId: authId,
     };
     setUser(u);
@@ -1627,12 +1667,9 @@ export default function App() {
 
   const saveUser = (u) => {
     setUser(u);
+    // qv_user is kept only as an instant-restore snapshot for PWA reloads —
+    // scores/progress are no longer authoritative here, Supabase is (Phase 3).
     storageSet("qv_user", u);
-    // Store progress and scores per-user in localStorage (Phase 3 migrates to Supabase)
-    if (u.userId) {
-      storageSet(`qv_scores_${u.userId}`, u.scores || []);
-      storageSet(`qv_progress_${u.userId}`, u.dayProgress || {});
-    }
     setParticipants(prev => {
       const next = prev.find(p => p.userId === u.userId)
         ? prev.map(p => p.userId === u.userId ? u : p)
@@ -1828,7 +1865,13 @@ export default function App() {
   const deleteParticipant = async (userId) => {
     // Delete from Supabase users table (cascades to auth via trigger if set)
     const { data: profile } = await supabase.from("users")
-      .select("auth_id").eq("user_id", userId.toLowerCase()).maybeSingle();
+      .select("id, auth_id").eq("user_id", userId.toLowerCase()).maybeSingle();
+    // scores/progress reference users.id (Phase 3) — must clear those rows
+    // first or the users delete below fails on the foreign key.
+    if (profile?.id) {
+      await supabase.from("scores").delete().eq("user_id", profile.id);
+      await supabase.from("progress").delete().eq("user_id", profile.id);
+    }
     if (profile?.auth_id) {
       await supabase.from("users").delete().eq("auth_id", profile.auth_id);
     }
@@ -1999,6 +2042,13 @@ export default function App() {
           : user.dayProgress;
         const updated = { ...user, scores: allScoresForGate, dayProgress: dp };
         saveUser(updated);
+        // Phase 3: persist to Supabase (fire-and-forget so the UI transition
+        // isn't blocked; a failed save surfaces as a toast rather than silently
+        // losing the attempt, since Supabase is now the only place it's stored).
+        insertScore(user.dbId, rec).then(ok => { if (!ok) toast_("⚠ Couldn't save this score online — check your connection."); });
+        if (dp !== user.dayProgress) {
+          upsertProgress(user.dbId, dp).then(ok => { if (!ok) toast_("⚠ Couldn't save progress online — check your connection."); });
+        }
         setQuiz({ ...quiz, questions: updQs, score: ns, done: true, result: rec, missed: nm, passed, masteryGateMet });
         setView("results");
       } else {
@@ -2055,6 +2105,10 @@ export default function App() {
       : user.dayProgress;
     const updated = { ...user, scores: allScoresForGate, dayProgress: dp };
     saveUser(updated);
+    insertScore(user.dbId, rec).then(ok => { if (!ok) toast_("⚠ Couldn't save this score online — check your connection."); });
+    if (dp !== user.dayProgress) {
+      upsertProgress(user.dbId, dp).then(ok => { if (!ok) toast_("⚠ Couldn't save progress online — check your connection."); });
+    }
     setQuiz({ ...quiz, done: true, timeUp: true, result: rec, missed, passed, masteryGateMet });
     setView("results");
   };
@@ -2900,11 +2954,8 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
     if (existing) { setError("That User ID is already taken."); setSaving(false); return; }
     const { error: err } = await supabase.from("users").update({ user_id: newId }).eq("auth_id", user.supabaseId);
     if (err) { setError(`Failed: ${err.message}. If this persists, contact support@awamibaitulmaal.org.in`); setSaving(false); return; }
-    // Migrate localStorage progress/scores keys to the new user_id
-    const oldScores = storageGet(`qv_scores_${user.userId}`);
-    const oldProgress = storageGet(`qv_progress_${user.userId}`);
-    if (oldScores) { storageSet(`qv_scores_${newId}`, oldScores); storageRemove(`qv_scores_${user.userId}`); }
-    if (oldProgress) { storageSet(`qv_progress_${newId}`, oldProgress); storageRemove(`qv_progress_${user.userId}`); }
+    // No scores/progress migration needed (Phase 3): Supabase rows key off
+    // the immutable users.id, not the username, so they're untouched by this.
     saveUser({ ...user, userId: newId });
     toast_("✅ User ID updated — please log in again with your new ID.");
     setSuccess("User ID changed to: " + newId + ". Logging you out…");
