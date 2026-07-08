@@ -99,6 +99,20 @@ function getUnlockedWords(enrolledAt, dayProgress = {}) {
   return WORD_BANK.slice(0, getUnlockedDays(enrolledAt, dayProgress) * WORDS_PER_DAY);
 }
 
+// Mastery restricted to words belonging to COMPLETED sets only — words from
+// sets not yet completed (e.g. attempted via All Sets Quiz) don't count in
+// headline mastery displays (Your Progress tile, Leaderboard).
+function getCompletedSetsMastery(scores, dayProgress = {}, allWords = WORD_BANK) {
+  const { masteredSet } = buildStrictMastery(scores || []);
+  const completedDays = Object.keys(dayProgress || {}).filter(k => k !== "free").map(Number);
+  const completedWordKeys = new Set();
+  completedDays.forEach(d => {
+    allWords.slice((d - 1) * WORDS_PER_DAY, d * WORDS_PER_DAY).forEach(w => completedWordKeys.add(w.arabic));
+  });
+  const filtered = new Set([...masteredSet].filter(k => completedWordKeys.has(k)));
+  return { masteredSet: filtered, completedWordCount: completedWordKeys.size };
+}
+
 function getWrongs(pool, correct, field) {
   return shuffle(pool.filter(w => w !== correct)).slice(0, 3).map(w => w[field]);
 }
@@ -668,6 +682,7 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
 @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 @keyframes optsReset{from{opacity:.01}to{opacity:1}}
 @keyframes confettiFall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
+@keyframes confettiBlast{0%{transform:translate(0,0) rotate(0deg);opacity:1}70%{opacity:1}100%{transform:translate(var(--dx),calc(var(--dy) + 45vh)) rotate(var(--spin));opacity:0}}
 @keyframes glow{from{box-shadow:0 0 20px rgba(0,200,230,.4)}to{box-shadow:0 0 40px rgba(0,200,230,.8),0 0 60px rgba(0,200,230,.3)}}
 .lbl{font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--cyan2);display:flex;align-items:center;gap:9px;margin-bottom:13px;font-weight:600;}
 .lbl::before{content:'';width:28px;height:2px;background:var(--cyan2);border-radius:1px;}
@@ -769,8 +784,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   transition:transform .2s,box-shadow .2s;cursor:default;
   position:relative;
 }
-.sbox:hover{transform:translateY(-3px);background:rgba(255,255,255,.1);box-shadow:0 16px 40px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.08),inset 0 1px 0 rgba(255,255,255,.2);}
-.sn{font-family:'Poppins',sans-serif;font-size:clamp(20px,5vw,38px);font-weight:300;color:var(--gold2);}
+.sn{font-family:'Poppins',sans-serif;font-size:clamp(18px,4.2vw,32px);font-weight:700;color:var(--gold2);}
 .sl{font-size:clamp(9px,1.6vw,11px);color:var(--muted);letter-spacing:.04em;margin-top:4px;text-transform:uppercase;text-align:center;line-height:1.3;}
 .cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:5px;}
 .cal-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:rgba(0,200,230,.3) transparent;}
@@ -1210,7 +1224,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 
   /* STATS GRID — 2 columns, big numbers */
   .srow{grid-template-columns:repeat(2,1fr);gap:10px;}
-  .sn{font-size:15vw;}
+  .sn{font-size:12vw;font-weight:700;}
   .sl{font-size:10px;padding:0 4px;}
   .sbox{padding:8px;}
 
@@ -1285,7 +1299,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   .bism{font-size:28px;}
   .hero h2{font-size:19px;}
   .qq{font-size:40px;}
-  .sn{font-size:14vw;}
+  .sn{font-size:11vw;font-weight:700;}
   .war{font-size:23px;}
   .ncta{font-size:10px;padding:5px 10px;}
   .srow{gap:8px;}
@@ -1436,6 +1450,8 @@ export default function App() {
   const [customWords, setCustomWords] = useState([]);
   const [participants, setParticipants] = useState([]);
   const [quiz, setQuiz] = useState(null);
+  const quizRef = React.useRef(null);
+  React.useEffect(() => { quizRef.current = quiz; }, [quiz]);
   const [optsVisible, setOptsVisible] = useState(true);
   const [toast, setToast] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
@@ -1625,6 +1641,13 @@ export default function App() {
       }
       toast_(`Sign up failed: ${error.message}`);
       return { ok: false, reason: "error" };
+    }
+
+    // Supabase doesn't error on duplicate email (anti-enumeration) — instead
+    // it returns a user with an EMPTY identities array. Detect that here.
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      toast_("That email is already registered. Please log in or use a different email.");
+      return { ok: false, reason: "email-taken" };
     }
 
     // Insert profile immediately using open INSERT policy
@@ -1906,8 +1929,14 @@ export default function App() {
     const updQs = quiz.questions.map((qq, i) => i === quiz.cur ? { ...qq, chosen: opt } : qq);
     const ns = quiz.score + (correct ? 1 : 0);
     const nm = correct ? quiz.missed : [...quiz.missed, q.word];
+    // Record the answer immediately so finishQuizEarly (timer) sees it
+    setQuiz(prev => prev && !prev.done ? { ...prev, questions: updQs } : prev);
 
     setTimeout(() => {
+      // Guard: if timer already ended the quiz (finishQuizEarly ran),
+      // don't overwrite the finished state — that caused a blank screen
+      // when the last answer landed at the final second.
+      if (quizRef.current?.done) return;
       if (quiz.cur + 1 >= updQs.length) {
         const pct = Math.round((ns / updQs.length) * 100);
         // Build detailed per-question log for review later
@@ -2063,6 +2092,7 @@ export default function App() {
 
     let warnTimer   = null;
     let logoutTimer = null;
+    let lastActivity = Date.now();
 
     const doLogout = () => {
       if (isAdminActive && isAdminRoute) {
@@ -2084,6 +2114,7 @@ export default function App() {
     };
 
     const reset = () => {
+      lastActivity = Date.now();
       clearTimeout(warnTimer);
       clearTimeout(logoutTimer);
       warnTimer   = setTimeout(() => {
@@ -2092,6 +2123,25 @@ export default function App() {
       logoutTimer = setTimeout(doLogout, timeoutMs);
     };
 
+    // iPhone PWA fix: when returning to the app, don't fire stale timers.
+    // Instead check actual elapsed time — only logout if genuinely idle
+    // beyond the limit; otherwise treat the return as fresh activity.
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        const elapsed = Date.now() - lastActivity;
+        if (elapsed >= timeoutMs) {
+          doLogout();
+        } else {
+          reset(); // returning counts as activity
+        }
+      } else {
+        // Page hidden — clear timers so iOS doesn't fire them on resume
+        clearTimeout(warnTimer);
+        clearTimeout(logoutTimer);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
     const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click"];
     events.forEach(ev => window.addEventListener(ev, reset, { passive: true }));
     reset(); // kick off immediately
@@ -2099,6 +2149,7 @@ export default function App() {
     return () => {
       clearTimeout(warnTimer);
       clearTimeout(logoutTimer);
+      document.removeEventListener("visibilitychange", onVisibility);
       events.forEach(ev => window.removeEventListener(ev, reset));
     };
   }, [user, adminUnlocked, isAdminRoute, isFinanceRoute]); // re-run when session changes
@@ -2118,9 +2169,9 @@ export default function App() {
         <nav className="nav">
           <div className="nlogo" onClick={() => !isAdminRoute && !isFinanceRoute && setView("home")}>
             <div className="nicon">📖</div>
-            <div className="ntext"><h1>Quranic Vocab</h1><span>{isAdminRoute ? "Admin Panel" : isFinanceRoute ? "Finance Panel" : "Daily Memorization Series"}</span></div>
+            <div className="ntext"><h1>Quranic Vocab</h1><span>{isAdminRoute || view === "admin" ? "Admin Panel" : isFinanceRoute || view === "finance" ? "Finance Panel" : "Daily Memorization Series"}</span></div>
           </div>
-          {isAdminRoute ? (
+          {isAdminRoute || view === "admin" ? (
             <div className="nright">
               {adminUnlocked && messages.filter(m => !m.resolved).length > 0 && (
                 <span className="admin-msg-badge">✉ {messages.filter(m => !m.resolved).length}</span>
@@ -2137,7 +2188,7 @@ export default function App() {
                 </div>
               )}
             </div>
-          ) : isFinanceRoute ? (
+          ) : isFinanceRoute || view === "finance" ? (
             <div className="nright">
               {financeUnlocked && (
                 <div className="nuser-wrap">
@@ -2177,11 +2228,11 @@ export default function App() {
           )}
         </nav>
 
-        {isAdminRoute ? (
+        {isAdminRoute || view === "admin" ? (
           adminUnlocked
             ? <AdminPage customWords={customWords} saveWords={saveCW} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} />
             : <AdminGate onUnlock={unlockAdmin} />
-        ) : isFinanceRoute ? (
+        ) : isFinanceRoute || view === "finance" ? (
           financeUnlocked
             ? <FinancePage receipts={receipts} onIssueReceipt={issueReceipt} toast_={toast_} participants={participants} />
             : <FinanceGate onUnlock={unlockFinance} />
@@ -2248,9 +2299,11 @@ export default function App() {
 
 function HomePage({ user, allWords, participants, onStart, setView, onDonate, onReview }) {
   const [showAllSetsReady, setShowAllSetsReady] = useState(false);
+  const [showMasteredList, setShowMasteredList] = useState(false);
   const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress).length : 0;
   const dayN = user ? getUnlockedDays(user.enrolledAt, user.dayProgress) : 0;
   const best = user?.scores?.length ? Math.max(...user.scores.map(s => s.pct)) : null;
+  const { masteredSet: homeMastered } = getCompletedSetsMastery(user?.scores || [], user?.dayProgress || {});
   const streak = calcStreak(user?.scores || []);
   // Actual quiz completion = distinct numbered days completed / total days in programme
   // (deliberately excludes "free" quick-quiz attempts and is 0 for a brand-new user)
@@ -2359,7 +2412,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
               { label: "Current Set", value: dayN, onClick: () => setView("learn") },
               { label: "Unlocked", value: unlocked, onClick: () => setView("learn") },
               { label: "Completed", value: daysCompleted },
-              { label: "Best Score", value: best !== null ? `${best}%` : "—" },
+              { label: "Mastered", value: homeMastered.size, onClick: homeMastered.size > 0 ? () => setShowMasteredList(true) : undefined },
             ].map(({ label, value, onClick }) => (
               <div key={label} onClick={onClick} style={{ cursor: onClick ? "pointer" : "default", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                 <div style={{ fontSize: 11, fontWeight: 500, color: "var(--cyan2)", minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.3, whiteSpace: "nowrap" }}>{label}</div>
@@ -2367,6 +2420,26 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
               </div>
             ))}
           </div>
+
+          {/* Mastered words modal */}
+          {showMasteredList && (
+            <div className="modal-overlay" onClick={() => setShowMasteredList(false)}>
+              <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+                <div className="modal-head">
+                  <h3>🎯 Mastered Words ({homeMastered.size})</h3>
+                  <button className="modal-close" onClick={() => setShowMasteredList(false)}>×</button>
+                </div>
+                <div className="modal-body" style={{ maxHeight: 360, overflowY: "auto" }}>
+                  {allWords.filter(w => homeMastered.has(w.arabic)).map((w, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 4px", borderBottom: "1px solid rgba(0,200,230,.08)" }}>
+                      <span className="arabic" style={{ fontSize: 20, color: "var(--gold2)" }}>{w.arabic}</span>
+                      <span style={{ fontSize: 13, color: "var(--text)" }}>{w.english}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           <div style={{ overflow: "hidden", marginTop: 4, direction: "ltr" }}>
             <div style={{ display: "inline-flex", whiteSpace: "nowrap", animation: "marquee 22s linear infinite", fontSize: 11, color: "var(--muted)" }}>
               <span>Keep going — each quiz unlocks more words on your path to the Quran.</span>
@@ -2786,7 +2859,12 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
     const { data: existing } = await supabase.from("users").select("id").eq("user_id", newId).maybeSingle();
     if (existing) { setError("That User ID is already taken."); setSaving(false); return; }
     const { error: err } = await supabase.from("users").update({ user_id: newId }).eq("auth_id", user.supabaseId);
-    if (err) { setError("Failed to update User ID. Try again."); setSaving(false); return; }
+    if (err) { setError(`Failed: ${err.message}. If this persists, contact support@awamibaitulmaal.org.in`); setSaving(false); return; }
+    // Migrate localStorage progress/scores keys to the new user_id
+    const oldScores = storageGet(`qv_scores_${user.userId}`);
+    const oldProgress = storageGet(`qv_progress_${user.userId}`);
+    if (oldScores) { storageSet(`qv_scores_${newId}`, oldScores); storageRemove(`qv_scores_${user.userId}`); }
+    if (oldProgress) { storageSet(`qv_progress_${newId}`, oldProgress); storageRemove(`qv_progress_${user.userId}`); }
     saveUser({ ...user, userId: newId });
     toast_("✅ User ID updated successfully!");
     setSuccess("User ID changed to: " + newId);
@@ -2808,10 +2886,14 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
 
   const submitPassword = async () => {
     setError(""); setSaving(true);
-    if (!val1 || val1.length < 10) { setError("Password must be at least 10 characters."); setSaving(false); return; }
-    if (val1 !== val2) { setError("Passwords don't match."); setSaving(false); return; }
+    if (!pw) { setError("Enter your current password first."); setSaving(false); return; }
+    if (!val1 || val1.length < 10) { setError("New password must be at least 10 characters."); setSaving(false); return; }
+    if (val1 !== val2) { setError("New passwords don't match."); setSaving(false); return; }
     const pwErr = getPasswordComplexityError(val1);
     if (pwErr) { setError(pwErr); setSaving(false); return; }
+    // Verify current password by re-authenticating
+    const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: user.email, password: pw });
+    if (verifyErr) { setError("Current password is incorrect."); setSaving(false); return; }
     const { error: err } = await supabase.auth.updateUser({ password: val1 });
     if (err) { setError("Failed to update password: " + err.message); setSaving(false); return; }
     toast_("✅ Password updated successfully!");
@@ -2873,7 +2955,28 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
                     <div className="field"><label>New Email Address</label><input type="email" value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="new@email.com" autoFocus /></div>
                   )}
                   {item.key === "password" && (<>
-                    <div className="field"><label>New Password</label><input type="password" value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" autoFocus /></div>
+                    <div className="field"><label>Current Password</label><input type="password" value={pw} onChange={e => { setPw(e.target.value); setError(""); }} placeholder="Enter your current password" autoFocus /></div>
+                    <div className="field">
+                      <label>New Password</label>
+                      <input type="password" value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char"
+                        style={val1 && !getPasswordComplexityError(val1) ? { borderColor: "var(--ok)" } : val1 ? { borderColor: "var(--err)" } : {}} />
+                      {val1 && (() => {
+                        const checks = [
+                          { label: "10+ characters", ok: val1.length >= 10 },
+                          { label: "1 number", ok: /[0-9]/.test(val1) },
+                          { label: "1 special character", ok: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(val1) },
+                        ];
+                        return (
+                          <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                            {checks.map(c => (
+                              <span key={c.label} style={{ fontSize: 11, color: c.ok ? "var(--ok)" : "var(--err)" }}>
+                                {c.ok ? "✓" : "✗"} {c.label}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
                     <div className="field"><label>Confirm New Password</label><input type="password" value={val2} onChange={e => { setVal2(e.target.value); setError(""); }} placeholder="Re-enter password"
                       style={val2 && val1 && val2 !== val1 ? { borderColor: "var(--err)" } : val2 && val1 && val2 === val1 ? { borderColor: "var(--ok)" } : {}} />
                       {val2 && val1 && val2 !== val1 && <div style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>⚠ Passwords don't match</div>}
@@ -3131,9 +3234,11 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
                   {/* Tick in top-right corner for completed sets */}
                   {isDone && (
                     <span style={{
-                      position: "absolute", top: 3, right: 4,
-                      fontSize: 9, fontWeight: 900, color: "var(--ok)",
-                      lineHeight: 1, textShadow: "0 0 6px rgba(0,200,230,.4)"
+                      position: "absolute", top: 2, right: 3,
+                      fontSize: 8, fontWeight: 900, color: "#22c55e",
+                      lineHeight: 1,
+                      textShadow: "0 0 1px #22c55e, 0 0 1px #22c55e",
+                      WebkitTextStroke: ".5px #22c55e"
                     }}>✓</span>
                   )}
                   {/* Set number - same size whether done or not */}
@@ -3325,23 +3430,40 @@ function QuizPage({ quiz, onAnswer, onCancel, onTimeUp, optsVisible = true }) {
 
 // ── Confetti component ────────────────────────────────────────────────────────
 function Confetti() {
-  const pieces = Array.from({ length: 60 }, (_, i) => ({
-    id: i,
-    color: ["#00c8e6","#ffd96b","#ff6b6b","#51cf66","#ff922b","#cc5de8","#1ae6ff"][i % 7],
-    left: `${Math.random() * 100}%`,
-    delay: `${Math.random() * 2}s`,
-    duration: `${2.5 + Math.random() * 2}s`,
-    size: `${8 + Math.random() * 8}px`,
-    shape: i % 3 === 0 ? "50%" : i % 3 === 1 ? "2px" : "0%",
-  }));
+  // Cannon blast from both bottom corners
+  const pieces = Array.from({ length: 70 }, (_, i) => {
+    const fromLeft = i % 2 === 0;
+    const angle = fromLeft
+      ? -80 + Math.random() * 55   // left cannon fires up-right: -80° to -25°
+      : -155 + Math.random() * 55; // right cannon fires up-left: -155° to -100°
+    const velocity = 55 + Math.random() * 40; // vh distance
+    const rad = angle * Math.PI / 180;
+    const dx = Math.cos(rad) * velocity;
+    const dy = Math.sin(rad) * velocity;
+    return {
+      id: i,
+      color: ["#00c8e6","#ffd96b","#ff6b6b","#51cf66","#ff922b","#cc5de8","#1ae6ff"][i % 7],
+      fromLeft,
+      dx: `${dx}vw`,
+      dy: `${dy}vh`,
+      delay: `${Math.random() * .35}s`,
+      duration: `${1.6 + Math.random() * 1.4}s`,
+      size: `${7 + Math.random() * 8}px`,
+      shape: i % 3 === 0 ? "50%" : i % 3 === 1 ? "2px" : "0%",
+      spin: `${540 + Math.random() * 540}deg`,
+    };
+  });
   return (
     <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 9999, overflow: "hidden" }}>
       {pieces.map(p => (
         <div key={p.id} style={{
-          position: "absolute", top: "-20px", left: p.left,
+          position: "absolute", bottom: "-10px",
+          left: p.fromLeft ? "-5px" : "auto",
+          right: p.fromLeft ? "auto" : "-5px",
           width: p.size, height: p.size,
           background: p.color, borderRadius: p.shape,
-          animation: `confettiFall ${p.duration} ${p.delay} ease-in forwards`,
+          "--dx": p.dx, "--dy": p.dy, "--spin": p.spin,
+          animation: `confettiBlast ${p.duration} ${p.delay} cubic-bezier(.15,.65,.35,1) forwards`,
         }} />
       ))}
     </div>
@@ -3577,10 +3699,12 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
   );
 
   const sessions = [...(user.scores || [])].reverse(); // most recent first
-  const setScores = (user.scores || []).filter(s => s.day);
+  const setScores = (user.scores || []).filter(s => s.day && s.day !== "weak-practice");
   const allSetsScores = (user.scores || []).filter(s => !s.day);
+  const weakScores = (user.scores || []).filter(s => s.day === "weak-practice");
   const barData = buildAttemptScoreSeries(setScores);
   const allSetsBarData = buildAttemptScoreSeries(allSetsScores);
+  const weakBarData = buildAttemptScoreSeries(weakScores);
   const wordBreakdown = buildWordStrengthBreakdown(setScores, allWords || []);
   const allSetsWordBreakdown = buildWordStrengthBreakdown(allSetsScores, allWords || []);
 
@@ -3623,6 +3747,16 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
               })()}
             </div>
           </div>
+
+          {/* Weak Words Practice — separate chart */}
+          {weakBarData.length > 0 && (
+            <div className="card chart-col" style={{ marginBottom: 16 }}>
+              <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>Weak Words Practice — Last {weakBarData.length} Attempts</div></div>
+              <div className="chart-col-inner">
+                <ScoreBarChart data={weakBarData} compact mode="score" />
+              </div>
+            </div>
+          )}
 
           {(wordBreakdown.totalTracked > 0 || allSetsWordBreakdown.totalTracked > 0) && (
             <div className="chart-row" style={{ marginBottom: 16 }}>
@@ -3892,7 +4026,7 @@ function LBPage({ participants, user }) {
     .map(p => {
       const scores = p.scores || [];
       const unlocked = getUnlockedDays(p.enrolledAt, p.dayProgress) * WORDS_PER_DAY || 1;
-      const { masteredSet } = buildStrictMastery(scores);
+      const { masteredSet } = getCompletedSetsMastery(scores, p.dayProgress);
       const masteryPct = Math.round((masteredSet.size / unlocked) * 100);
       const bestQuiz = scores.length > 0 ? Math.max(...scores.map(s => s.pct)) : 0;
       return { ...p, masteryPct, bestQuiz, unlockedWords: unlocked, masteredWords: masteredSet.size, sessions: scores.length };
@@ -4300,7 +4434,7 @@ function RewardsTab({ participants, toast_ }) {
   const eligible = participants.filter(p => (p.scores || []).length > 0);
 
   const getMastered = (p) => {
-    const { masteredSet } = buildStrictMastery(p.scores || []);
+    const { masteredSet } = getCompletedSetsMastery(p.scores || [], p.dayProgress);
     return masteredSet.size;
   };
 
