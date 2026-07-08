@@ -397,6 +397,7 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
   const charityName = DONATE.charityName && DONATE.charityName !== "Your Charity Name Here"
     ? DONATE.charityName
     : "Awami Baitulmaal Committee (Reg.)";
+  const regParts = [];
   if (DONATE.pan && DONATE.pan !== "PASTE_TRUST_PAN_HERE") regParts.push(`PAN: ${DONATE.pan}`);
   if (DONATE.reg12A) regParts.push(`12A Reg: ${DONATE.reg12A}`);
   if (DONATE.reg80G) {
