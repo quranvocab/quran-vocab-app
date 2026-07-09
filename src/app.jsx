@@ -377,8 +377,14 @@ function addReceipt(receipt) {
 // A `scores` row -> the shape the rest of the app already expects everywhere
 // (Home, History, Leaderboard, Admin) so those screens need zero changes.
 function mapScoreRow(row) {
+  // scores.day is stored as `text` in Supabase, but the rest of the app
+  // (Home, History, Leaderboard, mastery-gate checks) compares it as a
+  // JS number for real set days — e.g. `s.day === selectedDay` — with
+  // only "weak-practice" and null as the non-numeric exceptions. Convert
+  // back here, once, so every existing comparison keeps working unchanged.
+  const day = row.day == null ? null : (/^\d+$/.test(row.day) ? Number(row.day) : row.day);
   return {
-    score: row.score, total: row.total, pct: row.pct, day: row.day,
+    score: row.score, total: row.total, pct: row.pct, day,
     date: row.quiz_date, detail: row.detail || [],
     timeUsedSec: row.time_used_sec, timedOut: row.timed_out || false,
   };
@@ -411,10 +417,12 @@ async function upsertProgress(dbUserId, dayProgress) {
 // abuse at 200 emails/month.
 const EMAILJS_SERVICE_ID    = "service_u97pazt";
 const EMAILJS_RECEIPT_TEMPLATE_ID = "template_hbjl6yv"; // dedicated receipt/invoice template
+const EMAILJS_INVITE_TEMPLATE_ID  = "template_1hfqxef"; // "Invite a Friend" template
 const EMAILJS_PUBLIC_KEY    = "lVfbS-yLSA3hkGGT5";
 // Supabase now handles verification + password reset emails via Titan SMTP.
-// EmailJS is only used for donation receipts (sendReceiptEmail below).
-// template_hbjl6yv is dedicated to receipts only.
+// EmailJS is used for donation receipts (template_hbjl6yv) and, as of this
+// change, "invite a friend" emails (a separate dedicated template) — an
+// intentional, agreed exception to the "receipts + certificates only" rule.
 
 let _emailjsLoaded = null;
 async function loadEmailJS() {
@@ -525,6 +533,53 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
     from_email: "support@awamibaitulmaal.org.in",
     email_heading: `Donation Receipt ${receiptNo} — ${charityName}`,
     email_body_html: invoiceHtml,
+  });
+}
+
+// ── Invite a Friend (EmailJS, dedicated template — see EMAILJS_INVITE_TEMPLATE_ID) ─
+async function sendInviteEmail({ toEmail, friendName, inviterName }) {
+  const emailjs = await loadEmailJS();
+  const appUrl = window.location.origin;
+
+  const inviteHtml = `
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(0,200,230,.25);">
+
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#071c2a,#0d2d40);padding:32px 24px;text-align:center;border-bottom:1px solid rgba(0,200,230,.2);">
+      <div style="font-size:36px;margin-bottom:8px">📖</div>
+      <div style="font-size:20px;color:#ffd96b;margin-bottom:8px;line-height:1.6">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
+      <div style="font-size:21px;font-weight:700;color:#f0f8ff">You're Invited to Learn Qur'anic Vocabulary</div>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:28px 24px;background:#0d1f2d;text-align:center;">
+      <p style="font-size:15px;color:#f0f8ff;line-height:1.7;margin:0 0 16px">
+        Assalamu Alaikum${friendName ? " " + friendName : ""},
+      </p>
+      <p style="font-size:14px;color:#a9c9dc;line-height:1.8;margin:0 0 22px">
+        <strong style="color:#ffd96b">${inviterName}</strong> thought you'd love to join them on a journey to understand the words of the Qur'an — learning its most frequently used vocabulary, one set of 10 words at a time, at your own pace.
+      </p>
+      <p style="font-size:13px;color:#7ab8d4;line-height:1.7;margin:0 0 26px;font-style:italic">
+        "Whoever follows a path in pursuit of knowledge, Allah will make easy for him a path to Paradise." — Sahih Muslim
+      </p>
+      <a href="${appUrl}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#00c8e6,#00a8c2);color:#071c2a;font-weight:700;font-size:14px;text-decoration:none;border-radius:10px;box-shadow:0 4px 16px rgba(0,200,230,.3)">
+        Begin Your Journey →
+      </a>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:14px 24px;text-align:center;background:rgba(0,0,0,.2);border-top:1px solid rgba(0,200,230,.12)">
+      <p style="margin:0;font-size:11px;color:rgba(122,184,212,.5)">Awami Baitulmaal Committee (Reg.) &nbsp;·&nbsp; support@awamibaitulmaal.org.in</p>
+    </div>
+
+  </div>`;
+
+  return emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_INVITE_TEMPLATE_ID, {
+    to_email: toEmail,
+    recipient_name: friendName || "there",
+    from_email: "support@awamibaitulmaal.org.in",
+    email_heading: `${inviterName} invited you to learn Qur'anic vocabulary`,
+    email_body_html: inviteHtml,
   });
 }
 
@@ -915,6 +970,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
   -webkit-tap-highlight-color:transparent;
   -webkit-touch-callout:none;
   box-shadow:0 4px 16px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.08);
+  min-height:82px;display:flex;align-items:center;justify-content:center;text-align:center;
 }
 .opt:hover:not(:disabled){
   border-color:rgba(0,200,230,.5);border-bottom-color:rgba(0,200,230,.5);
@@ -925,7 +981,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 }
 .opt:active:not(:disabled){transform:translateY(1px);box-shadow:0 2px 8px rgba(0,0,0,.3),inset 0 3px 10px rgba(0,0,0,.2);}
 .opt:disabled{cursor:default;pointer-events:none;transform:none;}
-.opt.ar{font-family:'Scheherazade New',serif;font-size:30px;padding:22px 14px;}
+.opt.ar{font-family:'Scheherazade New',serif;font-size:30px;}
 .opt.correct{background:rgba(0,180,220,.18)!important;border-color:var(--cyan)!important;color:var(--cyan2)!important;box-shadow:0 0 28px rgba(0,200,230,.3)!important;}
 .opt.wrong{background:rgba(255,82,82,.12)!important;border-color:var(--err)!important;color:#ff8a80!important;}
 .rring{
@@ -1272,6 +1328,7 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 
   /* QUIZ */
   .opts{grid-template-columns:1fr;}
+  .opt{min-height:64px;}
   .qq{font-size:46px;}
   .qq.en{font-size:21px;}
   .qcard{padding:20px 14px;}
@@ -1474,8 +1531,6 @@ function GateScreen({ onUnlock }) {
 export default function App() {
   const isAdminRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/admin";
   const isFinanceRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/finance";
-  const resetTokenFromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("reset") : null;
-  const verifyTokenFromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("verify") : null;
   const [view, setView] = useState(isAdminRoute ? "admin" : isFinanceRoute ? "finance" : "home");
   const [user, setUser] = useState(() => storageGet("qv_user") || null); // instant restore on PWA reload — Supabase session reconciles async
   const userRef = React.useRef(null);
@@ -1495,6 +1550,8 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showDonate, setShowDonate] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+  const [pendingResetEmail, setPendingResetEmail] = useState(""); // carries email into the "Enter Reset Code" screen
   const [reviewing, setReviewing] = useState(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
@@ -1536,12 +1593,14 @@ export default function App() {
 
     // ── Supabase: restore session on page load ──────────────────────────────
     const loadSession = async () => {
-      // Check if this is a password recovery or email confirmation flow
-      // via URL hash — let onAuthStateChange handle these, don't load existing session
+      // Email confirmation (signup) still arrives via URL hash — let
+      // onAuthStateChange handle it, don't load an existing session over it.
+      // Password reset no longer uses a clickable link at all (see
+      // verifyResetCodeAndSetPassword below) — Outlook's Safe Links feature
+      // silently "uses up" one-time reset links before the user ever clicks
+      // them, which is why this moved to a 6-digit code the user types in.
       const hash = window.location.hash;
-      if (hash.includes("type=recovery") || hash.includes("type=signup")) {
-        isPasswordRecovery.current = hash.includes("type=recovery");
-        if (hash.includes("type=recovery")) setView("resetPassword");
+      if (hash.includes("type=signup")) {
         return;
       }
 
@@ -1568,6 +1627,8 @@ export default function App() {
 
     // ── Supabase: listen for auth events (login, verify, logout) ───────────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Safety net: verifyOtp(type:'recovery') below can also fire this event.
+      // Harmless if it does — we're already on the resetPassword view by then.
       if (event === "PASSWORD_RECOVERY") {
         isPasswordRecovery.current = true;
         // Clear any existing logged-in user so wrong account doesn't show
@@ -1817,16 +1878,17 @@ export default function App() {
     if (!target) return { ok: false, reason: "not-found" };
     if (!target.email) return { ok: false, reason: "no-email" };
 
-    const token = createResetToken(target.userId, messageId);
-    const resetLink = `${window.location.origin}/?reset=${token}`;
-
-    try {
-      await sendResetEmail({ toEmail: target.email, learnerName: target.name, resetLink });
-      return { ok: true };
-    } catch (err) {
-      console.error("EmailJS send failed:", err);
+    // Uses the same real Supabase Auth mechanism as the learner's own
+    // "Forgot Password" flow — the old custom token/EmailJS approach here
+    // called functions that no longer exist (dead code from before Phase 2).
+    const { error } = await supabase.auth.resetPasswordForEmail(target.email, {
+      redirectTo: `${window.location.origin}/`,
+    });
+    if (error) {
+      console.error("sendResetLinkToUser error:", error.message);
       return { ok: false, reason: "send-failed" };
     }
+    return { ok: true };
   };
 
   // Admin-only: correct a learner's name or email (e.g. fixing a typo'd
@@ -1917,12 +1979,26 @@ export default function App() {
     window.location.href = "/admin";
   };
 
-  // Sets a learner's password directly from a valid reset token (used by the
-  // "Set New Password" screen the reset link opens) — not by admin typing it.
-  // ── SUPABASE AUTH: Set new password (called from reset password page) ─────
-  const setPasswordFromToken = async (token, newPassword) => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) return { ok: false, reason: "error" };
+  // Sets a learner's new password using the 6-digit code emailed to them
+  // (see the "Reset Password" screen). Uses supabase.auth.verifyOtp to
+  // establish a session from the code, then updates the password — no
+  // clickable link involved, so nothing for Outlook's Safe Links (or any
+  // other email link-scanner) to silently consume before the user acts.
+  // ── SUPABASE AUTH: Set new password from emailed reset code ────────────
+  const verifyResetCodeAndSetPassword = async (email, code, newPassword) => {
+    isPasswordRecovery.current = true; // guard: don't auto-login on the SIGNED_IN this triggers
+    const { error: verifyErr } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(), token: code.trim(), type: "recovery",
+    });
+    if (verifyErr) {
+      isPasswordRecovery.current = false;
+      return { ok: false, reason: "invalid-code" };
+    }
+    const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+    if (updateErr) {
+      isPasswordRecovery.current = false;
+      return { ok: false, reason: "error" };
+    }
     // Sign out after reset — user must login fresh with new password
     isPasswordRecovery.current = false;
     await supabase.auth.signOut();
@@ -1956,7 +2032,7 @@ export default function App() {
       return { ok: false, reason: "error" };
     }
 
-    toast_("Password reset email sent! Check your inbox.");
+    toast_("Reset code sent! Check your inbox.");
     return { ok: true };
   };
 
@@ -2332,21 +2408,22 @@ export default function App() {
             : <FinanceGate onUnlock={unlockFinance} />
         ) : (
           <>
-            {view === "home" && <HomePage user={user} allWords={allWords} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} />}
-            {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} onAdminLogin={async (pw) => { const h = await hashPassword(pw); if (h === getActiveAdminPasswordHash()) { sessionStorage.setItem("qv_admin_unlocked","1"); setAdminUnlocked(true); setView("admin"); return true; } return false; }} onFinanceLogin={async (pw) => { const h = await hashPassword(pw); if (h === getActiveFinancePasswordHash()) { sessionStorage.setItem("qv_finance_unlocked","1"); setFinanceUnlocked(true); setView("finance"); return true; } return false; }} />}
+            {view === "home" && <HomePage user={user} allWords={allWords} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onInvite={() => setShowInvite(true)} onReview={reviewSession} />}
+            {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} setView={setView} onGoToResetCode={(email) => { setPendingResetEmail(email); setView("resetPassword"); }} onAdminLogin={async (pw) => { const h = await hashPassword(pw); if (h === getActiveAdminPasswordHash()) { sessionStorage.setItem("qv_admin_unlocked","1"); setAdminUnlocked(true); setView("admin"); return true; } return false; }} onFinanceLogin={async (pw) => { const h = await hashPassword(pw); if (h === getActiveFinancePasswordHash()) { sessionStorage.setItem("qv_finance_unlocked","1"); setFinanceUnlocked(true); setView("finance"); return true; } return false; }} />}
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
             {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} optsVisible={optsVisible} />}
             {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} setSelectedDay={setSelectedDay} />}
             {view === "history" && <HistoryPage user={user} setView={setView} onReview={reviewSession} allWords={allWords} onStart={startQuiz} />}
             {view === "review" && reviewing && <ReviewPage rec={reviewing} setView={setView} allWords={allWords} />}
             {view === "leaderboard" && <LBPage participants={participants} user={user} />}
-            {view === "resetPassword" && <ResetPasswordPage onSetPassword={setPasswordFromToken} setView={setView} />}
+            {view === "resetPassword" && <ResetPasswordPage onSetPassword={verifyResetCodeAndSetPassword} initialEmail={pendingResetEmail} setView={setView} />}
             {view === "profile" && user && <ProfilePage user={user} saveUser={saveUser} setView={setView} toast_={toast_} />}
             {/* Email verification handled automatically by Supabase via onAuthStateChange */}
           </>
         )}
 
         {!isAdminRoute && !isFinanceRoute && showDonate && <DonateModal onClose={() => setShowDonate(false)} toast_={toast_} user={user} />}
+        {!isAdminRoute && !isFinanceRoute && showInvite && <InviteModal onClose={() => setShowInvite(false)} toast_={toast_} user={user} />}
         {/* Mobile bottom navigation bar — visible only on small screens (CSS-controlled) */}
         {!isAdminRoute && !isFinanceRoute && (
           <nav className="mobile-nav">
@@ -2391,7 +2468,7 @@ export default function App() {
   );
 }
 
-function HomePage({ user, allWords, participants, onStart, setView, onDonate, onReview }) {
+function HomePage({ user, allWords, participants, onStart, setView, onDonate, onInvite, onReview }) {
   const [showAllSetsReady, setShowAllSetsReady] = useState(false);
   const [showMasteredList, setShowMasteredList] = useState(false);
   const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress).length : 0;
@@ -2598,11 +2675,18 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
         <span>🤲 Support this initiative — every rupee helps Quranic education continue</span>
         <span className="donate-strip-cta">Donate →</span>
       </div>
+
+      {user && (
+        <div className="donate-strip" onClick={onInvite} style={{ marginTop: 10 }}>
+          <span>💌 Know someone who'd love this? Invite a friend or family member</span>
+          <span className="donate-strip-cta">Invite →</span>
+        </div>
+      )}
     </div>
   );
 }
 
-function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onResendVerification, onAdminLogin, onFinanceLogin }) {
+function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onResendVerification, setView, onGoToResetCode, onAdminLogin, onFinanceLogin }) {
   // mode: "login" | "signup"
   const [mode, setMode] = useState("login");
 
@@ -2800,7 +2884,8 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
             <button className="btn bg bfw" onClick={submitLogin} disabled={!loginId || !loginPw || checking}>
               {checking ? "Checking…" : "Login →"}
             </button>
-            <p className="enroll-hint">🔒 <span className="forgot-link" onClick={() => setShowForgot(true)}>Forgot your password? Contact the admin to have it reset.</span></p>
+            <p className="enroll-hint">🔒 <span className="forgot-link" onClick={() => setShowForgot(true)}>Forgot your password? Reset it yourself with a code emailed to you.</span></p>
+            <p className="enroll-hint">Already have a reset code? <span className="forgot-link" onClick={() => onGoToResetCode("")}>Enter it here.</span></p>
           </>
         )}
 
@@ -2918,9 +3003,10 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
               ) : (
                 <div style={{ textAlign: "center", padding: "10px 0" }}>
                   <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
-                  <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Request sent!</p>
-                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 18 }}>The admin will email you a reset link shortly.</p>
-                  <button className="btn bh" onClick={closeForgot}>Close</button>
+                  <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Check your email!</p>
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 18 }}>We've sent a 6-digit code to <strong style={{ color: "var(--gold2)" }}>{forgotEmail}</strong>. Enter it on the next screen along with your new password.</p>
+                  <button className="btn bg bfw" onClick={() => { onGoToResetCode(forgotEmail); closeForgot(); }}>Enter Code →</button>
+                  <button className="btn bh bfw" style={{ marginTop: 8 }} onClick={closeForgot}>Close</button>
                 </div>
               )}
             </div>
@@ -3118,7 +3204,9 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
   );
 }
 
-function ResetPasswordPage({ onSetPassword, setView }) {
+function ResetPasswordPage({ onSetPassword, initialEmail = "", setView }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [code, setCode] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [error, setError] = useState("");
@@ -3127,18 +3215,21 @@ function ResetPasswordPage({ onSetPassword, setView }) {
 
   const submit = async () => {
     setError("");
-    if (!newPw || !confirmPw) { setError("Both fields are required."); return; }
+    if (!email.trim()) { setError("Enter the email you signed up with."); return; }
+    if (!code.trim() || !/^\d{6}$/.test(code.trim())) { setError("Enter the 6-digit code from your email."); return; }
+    if (!newPw || !confirmPw) { setError("Both password fields are required."); return; }
     const pwError = getPasswordComplexityError(newPw);
     if (pwError) { setError(pwError); return; }
     if (newPw !== confirmPw) { setError("Passwords don't match."); return; }
     setChecking(true);
-    const result = await onSetPassword(null, newPw);
+    const result = await onSetPassword(email, code, newPw);
     setChecking(false);
     if (result.ok) {
       setDone(true);
-      window.history.replaceState({}, "", window.location.pathname);
+    } else if (result.reason === "invalid-code") {
+      setError("That code is incorrect or has expired. Please request a new one.");
     } else {
-      setError("Could not update password. Please request a new reset link.");
+      setError("Could not update password. Please request a new reset code.");
     }
   };
 
@@ -3156,10 +3247,12 @@ function ResetPasswordPage({ onSetPassword, setView }) {
   return (
     <div className="page psm" style={{ paddingTop: 60 }}>
       <div className="lbl" style={{ justifyContent: "center" }}>Reset Password</div>
-      <h2 style={{ textAlign: "center" }}>Set a New Password</h2>
-      <p className="sub" style={{ textAlign: "center", marginBottom: 26 }}>Choose a new password for your account.</p>
+      <h2 style={{ textAlign: "center" }}>Enter Your Reset Code</h2>
+      <p className="sub" style={{ textAlign: "center", marginBottom: 26 }}>Check your email for a 6-digit code, enter it below along with your new password.</p>
       <div className="card">
-        <div className="field"><label>New Password</label><input type="password" value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" autoFocus /></div>
+        <div className="field"><label>Your Registered Email</label><input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="The email you signed up with" autoFocus={!initialEmail} /></div>
+        <div className="field"><label>6-Digit Code</label><input value={code} onChange={e => { setCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }} placeholder="123456" inputMode="numeric" style={{ letterSpacing: "0.3em", fontSize: 18, textAlign: "center" }} autoFocus={!!initialEmail} /></div>
+        <div className="field"><label>New Password</label><input type="password" value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
         <div className="field">
           <label>Confirm New Password</label>
           <input
@@ -3181,6 +3274,7 @@ function ResetPasswordPage({ onSetPassword, setView }) {
         <button className="btn bg bfw" onClick={submit} disabled={checking}>
           {checking ? "Updating…" : "Set New Password →"}
         </button>
+        <button className="btn bh bfw" style={{ marginTop: 8 }} onClick={() => setView("enroll")}>Back to Login</button>
       </div>
     </div>
   );
@@ -3515,7 +3609,7 @@ function QuizPage({ quiz, onAnswer, onCancel, onTimeUp, optsVisible = true }) {
       <div className="qprog">{questions.map((_, i) => <div key={i} className={`qd ${i < cur ? "done" : i === cur ? "now" : ""}`} />)}</div>
       <div className="qcard">
         <div className="qdir">{q.dir === "ar2en" ? "Arabic → English" : "English → Arabic"}</div>
-        <div className={`qq arabic ${isArQ ? "" : "en"}`}>{q.word[q.qf]}</div>
+        <div className={`qq ${isArQ ? "arabic" : "en"}`}>{q.word[q.qf]}</div>
         {isArQ && <div className="qtr">{q.word.translit}</div>}
         {!isArQ && <div style={{ marginBottom: 34 }} />}
         {optsVisible && <div className="opts" key={`q-${cur}`} style={{ animation: "optsReset .01s" }}>
@@ -5071,6 +5165,66 @@ function DonateModal({ onClose, toast_, user }) {
             </p>
           </div>
 
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Invite a Friend modal ───────────────────────────────────────────────────
+function InviteModal({ onClose, toast_, user }) {
+  const [friendName, setFriendName] = useState("");
+  const [friendEmail, setFriendEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState(false);
+
+  const handleOverlay = (e) => { if (e.target === e.currentTarget) onClose(); };
+
+  const submit = async () => {
+    setError("");
+    const emailTrim = friendEmail.trim();
+    if (!friendName.trim()) { setError("Please enter your friend's name."); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) { setError("Please enter a valid email address."); return; }
+    setSending(true);
+    try {
+      await sendInviteEmail({ toEmail: emailTrim, friendName: friendName.trim(), inviterName: user?.name || "A fellow learner" });
+      setSent(true);
+    } catch (err) {
+      console.error("sendInviteEmail error:", err);
+      setError("Couldn't send the invite right now — please try again in a moment.");
+    }
+    setSending(false);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={handleOverlay}>
+      <div className="modal" style={{ maxWidth: 400 }}>
+        <div className="modal-head">
+          <h3>💌 Invite a Friend</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {!sent ? (
+            <>
+              <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+                Share the blessing of learning Qur'anic vocabulary — invite someone to join you on this journey.
+              </p>
+              <div className="field"><label>Friend's Name</label><input value={friendName} onChange={e => setFriendName(e.target.value)} placeholder="e.g. Ahmed" /></div>
+              <div className="field"><label>Friend's Email</label><input type="email" value={friendEmail} onChange={e => setFriendEmail(e.target.value)} placeholder="friend@example.com" /></div>
+              {error && <div className="enroll-error">⚠ {error}</div>}
+              <button className="btn bg bfw" onClick={submit} disabled={sending} style={{ marginTop: 8 }}>
+                {sending ? "Sending…" : "Send Invite →"}
+              </button>
+            </>
+          ) : (
+            <div style={{ textAlign: "center", padding: "12px 0" }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>🤲</div>
+              <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Invite sent to <strong style={{ color: "var(--gold2)" }}>{friendName}</strong>!</p>
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>May Allah reward you for sharing knowledge.</p>
+              <button className="btn bh" style={{ marginTop: 16 }} onClick={onClose}>Close</button>
+            </div>
+          )}
         </div>
       </div>
     </div>
