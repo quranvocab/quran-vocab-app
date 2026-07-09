@@ -262,16 +262,6 @@ function storageSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } 
 function storageRemove(k) { try { localStorage.removeItem(k); } catch {} }
 
 // ── Password hashing (SHA-256 via Web Crypto API) ─────────────────────────────
-// Used for both the admin gate and per-user login (#5). This is client-side
-// hashing — reasonable for a free learning tool with no backend server, but
-// it's not a substitute for real server-side auth if this app ever handles
-// sensitive data. It at least ensures passwords are never stored in plain text.
-async function hashPassword(password) {
-  const data = new TextEncoder().encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
 // ── Password complexity rule ───────────────────────────────────────────────────
 // Minimum 10 characters, at least 1 number, at least 1 special character.
 // Used consistently across Sign Up, the emailed reset-link flow, and Admin's
@@ -281,28 +271,6 @@ function getPasswordComplexityError(password) {
   if (!/[0-9]/.test(password)) return "Password must include at least 1 number.";
   if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) return "Password must include at least 1 special character.";
   return null;
-}
-
-// Default admin password is "admin123" — CHANGE THIS before going live, either
-// by replacing the hash below, or (recommended) by using the in-app "Change
-// Password" option inside Admin → Settings, which stores an override in
-// localStorage that takes precedence over this default automatically.
-const ADMIN_PASSWORD_HASH = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // sha256("admin123")
-
-function getActiveAdminPasswordHash() {
-  return storageGet("qv_admin_pw_hash") || ADMIN_PASSWORD_HASH;
-}
-
-// Default finance-team password is "finance123" — separate, independent
-// password from Admin's, since finance access should only ever reach the
-// restricted receipt-issuing screen, never admin's broader capabilities
-// (word management, account editing, test-data wipe, etc). Same pattern as
-// the admin password: change it via the in-app "Change Password" screen,
-// which stores an override in localStorage taking precedence over this default.
-const FINANCE_PASSWORD_HASH = "48f7312924d74358e75294e3b3613f2319d99e944184b69550f528577ca082fb"; // sha256("finance123")
-
-function getActiveFinancePasswordHash() {
-  return storageGet("qv_finance_pw_hash") || FINANCE_PASSWORD_HASH;
 }
 
 // Admin's notification email — one-time setup in Admin → Settings, editable
@@ -1614,10 +1582,22 @@ export default function App() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         await loadUserProfile(session.user.id, { silent: !!cached });
-      } else if (cached) {
-        // Supabase session truly expired — clear the optimistic restore
-        setUser(null);
-        storageRemove("qv_user");
+      } else {
+        if (cached) {
+          // Supabase session truly expired — clear the optimistic restore
+          setUser(null);
+          storageRemove("qv_user");
+        }
+        // Same idea for Admin/Finance — sessionStorage's flag is only ever an
+        // optimistic instant-restore hint; no real session means it's stale.
+        if (sessionStorage.getItem("qv_admin_unlocked") === "1") {
+          setAdminUnlocked(false);
+          sessionStorage.removeItem("qv_admin_unlocked");
+        }
+        if (sessionStorage.getItem("qv_finance_unlocked") === "1") {
+          setFinanceUnlocked(false);
+          sessionStorage.removeItem("qv_finance_unlocked");
+        }
       }
 
       // Load participants (profiles + scores + progress) from Supabase
@@ -1655,6 +1635,10 @@ export default function App() {
         setUser(null);
         storageRemove("qv_user");
         isPasswordRecovery.current = false;
+        setAdminUnlocked(false);
+        setFinanceUnlocked(false);
+        sessionStorage.removeItem("qv_admin_unlocked");
+        sessionStorage.removeItem("qv_finance_unlocked");
       }
     });
     return () => subscription.unsubscribe();
@@ -1671,6 +1655,24 @@ export default function App() {
 
     if (error) { console.error("loadUserProfile error:", error.message); return; }
     if (!profile) { console.warn("No profile found for auth_id:", authId); return; }
+
+    // Admin/Finance are real Supabase accounts (as of the session-security fix)
+    // but don't behave like learner accounts — no quiz state, routed to their
+    // own panel instead of Home. Handle here, centrally, so it works no matter
+    // which screen the login happened from (main login form, /admin, /finance,
+    // or a restored session on page reload).
+    if (profile.role === "admin" || profile.role === "finance") {
+      if (profile.role === "admin") {
+        setAdminUnlocked(true);
+        sessionStorage.setItem("qv_admin_unlocked", "1");
+        if (!opts.silent) setView("admin");
+      } else {
+        setFinanceUnlocked(true);
+        sessionStorage.setItem("qv_finance_unlocked", "1");
+        if (!opts.silent) setView("finance");
+      }
+      return;
+    }
 
     // Detect re-created account using Supabase auth UUID (always unique per account)
     // If same user_id but different auth UUID → deleted and re-created → clear stale cache.
@@ -1704,23 +1706,17 @@ export default function App() {
     }
   };
 
-  const unlockAdmin = () => {
-    setAdminUnlocked(true);
-    sessionStorage.setItem("qv_admin_unlocked", "1");
-  };
-  const lockAdmin = () => {
+  const lockAdmin = async () => {
     setAdminUnlocked(false);
     sessionStorage.removeItem("qv_admin_unlocked");
+    await supabase.auth.signOut();
     if (isAdminRoute) { window.location.href = "/"; } else { setView("home"); }
   };
 
-  const unlockFinance = () => {
-    setFinanceUnlocked(true);
-    sessionStorage.setItem("qv_finance_unlocked", "1");
-  };
-  const lockFinance = () => {
+  const lockFinance = async () => {
     setFinanceUnlocked(false);
     sessionStorage.removeItem("qv_finance_unlocked");
+    await supabase.auth.signOut();
     if (isFinanceRoute) { window.location.href = "/"; } else { setView("home"); }
   };
 
@@ -1946,15 +1942,14 @@ export default function App() {
   };
 
   // Pre-launch cleanup: wipes every piece of test data accumulated during
-  // QA — participants, scores, messages, reset/verify tokens, custom words,
-  // and the admin password (reverts to the hardcoded default so a fresh
-  // production password must be set deliberately afterward). Deliberately
-  // does NOT touch qv_admin_email, since that's a real configuration value,
-  // not test data. Admin is logged out of the unlocked session as part of
-  // this, since the password they were using is no longer valid.
+  // QA — participants, scores, messages, reset/verify tokens, custom words.
+  // Deliberately does NOT touch qv_admin_email, since that's a real
+  // configuration value, not test data. Admin/Finance are real Supabase
+  // accounts now (as of the session-security fix) and are excluded from the
+  // wipe by role, same as before — their login/password is untouched by this.
   const resetAllTestData = async () => {
     // Clear Supabase users table (auth users remain — admin can delete manually)
-    await supabase.from("users").delete().neq("role", "admin");
+    await supabase.from("users").delete().neq("role", "admin").neq("role", "finance");
     await supabase.from("scores").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     await supabase.from("progress").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     await supabase.from("messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
@@ -1966,14 +1961,15 @@ export default function App() {
     storageRemove("qv_reset_tokens");
     storageRemove("qv_verify_tokens");
     storageRemove("qv_custom");
-    storageRemove("qv_admin_pw_hash");
     sessionStorage.removeItem("qv_admin_unlocked");
+    sessionStorage.removeItem("qv_finance_unlocked");
 
     setParticipants([]);
     setUser(null);
     setMessages([]);
     setCustomWords([]);
     setAdminUnlocked(false);
+    setFinanceUnlocked(false);
     setQuiz(null);
 
     window.location.href = "/admin";
@@ -2253,7 +2249,7 @@ export default function App() {
     // Only run when someone is actually logged in
     const isLearnerActive  = !!user;
     const isAdminActive    = adminUnlocked;
-    const isFinanceActive  = isFinanceRoute;
+    const isFinanceActive  = financeUnlocked;
     if (!isLearnerActive && !isAdminActive && !isFinanceActive) return;
 
     const timeoutMs = (isAdminRoute || isFinanceRoute) ? IDLE_ADMIN_MS : IDLE_LEARNER_MS;
@@ -2268,9 +2264,13 @@ export default function App() {
       if (isAdminActive && isAdminRoute) {
         sessionStorage.removeItem("qv_admin_unlocked");
         setAdminUnlocked(false);
+        supabase.auth.signOut();
         toast_("⏱ Admin session expired after inactivity.");
         setTimeout(() => { window.location.href = "/admin"; }, 1800);
       } else if (isFinanceActive && isFinanceRoute) {
+        sessionStorage.removeItem("qv_finance_unlocked");
+        setFinanceUnlocked(false);
+        supabase.auth.signOut();
         toast_("⏱ Finance session expired after inactivity.");
         setTimeout(() => { window.location.href = "/"; }, 1800);
       } else if (isLearnerActive) {
@@ -2322,7 +2322,7 @@ export default function App() {
       document.removeEventListener("visibilitychange", onVisibility);
       events.forEach(ev => window.removeEventListener(ev, reset));
     };
-  }, [user, adminUnlocked, isAdminRoute, isFinanceRoute]); // re-run when session changes
+  }, [user, adminUnlocked, financeUnlocked, isAdminRoute, isFinanceRoute]); // re-run when session changes
   // ── End idle timeout ──────────────────────────────────────────────────────
 
   // ── Access gate — remove this block when going public ──
@@ -2401,15 +2401,15 @@ export default function App() {
         {isAdminRoute || view === "admin" ? (
           adminUnlocked
             ? <AdminPage customWords={customWords} saveWords={saveCW} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} wordOverrides={wordOverrides} onSaveOverride={saveWordOverride} />
-            : <AdminGate onUnlock={unlockAdmin} />
+            : <AdminGate onLogin={loginUser} />
         ) : isFinanceRoute || view === "finance" ? (
           financeUnlocked
             ? <FinancePage receipts={receipts} onIssueReceipt={issueReceipt} toast_={toast_} participants={participants} />
-            : <FinanceGate onUnlock={unlockFinance} />
+            : <FinanceGate onLogin={loginUser} />
         ) : (
           <>
             {view === "home" && <HomePage user={user} allWords={allWords} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onInvite={() => setShowInvite(true)} onReview={reviewSession} />}
-            {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} setView={setView} onGoToResetCode={(email) => { setPendingResetEmail(email); setView("resetPassword"); }} onAdminLogin={async (pw) => { const h = await hashPassword(pw); if (h === getActiveAdminPasswordHash()) { sessionStorage.setItem("qv_admin_unlocked","1"); setAdminUnlocked(true); setView("admin"); return true; } return false; }} onFinanceLogin={async (pw) => { const h = await hashPassword(pw); if (h === getActiveFinancePasswordHash()) { sessionStorage.setItem("qv_finance_unlocked","1"); setFinanceUnlocked(true); setView("finance"); return true; } return false; }} />}
+            {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} setView={setView} onGoToResetCode={(email) => { setPendingResetEmail(email); setView("resetPassword"); }} />}
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
             {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} optsVisible={optsVisible} />}
             {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} setSelectedDay={setSelectedDay} />}
@@ -2447,8 +2447,6 @@ export default function App() {
         {adminProfileOpen && (
           <ChangePasswordModal
             label="Admin"
-            getCurrentHash={getActiveAdminPasswordHash}
-            storageKey="qv_admin_pw_hash"
             onClose={() => setAdminProfileOpen(false)}
             toast_={toast_}
           />
@@ -2456,8 +2454,6 @@ export default function App() {
         {financeProfileOpen && (
           <ChangePasswordModal
             label="Finance"
-            getCurrentHash={getActiveFinancePasswordHash}
-            storageKey="qv_finance_pw_hash"
             onClose={() => setFinanceProfileOpen(false)}
             toast_={toast_}
           />
@@ -2686,7 +2682,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
   );
 }
 
-function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onResendVerification, setView, onGoToResetCode, onAdminLogin, onFinanceLogin }) {
+function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onResendVerification, setView, onGoToResetCode }) {
   // mode: "login" | "signup"
   const [mode, setMode] = useState("login");
 
@@ -2746,21 +2742,6 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
     setError("");
     if (!loginId.trim() || !loginPw) { setError("Enter your User ID and password."); return; }
     setChecking(true);
-
-    // Check admin/finance credentials first
-    const idLower = loginId.trim().toLowerCase();
-    if (idLower === "admin" && onAdminLogin) {
-      const ok = await onAdminLogin(loginPw);
-      setChecking(false);
-      if (!ok) setError("Incorrect admin password.");
-      return;
-    }
-    if (idLower === "finance" && onFinanceLogin) {
-      const ok = await onFinanceLogin(loginPw);
-      setChecking(false);
-      if (!ok) setError("Incorrect finance password.");
-      return;
-    }
 
     const result = await onLogin(loginId, loginPw);
     setChecking(false);
@@ -3004,7 +2985,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
                 <div style={{ textAlign: "center", padding: "10px 0" }}>
                   <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
                   <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Check your email!</p>
-                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 18 }}>We've sent a 6-digit code to <strong style={{ color: "var(--gold2)" }}>{forgotEmail}</strong>. Enter it on the next screen along with your new password.</p>
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 18 }}>We've sent a code to <strong style={{ color: "var(--gold2)" }}>{forgotEmail}</strong>. Enter it on the next screen along with your new password.</p>
                   <button className="btn bg bfw" onClick={() => { onGoToResetCode(forgotEmail); closeForgot(); }}>Enter Code →</button>
                   <button className="btn bh bfw" style={{ marginTop: 8 }} onClick={closeForgot}>Close</button>
                 </div>
@@ -3216,7 +3197,7 @@ function ResetPasswordPage({ onSetPassword, initialEmail = "", setView }) {
   const submit = async () => {
     setError("");
     if (!email.trim()) { setError("Enter the email you signed up with."); return; }
-    if (!code.trim() || !/^\d{6}$/.test(code.trim())) { setError("Enter the 6-digit code from your email."); return; }
+    if (!code.trim() || !/^\d{6,10}$/.test(code.trim())) { setError("Enter the code from your email."); return; }
     if (!newPw || !confirmPw) { setError("Both password fields are required."); return; }
     const pwError = getPasswordComplexityError(newPw);
     if (pwError) { setError(pwError); return; }
@@ -3248,10 +3229,10 @@ function ResetPasswordPage({ onSetPassword, initialEmail = "", setView }) {
     <div className="page psm" style={{ paddingTop: 60 }}>
       <div className="lbl" style={{ justifyContent: "center" }}>Reset Password</div>
       <h2 style={{ textAlign: "center" }}>Enter Your Reset Code</h2>
-      <p className="sub" style={{ textAlign: "center", marginBottom: 26 }}>Check your email for a 6-digit code, enter it below along with your new password.</p>
+      <p className="sub" style={{ textAlign: "center", marginBottom: 26 }}>Check your email for a code, enter it below along with your new password.</p>
       <div className="card">
         <div className="field"><label>Your Registered Email</label><input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="The email you signed up with" autoFocus={!initialEmail} /></div>
-        <div className="field"><label>6-Digit Code</label><input value={code} onChange={e => { setCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }} placeholder="123456" inputMode="numeric" style={{ letterSpacing: "0.3em", fontSize: 18, textAlign: "center" }} autoFocus={!!initialEmail} /></div>
+        <div className="field"><label>Code From Your Email</label><input value={code} onChange={e => { setCode(e.target.value.replace(/\D/g, "").slice(0, 10)); setError(""); }} placeholder="Enter the code" inputMode="numeric" style={{ letterSpacing: "0.3em", fontSize: 18, textAlign: "center" }} autoFocus={!!initialEmail} /></div>
         <div className="field"><label>New Password</label><input type="password" value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
         <div className="field">
           <label>Confirm New Password</label>
@@ -4278,7 +4259,7 @@ function LBPage({ participants, user }) {
 }
 
 // ─── Admin Password Gate ──────────────────────────────────────────────────────
-function AdminGate({ onUnlock }) {
+function AdminGate({ onLogin }) {
   const [password, setPassword] = useState("");
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
@@ -4287,14 +4268,15 @@ function AdminGate({ onUnlock }) {
     if (!password) return;
     setChecking(true);
     setError("");
-    const hash = await hashPassword(password);
+    const result = await onLogin("admin", password);
     setChecking(false);
-    if (hash === getActiveAdminPasswordHash()) {
-      onUnlock();
-    } else {
+    if (!result.ok) {
       setError("Incorrect password.");
       setPassword("");
     }
+    // On success, adminUnlocked flips true reactively once the SIGNED_IN
+    // event fires and loadUserProfile picks up the admin role — no further
+    // action needed here.
   };
 
   return (
@@ -4324,7 +4306,7 @@ function AdminGate({ onUnlock }) {
 }
 
 // ─── Finance Gate — separate, restricted-scope password (receipts only) ──────
-function FinanceGate({ onUnlock }) {
+function FinanceGate({ onLogin }) {
   const [password, setPassword] = useState("");
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
@@ -4333,11 +4315,9 @@ function FinanceGate({ onUnlock }) {
     if (!password) return;
     setChecking(true);
     setError("");
-    const hash = await hashPassword(password);
+    const result = await onLogin("finance", password);
     setChecking(false);
-    if (hash === getActiveFinancePasswordHash()) {
-      onUnlock();
-    } else {
+    if (!result.ok) {
       setError("Incorrect password.");
       setPassword("");
     }
@@ -4370,10 +4350,11 @@ function FinanceGate({ onUnlock }) {
 }
 
 // ─── Generic Change Password modal — used by both Admin and Finance ──────────
-// profile dropdowns. Which password it checks/changes is determined by the
-// getCurrentHash/storageKey/label props passed in, not hardcoded, so one
-// component serves both roles without duplicating the logic.
-function ChangePasswordModal({ label, getCurrentHash, storageKey, onClose, toast_ }) {
+// Now backed by a real Supabase account (as of the session-security fix), so
+// this re-verifies the current password against Supabase directly, then
+// updates it for real — password changes now sync instantly across every
+// device, instead of only the browser they were changed on.
+function ChangePasswordModal({ label, onClose, toast_ }) {
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -4388,15 +4369,25 @@ function ChangePasswordModal({ label, getCurrentHash, storageKey, onClose, toast
     if (newPw !== confirmPw) { setError("New password and confirmation don't match."); return; }
 
     setChecking(true);
-    const currentHash = await hashPassword(currentPw);
-    if (currentHash !== getCurrentHash()) {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser?.email) {
+      setChecking(false);
+      setError("Couldn't verify your session. Please log out and back in, then try again.");
+      return;
+    }
+    // Re-verify current password by attempting a real sign-in with it
+    const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: authUser.email, password: currentPw });
+    if (verifyErr) {
       setChecking(false);
       setError("Current password is incorrect.");
       return;
     }
-    const newHash = await hashPassword(newPw);
-    storageSet(storageKey, newHash);
+    const { error: updateErr } = await supabase.auth.updateUser({ password: newPw });
     setChecking(false);
+    if (updateErr) {
+      setError("Couldn't update password. Please try again.");
+      return;
+    }
     toast_(`${label} password updated successfully!`);
     onClose();
   };
