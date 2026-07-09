@@ -83,20 +83,21 @@ function shuffle(arr) {
 // (i.e. dayProgress[N] exists) — never just by time passing. A learner who
 // takes a 4-day break comes back to exactly where they left off, not skipped
 // ahead to whatever day the calendar would otherwise imply.
-function getUnlockedDays(enrolledAt, dayProgress = {}) {
+function getUnlockedDays(enrolledAt, dayProgress = {}, totalDays = TOTAL_DAYS) {
   let day = 1;
-  while (day < TOTAL_DAYS && dayProgress[String(day)]) {
+  while (day < totalDays && dayProgress[String(day)]) {
     day++;
   }
   return day;
 }
 
-function getWordsForDay(day) {
-  return WORD_BANK.slice((day - 1) * WORDS_PER_DAY, day * WORDS_PER_DAY);
+function getWordsForDay(day, allWords = WORD_BANK) {
+  return allWords.slice((day - 1) * WORDS_PER_DAY, day * WORDS_PER_DAY);
 }
 
-function getUnlockedWords(enrolledAt, dayProgress = {}) {
-  return WORD_BANK.slice(0, getUnlockedDays(enrolledAt, dayProgress) * WORDS_PER_DAY);
+function getUnlockedWords(enrolledAt, dayProgress = {}, allWords = WORD_BANK) {
+  const totalDays = Math.ceil(allWords.length / WORDS_PER_DAY);
+  return allWords.slice(0, getUnlockedDays(enrolledAt, dayProgress, totalDays) * WORDS_PER_DAY);
 }
 
 // Mastery restricted to words belonging to COMPLETED sets only — words from
@@ -221,7 +222,7 @@ function buildStrictMastery(scores) {
 // the All Sets Quiz, same as the calendar page's mastery display, so this
 // check and what the learner actually sees on screen always agree.
 function hasMetMasteryGate(setDay, allScores, allWords) {
-  const setWords = getWordsForDay(setDay);
+  const setWords = getWordsForDay(setDay, allWords);
   if (setWords.length === 0) return false;
   const setWordArabics = new Set(setWords.map(w => w.arabic));
   const relevantScores = allScores.filter(s => s.day === setDay || s.day == null);
@@ -273,18 +274,6 @@ function getPasswordComplexityError(password) {
   return null;
 }
 
-// Admin's notification email — one-time setup in Admin → Settings, editable
-// only after re-confirming the admin password. Currently used to display
-// "where reset requests would be emailed" and to label the Message Center.
-// Wiring this up to actually SEND email (e.g. via EmailJS) is a follow-up step
-// once an EmailJS account is set up — this field is ready for that integration.
-function getAdminEmail() {
-  return storageGet("qv_admin_email") || "";
-}
-function setAdminEmail(email) {
-  storageSet("qv_admin_email", email.trim());
-}
-
 // ── Admin Message Center — password reset requests ────────────────────────────
 // Stored in localStorage like the rest of this app's data. Note: this means
 // a request is only visible to Admin if Admin opens /admin in the SAME
@@ -318,27 +307,46 @@ function markMessageResolved(id) {
 // (outside the app) and tells admin, who then issues the receipt manually.
 const RECEIPT_PREFIX = "ABM";
 
-function getReceipts() {
-  return storageGet("qv_receipts") || [];
-}
-function getNextReceiptNumber() {
-  const year = new Date().getFullYear();
-  const all = getReceipts();
-  const thisYearCount = all.filter(r => r.receiptNo.includes(`-${year}-`)).length;
-  const next = String(thisYearCount + 1).padStart(3, "0");
-  return `${RECEIPT_PREFIX}-${year}-${next}`;
-}
-function addReceipt(receipt) {
-  const all = getReceipts();
-  const record = {
-    id: Date.now() + Math.random().toString(36).slice(2),
-    receiptNo: getNextReceiptNumber(),
-    issuedAt: new Date().toISOString(),
-    ...receipt,
+function mapReceiptRow(row) {
+  return {
+    id: row.id, receiptNo: row.receipt_no, donorName: row.donor_name,
+    donorEmail: row.donor_email, amount: row.amount, donationDate: row.donation_date,
+    purpose: row.purpose, note: row.notes, issuedAt: row.issued_at,
   };
-  all.unshift(record);
-  storageSet("qv_receipts", all);
-  return record;
+}
+
+async function fetchAllReceipts() {
+  const { data, error } = await supabase.from("receipts").select("*").order("issued_at", { ascending: false });
+  if (error) { console.error("fetchAllReceipts error:", error.message); return null; }
+  return (data || []).map(mapReceiptRow);
+}
+
+// Retries with the next number if a rare race produces a duplicate — the
+// unique constraint on receipt_no (see deploy notes) is what makes this safe:
+// Postgres rejects the conflict outright rather than silently double-issuing
+// the same receipt number to two donors.
+async function insertReceiptRow(receipt) {
+  const year = new Date().getFullYear();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { count } = await supabase.from("receipts")
+      .select("id", { count: "exact", head: true })
+      .like("receipt_no", `${RECEIPT_PREFIX}-${year}-%`);
+    const next = String((count || 0) + 1 + attempt).padStart(3, "0");
+    const receiptNo = `${RECEIPT_PREFIX}-${year}-${next}`;
+    const { data, error } = await supabase.from("receipts").insert({
+      receipt_no: receiptNo, donor_name: receipt.donorName, donor_email: receipt.donorEmail,
+      amount: receipt.amount, donation_date: receipt.donationDate, purpose: receipt.purpose,
+      notes: receipt.note || null, issued_at: new Date().toISOString(),
+    }).select().single();
+    if (!error) return { ok: true, receiptNo, dbId: data.id };
+    if (error.code !== "23505") { // not a receipt-number conflict — a real error, stop retrying
+      console.error("insertReceiptRow error:", error.message);
+      return { ok: false };
+    }
+    // else: number conflict — loop and retry with the next one
+  }
+  console.error("insertReceiptRow: exhausted retries on receipt number conflicts");
+  return { ok: false };
 }
 
 // ── Supabase: scores + progress (Phase 3) ──────────────────────────────────
@@ -375,6 +383,70 @@ async function upsertProgress(dbUserId, dayProgress) {
     { onConflict: "user_id" }
   );
   if (error) console.error("upsertProgress error:", error.message);
+  return !error;
+}
+
+// ── Supabase: words (Phase 3) ───────────────────────────────────────────────
+// One unified table for both built-in and admin-added words — editing either
+// kind is just an UPDATE on its row now, no separate "overrides" concept needed.
+function mapWordRow(row) {
+  return {
+    dbId: row.id, arabic: row.arabic, translit: row.translit, english: row.english,
+    urdu: row.urdu, root: row.root, rootEnglish: row.root_meaning, rootUrdu: row.root_urdu,
+    ayahRef: row.ayah_ref || "", isCustom: !!row.is_custom,
+  };
+}
+
+async function fetchAllWords() {
+  const { data, error } = await supabase.from("words").select("*")
+    .eq("is_active", true)
+    .order("set_number", { ascending: true })
+    .order("order_in_set", { ascending: true });
+  if (error) { console.error("fetchAllWords error:", error.message); return null; }
+  return (data || []).map(mapWordRow);
+}
+
+// New custom words always append after the last existing word, filling out
+// a partial set before starting a new one — matches the old array-append behavior.
+async function insertWord(word) {
+  const { data: { user: authUser } } = await supabase.auth.getUser();
+  let addedBy = null;
+  if (authUser) {
+    const { data: profile } = await supabase.from("users").select("id").eq("auth_id", authUser.id).maybeSingle();
+    addedBy = profile?.id || null;
+  }
+  const { data: last } = await supabase.from("words").select("set_number, order_in_set")
+    .order("set_number", { ascending: false }).order("order_in_set", { ascending: false })
+    .limit(1).maybeSingle();
+  let setNum = 1, orderNum = 1;
+  if (last) {
+    orderNum = last.order_in_set + 1;
+    setNum = last.set_number;
+    if (orderNum > WORDS_PER_DAY) { setNum += 1; orderNum = 1; }
+  }
+  const { error } = await supabase.from("words").insert({
+    arabic: word.arabic, translit: word.translit, english: word.english,
+    urdu: word.urdu, root: word.root, root_meaning: word.rootEnglish, root_urdu: word.rootUrdu,
+    ayah_ref: word.ayahRef || null, set_number: setNum, order_in_set: orderNum,
+    is_custom: true, is_active: true, added_by: addedBy, added_at: new Date().toISOString(),
+  });
+  if (error) console.error("insertWord error:", error.message);
+  return !error;
+}
+
+async function updateWord(dbId, fields) {
+  const { error } = await supabase.from("words").update({
+    arabic: fields.arabic, translit: fields.translit, english: fields.english,
+    urdu: fields.urdu, root: fields.root, root_meaning: fields.rootEnglish, root_urdu: fields.rootUrdu,
+    ayah_ref: fields.ayahRef || null,
+  }).eq("id", dbId);
+  if (error) console.error("updateWord error:", error.message);
+  return !error;
+}
+
+async function deleteWordRow(dbId) {
+  const { error } = await supabase.from("words").delete().eq("id", dbId);
+  if (error) console.error("deleteWordRow error:", error.message);
   return !error;
 }
 
@@ -1503,13 +1575,11 @@ export default function App() {
   const [user, setUser] = useState(() => storageGet("qv_user") || null); // instant restore on PWA reload — Supabase session reconciles async
   const userRef = React.useRef(null);
   React.useEffect(() => { userRef.current = user; }, [user]);
-  const [customWords, setCustomWords] = useState([]);
-  const [wordOverrides, setWordOverrides] = useState(() => storageGet("qv_word_overrides") || {});
-  const saveWordOverride = (arabicKey, form) => {
-    const next = { ...wordOverrides, [arabicKey]: form };
-    setWordOverrides(next);
-    storageSet("qv_word_overrides", next);
-  };
+  // allWords: WORD_BANK is the instant-paint fallback (same pattern as qv_user),
+  // replaced by the real Supabase-backed word list once it loads — see
+  // loadAllWords() in the init effect below. Built-in and custom words are
+  // both just rows in one table now; no more separate overrides system.
+  const [allWords, setAllWords] = useState(WORD_BANK);
   const [participants, setParticipants] = useState([]);
   const [quiz, setQuiz] = useState(null);
   const quizRef = React.useRef(null);
@@ -1536,10 +1606,9 @@ export default function App() {
   const [receipts, setReceipts] = useState([]);
 
   useEffect(() => {
-    const cw = storageGet("qv_custom") || [];
-    setCustomWords(cw);
+    fetchAllWords().then(words => { if (words) setAllWords(words); });
     setMessages(getMessages());
-    setReceipts(getReceipts());
+    fetchAllReceipts().then(r => { if (r) setReceipts(r); });
 
     // ── Supabase: load every participant's profile + scores + progress ──────
     // Two bulk queries (not one per participant) — RLS means a regular
@@ -1547,7 +1616,11 @@ export default function App() {
     // while admin/finance see everyone's (see scores_select/progress_select
     // policies). Either way this fetch pattern is correct as-is.
     const loadParticipants = async () => {
-      const { data: parts } = await supabase.from("users").select("*");
+      // Admin/Finance are real accounts in this same table now, but they're
+      // staff, not learners — excluded here at the source so they can never
+      // appear in member counts, Leaderboard, or (importantly) the "Delete
+      // Participant" list, where someone could otherwise remove them by mistake.
+      const { data: parts } = await supabase.from("users").select("*").neq("role", "admin").neq("role", "finance");
       const { data: allScores } = await supabase.from("scores").select("*").order("quiz_date", { ascending: true });
       const { data: allProgress } = await supabase.from("progress").select("*");
       if (parts) setParticipants(parts.map(p => ({
@@ -1921,9 +1994,14 @@ export default function App() {
   };
 
   const deleteParticipant = async (userId) => {
+    const idLower = userId.toLowerCase();
+    if (idLower === "admin" || idLower === "finance") {
+      console.warn("Blocked attempt to delete a protected staff account:", idLower);
+      return { ok: false, reason: "protected" };
+    }
     // Delete from Supabase users table (cascades to auth via trigger if set)
     const { data: profile } = await supabase.from("users")
-      .select("id, auth_id").eq("user_id", userId.toLowerCase()).maybeSingle();
+      .select("id, auth_id").eq("user_id", idLower).maybeSingle();
     // scores/progress reference users.id (Phase 3) — must clear those rows
     // first or the users delete below fails on the foreign key.
     if (profile?.id) {
@@ -1933,8 +2011,8 @@ export default function App() {
     if (profile?.auth_id) {
       await supabase.from("users").delete().eq("auth_id", profile.auth_id);
     }
-    setParticipants(prev => prev.filter(p => (p.userId || "").toLowerCase() !== userId.toLowerCase()));
-    if (user && (user.userId || "").toLowerCase() === userId.toLowerCase()) {
+    setParticipants(prev => prev.filter(p => (p.userId || "").toLowerCase() !== idLower));
+    if (user && (user.userId || "").toLowerCase() === idLower) {
       await supabase.auth.signOut();
       setUser(null);
       storageRemove("qv_user");
@@ -1943,16 +2021,15 @@ export default function App() {
 
   // Pre-launch cleanup: wipes every piece of test data accumulated during
   // QA — participants, scores, messages, reset/verify tokens, custom words.
-  // Deliberately does NOT touch qv_admin_email, since that's a real
-  // configuration value, not test data. Admin/Finance are real Supabase
-  // accounts now (as of the session-security fix) and are excluded from the
-  // wipe by role, same as before — their login/password is untouched by this.
+  // Admin/Finance are real Supabase accounts now (as of the session-security
+  // fix) and are excluded from the wipe by role — their login is untouched.
   const resetAllTestData = async () => {
     // Clear Supabase users table (auth users remain — admin can delete manually)
     await supabase.from("users").delete().neq("role", "admin").neq("role", "finance");
     await supabase.from("scores").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     await supabase.from("progress").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     await supabase.from("messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await supabase.from("words").delete().eq("is_custom", true); // built-in words untouched
     // Sign out current user if any
     await supabase.auth.signOut();
     // Clear localStorage
@@ -1960,14 +2037,14 @@ export default function App() {
     storageRemove("qv_messages");
     storageRemove("qv_reset_tokens");
     storageRemove("qv_verify_tokens");
-    storageRemove("qv_custom");
     sessionStorage.removeItem("qv_admin_unlocked");
     sessionStorage.removeItem("qv_finance_unlocked");
 
     setParticipants([]);
     setUser(null);
     setMessages([]);
-    setCustomWords([]);
+    const words = await fetchAllWords();
+    if (words) setAllWords(words);
     setAdminUnlocked(false);
     setFinanceUnlocked(false);
     setQuiz(null);
@@ -2037,29 +2114,29 @@ export default function App() {
 
   // Admin-issued donation receipt, sent after the finance team confirms funds
   // were actually received (outside the app). Not an automated/verified
-  // payment confirmation — see the note above getReceipts() for why.
+  // payment confirmation — see the note above insertReceiptRow() for why.
   const issueReceipt = async ({ donorName, donorEmail, amount, donationDate, purpose, note }) => {
-    const record = addReceipt({ donorName, donorEmail, amount, donationDate, purpose, note });
-    setReceipts(getReceipts());
+    const result = await insertReceiptRow({ donorName, donorEmail, amount, donationDate, purpose, note });
+    if (!result.ok) return { ok: false };
+    const updated = await fetchAllReceipts();
+    if (updated) setReceipts(updated);
     try {
       await sendReceiptEmail({
-        toEmail: donorEmail, donorName, receiptNo: record.receiptNo,
+        toEmail: donorEmail, donorName, receiptNo: result.receiptNo,
         amount, donationDate, purpose, note,
       });
-      return { ok: true, receiptNo: record.receiptNo };
+      return { ok: true, receiptNo: result.receiptNo };
     } catch (err) {
       console.error("Receipt email failed to send:", err);
-      return { ok: true, receiptNo: record.receiptNo, emailFailed: true };
+      return { ok: true, receiptNo: result.receiptNo, emailFailed: true };
     }
   };
 
-  const allWords = [...WORD_BANK.map(w => wordOverrides[w.arabic] ? { ...w, ...wordOverrides[w.arabic] } : w), ...customWords];
-
   const startQuiz = (day = null, customPool = null) => {
     if (!user) { toast_("Please enroll first"); return; }
-    const pool = getUnlockedWords(user.enrolledAt, user.dayProgress);
+    const pool = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords);
     if (pool.length < 4) { toast_("Need more unlocked words"); return; }
-    const src = customPool ? customPool : day ? getWordsForDay(day) : pool;
+    const src = customPool ? customPool : day ? getWordsForDay(day, allWords) : pool;
     const use = src.length >= 4 ? src : pool;
     // All Sets Quiz (day === null, no customPool) = all unlocked words, timed
     // Set quiz or custom (weak word practice) = capped at 10, no timer
@@ -2190,7 +2267,24 @@ export default function App() {
     setView("review");
   };
 
-  const saveCW = (w) => { setCustomWords(w); storageSet("qv_custom", w); };
+  // Word management (Admin only) — all three refetch the full list after
+  // writing, so set/order positions and any other admin's concurrent edits
+  // stay correctly reflected rather than trusting a locally-guessed update.
+  const addWord = async (wordData) => {
+    const ok = await insertWord(wordData);
+    if (ok) { const words = await fetchAllWords(); if (words) setAllWords(words); }
+    return ok;
+  };
+  const editWord = async (dbId, fields) => {
+    const ok = await updateWord(dbId, fields);
+    if (ok) { const words = await fetchAllWords(); if (words) setAllWords(words); }
+    return ok;
+  };
+  const removeWord = async (dbId) => {
+    const ok = await deleteWordRow(dbId);
+    if (ok) { const words = await fetchAllWords(); if (words) setAllWords(words); }
+    return ok;
+  };
 
   // ── Browser back button support ─────────────────────────────────────────
   // Push state whenever the view changes so the browser history stack tracks it
@@ -2400,7 +2494,7 @@ export default function App() {
 
         {isAdminRoute || view === "admin" ? (
           adminUnlocked
-            ? <AdminPage customWords={customWords} saveWords={saveCW} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} wordOverrides={wordOverrides} onSaveOverride={saveWordOverride} />
+            ? <AdminPage allWords={allWords} onAddWord={addWord} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} />
             : <AdminGate onLogin={loginUser} />
         ) : isFinanceRoute || view === "finance" ? (
           financeUnlocked
@@ -2415,7 +2509,7 @@ export default function App() {
             {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} setSelectedDay={setSelectedDay} />}
             {view === "history" && <HistoryPage user={user} setView={setView} onReview={reviewSession} allWords={allWords} onStart={startQuiz} />}
             {view === "review" && reviewing && <ReviewPage rec={reviewing} setView={setView} allWords={allWords} />}
-            {view === "leaderboard" && <LBPage participants={participants} user={user} />}
+            {view === "leaderboard" && <LBPage participants={participants} user={user} allWords={allWords} />}
             {view === "resetPassword" && <ResetPasswordPage onSetPassword={verifyResetCodeAndSetPassword} initialEmail={pendingResetEmail} setView={setView} />}
             {view === "profile" && user && <ProfilePage user={user} saveUser={saveUser} setView={setView} toast_={toast_} />}
             {/* Email verification handled automatically by Supabase via onAuthStateChange */}
@@ -2467,10 +2561,10 @@ export default function App() {
 function HomePage({ user, allWords, participants, onStart, setView, onDonate, onInvite, onReview }) {
   const [showAllSetsReady, setShowAllSetsReady] = useState(false);
   const [showMasteredList, setShowMasteredList] = useState(false);
-  const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress).length : 0;
-  const dayN = user ? getUnlockedDays(user.enrolledAt, user.dayProgress) : 0;
+  const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).length : 0;
+  const dayN = user ? getUnlockedDays(user.enrolledAt, user.dayProgress, Math.ceil(allWords.length / WORDS_PER_DAY)) : 0;
   const best = user?.scores?.length ? Math.max(...user.scores.map(s => s.pct)) : null;
-  const { masteredSet: homeMastered } = getCompletedSetsMastery(user?.scores || [], user?.dayProgress || {});
+  const { masteredSet: homeMastered } = getCompletedSetsMastery(user?.scores || [], user?.dayProgress || {}, allWords);
   const streak = calcStreak(user?.scores || []);
   // Actual quiz completion = distinct numbered days completed / total days in programme
   // (deliberately excludes "free" quick-quiz attempts and is 0 for a brand-new user)
@@ -3364,7 +3458,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
       <button className="btn bg" onClick={() => setView("enroll")}>Enroll Now</button>
     </div>
   );
-  const unlocked = getUnlockedDays(user.enrolledAt, user.dayProgress);
+  const unlocked = getUnlockedDays(user.enrolledAt, user.dayProgress, Math.ceil(allWords.length / WORDS_PER_DAY));
   const totalDays = Math.ceil(allWords.length / WORDS_PER_DAY);
   const words = selectedDay ? allWords.slice((selectedDay - 1) * WORDS_PER_DAY, selectedDay * WORDS_PER_DAY) : null;
   const done = (d) => !!user.dayProgress?.[String(d)];
@@ -3515,8 +3609,8 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
           {/* Show all unlocked words — same layout as individual set words, with mastery highlight */}
           {(() => {
             const { masteredSet: allMastered } = buildStrictMastery(user.scores || []);
-            const allMasteredCount = getUnlockedWords(user.enrolledAt, user.dayProgress).filter(w => allMastered.has(w.arabic)).length;
-            const allUnlocked = getUnlockedWords(user.enrolledAt, user.dayProgress);
+            const allMasteredCount = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).filter(w => allMastered.has(w.arabic)).length;
+            const allUnlocked = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords);
             return (
               <>
                 {allMastered.size > 0 && (
@@ -3931,7 +4025,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
                 {allSetsBarData.length > 0 ? <ScoreBarChart data={allSetsBarData} compact mode="score" /> : <div className="chart-empty">No All Sets Quiz attempts yet</div>}
               </div>
               {allSetsBarData.length > 0 && (() => {
-                const totalUnlockedWords = getUnlockedWords(user.enrolledAt, user.dayProgress).length;
+                const totalUnlockedWords = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).length;
                 const timeAvailable = Math.round(totalUnlockedWords * 1.5);
                 return (
                   <div style={{ display: "flex", gap: 14, fontSize: 11, color: "var(--muted)", marginTop: 8, justifyContent: "center", flexWrap: "wrap" }}>
@@ -4214,14 +4308,14 @@ function ReviewPage({ rec, setView, allWords }) {
   );
 }
 
-function LBPage({ participants, user }) {
+function LBPage({ participants, user, allWords }) {
   // Rank by mastery progress: mastered words / unlocked words %
   // Falls back to best quiz score if no mastery data
   const ranked = [...participants]
     .map(p => {
       const scores = p.scores || [];
-      const unlocked = getUnlockedDays(p.enrolledAt, p.dayProgress) * WORDS_PER_DAY || 1;
-      const { masteredSet } = getCompletedSetsMastery(scores, p.dayProgress);
+      const unlocked = getUnlockedDays(p.enrolledAt, p.dayProgress, Math.ceil(allWords.length / WORDS_PER_DAY)) * WORDS_PER_DAY || 1;
+      const { masteredSet } = getCompletedSetsMastery(scores, p.dayProgress, allWords);
       const masteryPct = Math.round((masteredSet.size / unlocked) * 100);
       const bestQuiz = scores.length > 0 ? Math.max(...scores.map(s => s.pct)) : 0;
       return { ...p, masteryPct, bestQuiz, unlockedWords: unlocked, masteredWords: masteredSet.size, sessions: scores.length };
@@ -4571,29 +4665,25 @@ function FinancePage({ receipts, onIssueReceipt, toast_, participants = [] }) {
 }
 
 // ─── Words Table with inline editing ─────────────────────────────────────────
-function WordsTable({ allWords, customWords, saveWords, onSaveOverride }) {
+function WordsTable({ allWords, onEditWord, onDeleteWord }) {
   const [editIdx, setEditIdx] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [editKey, setEditKey] = useState(null); // original arabic — stable key for overrides
+  const [saving, setSaving] = useState(false);
 
   const openEdit = (w, i) => {
     setEditIdx(i);
-    setEditKey(w.arabic);
     setEditForm({ ...w });
   };
-  const cancelEdit = () => { setEditIdx(null); setEditKey(null); setEditForm({}); };
-  const saveEdit = () => {
+  const cancelEdit = () => { setEditIdx(null); setEditForm({}); };
+  const saveEdit = async () => {
     const target = allWords[editIdx];
-    const isCust = customWords.includes(target);
-    if (isCust) {
-      saveWords(customWords.map(w => w === target ? { ...editForm } : w));
-    } else if (onSaveOverride) {
-      // Built-in word — persist edit as an override keyed by original arabic
-      onSaveOverride(editKey, { ...editForm });
-    }
-    setEditIdx(null);
-    setEditKey(null);
-    setEditForm({});
+    setSaving(true);
+    const ok = await onEditWord(target.dbId, editForm);
+    setSaving(false);
+    if (ok) { setEditIdx(null); setEditForm({}); }
+  };
+  const remove = async (w) => {
+    await onDeleteWord(w.dbId);
   };
 
   return (
@@ -4602,24 +4692,23 @@ function WordsTable({ allWords, customWords, saveWords, onSaveOverride }) {
         <thead><tr><th>Arabic</th><th>Translit</th><th>English</th><th>Urdu</th><th>Root</th><th></th></tr></thead>
         <tbody>
           {allWords.map((w, i) => {
-            const isCust = customWords.includes(w);
             if (editIdx === i) {
               return (
-                <tr key={i} style={{ background: "rgba(0,200,230,.06)" }}>
+                <tr key={w.dbId || i} style={{ background: "rgba(0,200,230,.06)" }}>
                   <td><input value={editForm.arabic || ""} onChange={e => setEditForm(f => ({ ...f, arabic: e.target.value }))} style={{ direction: "rtl", fontSize: 18, fontFamily: "serif", width: 90, background: "transparent", border: "1px solid var(--cyan2)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.translit || ""} onChange={e => setEditForm(f => ({ ...f, translit: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.english || ""} onChange={e => setEditForm(f => ({ ...f, english: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.urdu || ""} onChange={e => setEditForm(f => ({ ...f, urdu: e.target.value }))} style={{ direction: "rtl", fontFamily: "serif", width: 70, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.root || ""} onChange={e => setEditForm(f => ({ ...f, root: e.target.value }))} style={{ direction: "rtl", fontFamily: "serif", width: 60, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td style={{ display: "flex", gap: 4 }}>
-                    <button className="btn bg bsm" onClick={saveEdit}>✓</button>
-                    <button className="btn bh bsm" onClick={cancelEdit}>✕</button>
+                    <button className="btn bg bsm" onClick={saveEdit} disabled={saving}>{saving ? "…" : "✓"}</button>
+                    <button className="btn bh bsm" onClick={cancelEdit} disabled={saving}>✕</button>
                   </td>
                 </tr>
               );
             }
             return (
-              <tr key={i}>
+              <tr key={w.dbId || i}>
                 <td><span className="arabic" style={{ fontSize: 20 }}>{w.arabic}</span></td>
                 <td style={{ color: "var(--muted)", fontStyle: "italic" }}>{w.translit}</td>
                 <td>{w.english}</td>
@@ -4627,7 +4716,7 @@ function WordsTable({ allWords, customWords, saveWords, onSaveOverride }) {
                 <td><span className="arabic" style={{ fontSize: 13, color: "var(--teal2)" }}>{w.root}</span></td>
                 <td style={{ display: "flex", gap: 4 }}>
                   <button className="btn bh bsm" style={{ fontSize: 10 }} onClick={() => openEdit(w, i)}>✏</button>
-                  {isCust ? <button className="del" onClick={() => saveWords(customWords.filter(x => x !== w))}>✕</button> : <span style={{ fontSize: 10, color: "var(--muted)" }}>built-in</span>}
+                  {w.isCustom ? <button className="del" onClick={() => remove(w)}>✕</button> : <span style={{ fontSize: 10, color: "var(--muted)" }}>built-in</span>}
                 </td>
               </tr>
             );
@@ -4639,7 +4728,7 @@ function WordsTable({ allWords, customWords, saveWords, onSaveOverride }) {
 }
 
 // ─── Rewards Tab — Certificate for 100+ mastered words ───────────────────────
-function RewardsTab({ participants, toast_ }) {
+function RewardsTab({ participants, toast_, allWords }) {
   const [selected, setSelected] = useState(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState({});
@@ -4648,7 +4737,7 @@ function RewardsTab({ participants, toast_ }) {
   const eligible = participants.filter(p => (p.scores || []).length > 0);
 
   const getMastered = (p) => {
-    const { masteredSet } = getCompletedSetsMastery(p.scores || [], p.dayProgress);
+    const { masteredSet } = getCompletedSetsMastery(p.scores || [], p.dayProgress, allWords);
     return masteredSet.size;
   };
 
@@ -4736,7 +4825,7 @@ function RewardsTab({ participants, toast_ }) {
   );
 }
 
-function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData, wordOverrides = {}, onSaveOverride }) {
+function AdminPage({ allWords, onAddWord, onEditWord, onDeleteWord, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData }) {
   const [resetTarget, setResetTarget] = useState(null); // userId being reset, or null
   const [resetMessageId, setResetMessageId] = useState(null); // linked message, if reset was triggered from Messages tab
   const [resetSending, setResetSending] = useState(false);
@@ -4752,7 +4841,7 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
   const [arabic, setArabic] = useState(""), [translit, setTranslit] = useState(""), [english, setEnglish] = useState("");
   const [urdu, setUrdu] = useState(""), [root, setRootField] = useState(""), [rootEnglish, setRootEnglish] = useState(""), [rootUrdu, setRootUrdu] = useState("");
   const [ayahRef, setAyahRef] = useState("");
-  const allWords = [...WORD_BANK.map(w => (wordOverrides[w.arabic] ? { ...w, ...wordOverrides[w.arabic] } : w)), ...customWords];
+  const [adding, setAdding] = useState(false);
 
   const submitReset = async () => {
     setResetError("");
@@ -4810,17 +4899,22 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
     toast_(result.ok ? `Verification email resent to ${userId}.` : "Failed to resend — check EmailJS connection.");
   };
 
-  const add = () => {
+  const add = async () => {
     if (!arabic || !english) { toast_("Arabic and English required"); return; }
-    saveWords([...customWords, {
+    setAdding(true);
+    const ok = await onAddWord({
       arabic: arabic.trim(), translit: translit.trim(), english: english.trim(),
       urdu: urdu.trim() || "—",
       root: root.trim() || "—", rootEnglish: rootEnglish.trim() || "—", rootUrdu: rootUrdu.trim() || "—",
       ayahRef: ayahRef.trim() || "",
-      addedAt: new Date().toISOString(),
-    }]);
-    setArabic(""); setTranslit(""); setEnglish(""); setUrdu(""); setRootField(""); setRootEnglish(""); setRootUrdu(""); setAyahRef("");
-    toast_("Word added!");
+    });
+    setAdding(false);
+    if (ok) {
+      setArabic(""); setTranslit(""); setEnglish(""); setUrdu(""); setRootField(""); setRootEnglish(""); setRootUrdu(""); setAyahRef("");
+      toast_("Word added!");
+    } else {
+      toast_("⚠ Couldn't add the word — please try again.");
+    }
   };
 
   return (
@@ -4835,7 +4929,7 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
       </div>
       {tab === "words" && (
         <div className="card">
-          <WordsTable allWords={allWords} customWords={customWords} saveWords={saveWords} onSaveOverride={onSaveOverride} />
+          <WordsTable allWords={allWords} onEditWord={onEditWord} onDeleteWord={onDeleteWord} />
         </div>
       )}
       {tab === "add" && (
@@ -4848,7 +4942,7 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
           <div className="field"><label>Root Meaning (English)</label><input value={rootEnglish} onChange={e => setRootEnglish(e.target.value)} placeholder="e.g. to prostrate" /></div>
           <div className="field"><label>Root Meaning (Urdu)</label><input value={rootUrdu} onChange={e => setRootUrdu(e.target.value)} placeholder="e.g. سجدہ کرنا" style={{ direction: "rtl", fontFamily: "'Scheherazade New',serif", fontSize: 15 }} /></div>
           <div className="field"><label>Qur'an Reference (optional)</label><input value={ayahRef} onChange={e => setAyahRef(e.target.value)} placeholder="e.g. Surah Al-Baqarah 2:144" /></div>
-          <button className="btn bg" onClick={add}>Add Word</button>
+          <button className="btn bg" onClick={add} disabled={adding}>{adding ? "Adding…" : "Add Word"}</button>
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 11 }}>Custom words unlock day-by-day after the built-in words.</p>
         </div>
       )}
@@ -4869,7 +4963,7 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
                       ? <span style={{ fontSize: 10, color: "var(--err)", border: "1px solid var(--err)", borderRadius: 8, padding: "2px 7px", whiteSpace: "nowrap" }}>⚠ Unverified</span>
                       : <span style={{ fontSize: 10, color: "var(--ok)", border: "1px solid var(--ok)", borderRadius: 8, padding: "2px 7px", whiteSpace: "nowrap" }}>✓ Verified</span>}
                   </td>
-                  <td style={{ color: "var(--gold2)" }}>{getUnlockedDays(p.enrolledAt, p.dayProgress)}</td>
+                  <td style={{ color: "var(--gold2)" }}>{getUnlockedDays(p.enrolledAt, p.dayProgress, Math.ceil(allWords.length / WORDS_PER_DAY))}</td>
                   <td>{p.scores?.length || 0}</td>
                   <td style={{ color: "var(--ok)" }}>{p.scores?.length ? `${Math.max(...p.scores.map(s => s.pct))}%` : "—"}</td>
                   <td>
@@ -4895,7 +4989,7 @@ function AdminPage({ customWords, saveWords, participants, toast_, onSendResetLi
         </div>
       )}
       {tab === "rewards" && (
-        <RewardsTab participants={participants} toast_={toast_} />
+        <RewardsTab participants={participants} toast_={toast_} allWords={allWords} />
       )}
       {tab === "settings" && <ResetTestDataPanel onResetAllTestData={onResetAllTestData} />}
 
