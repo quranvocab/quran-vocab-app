@@ -2391,6 +2391,7 @@ export default function App() {
         setQuiz(null);
         setSelectedDay(null);
         setView("home");
+        supabase.auth.signOut();
         toast_("⏱ Logged out after 20 minutes of inactivity. Your progress is saved.");
       }
     };
