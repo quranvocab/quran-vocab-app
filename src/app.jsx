@@ -28,7 +28,6 @@ function shuffle(arr) {
   }
   return a;
 }
-
 // Activity-based unlock: Day 1 is always available immediately on enrollment.
 // Day N+1 unlocks only once Day N has actually been completed with a quiz
 // (i.e. dayProgress[N] exists) — never just by time passing. A learner who
