@@ -320,6 +320,43 @@ async function insertReceiptRow(receipt) {
   return { ok: false };
 }
 
+// ── Donation receipt REQUESTS (self-service, donor-initiated) ──────────────
+// A donor who already paid via UPI clicks "Request Receipt" — this just logs
+// their claim for Finance to verify against actual funds received. It does
+// NOT auto-issue anything; it lands in Finance's queue exactly like a manual
+// walk-up would, just pre-filled instead of typed from scratch. True
+// automated issuing still isn't possible without a payment gateway webhook
+// (see the note above insertReceiptRow()).
+function mapReceiptRequestRow(row) {
+  return {
+    id: row.id, userId: row.user_id, donorName: row.donor_name,
+    donorEmail: row.donor_email, amount: row.amount, donationDate: row.donation_date,
+    note: row.note, status: row.status, requestedAt: row.requested_at,
+  };
+}
+
+async function fetchReceiptRequests() {
+  const { data, error } = await supabase.from("receipt_requests").select("*")
+    .order("requested_at", { ascending: false });
+  if (error) { console.error("fetchReceiptRequests error:", error.message); return null; }
+  return (data || []).map(mapReceiptRequestRow);
+}
+
+async function insertReceiptRequestRow({ userId, donorName, donorEmail, amount, donationDate, note }) {
+  const { error } = await supabase.from("receipt_requests").insert({
+    user_id: userId || null, donor_name: donorName, donor_email: donorEmail,
+    amount: amount || null, donation_date: donationDate || null, note: note || null,
+  });
+  if (error) { console.error("insertReceiptRequestRow error:", error.message); return false; }
+  return true;
+}
+
+async function updateReceiptRequestRow(id, fields) {
+  const { error } = await supabase.from("receipt_requests").update(fields).eq("id", id);
+  if (error) { console.error("updateReceiptRequestRow error:", error.message); return false; }
+  return true;
+}
+
 // ── Supabase: scores + progress (Phase 3) ──────────────────────────────────
 // A `scores` row -> the shape the rest of the app already expects everywhere
 // (Home, History, Leaderboard, Admin) so those screens need zero changes.
@@ -462,86 +499,141 @@ async function loadEmailJS() {
   return _emailjsLoaded;
 }
 
+// ── jsPDF (lazy-loaded, same pattern as EmailJS above) — used only for the
+// client-side "Download PDF Receipt" button. No server involved, no cost.
+let _jsPDFLoaded = null;
+async function loadJsPDF() {
+  if (_jsPDFLoaded) return _jsPDFLoaded;
+  _jsPDFLoaded = new Promise((resolve, reject) => {
+    if (window.jspdf) { resolve(window.jspdf.jsPDF); return; }
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js";
+    script.onload = () => resolve(window.jspdf.jsPDF);
+    script.onerror = () => reject(new Error("Failed to load jsPDF"));
+    document.head.appendChild(script);
+  });
+  return _jsPDFLoaded;
+}
+
+// ── Amount in words, Indian numbering system (Lakh/Crore) — for the formal
+// receipt format. Handles ₹0 to ₹99,99,99,999 (sufficient for donations).
+function amountInWordsIndian(num) {
+  const n = Math.round(Number(num) || 0);
+  if (n === 0) return "Zero Rupees Only";
+  const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const twoDigits = (v) => v < 20 ? ones[v] : `${tens[Math.floor(v / 10)]}${v % 10 ? " " + ones[v % 10] : ""}`;
+  const threeDigits = (v) => v >= 100 ? `${ones[Math.floor(v / 100)]} Hundred${v % 100 ? " " + twoDigits(v % 100) : ""}` : twoDigits(v);
+
+  let rem = n;
+  const crore = Math.floor(rem / 10000000); rem %= 10000000;
+  const lakh = Math.floor(rem / 100000); rem %= 100000;
+  const thousand = Math.floor(rem / 1000); rem %= 1000;
+  const hundred = rem;
+
+  const parts = [];
+  if (crore) parts.push(`${threeDigits(crore)} Crore`);
+  if (lakh) parts.push(`${threeDigits(lakh)} Lakh`);
+  if (thousand) parts.push(`${threeDigits(thousand)} Thousand`);
+  if (hundred) parts.push(threeDigits(hundred));
+  return `${parts.join(" ")} Rupees Only`;
+}
+
 // ── All auth emails (verification + password reset) handled by Supabase ───────
 // EmailJS is now used ONLY for donation receipts (sendReceiptEmail below).
 
-async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donationDate, purpose, note }) {
+// Formal donation-receipt document format — mirrors the layout of a
+// standard 80G-style trust receipt (reg numbers up top, donor details block,
+// amount in figures + words, signatory block at the bottom), rendered in
+// the app's dark ocean / cyan / gold theme rather than a plain white page.
+async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donationDate, purpose, note, donorAddress, donorPan, paymentMode }) {
   const emailjs = await loadEmailJS();
 
   const charityName = DONATE.charityName && DONATE.charityName !== "Your Charity Name Here"
     ? DONATE.charityName
     : "Awami Baitulmaal Committee (Reg.)";
-  const regParts = [];
-  if (DONATE.pan && DONATE.pan !== "PASTE_TRUST_PAN_HERE") regParts.push(`PAN: ${DONATE.pan}`);
-  if (DONATE.reg12A) regParts.push(`12A Reg: ${DONATE.reg12A}`);
+  const regLines = [];
+  if (DONATE.regdNo) regLines.push(`Regd No: ${DONATE.regdNo}`);
+  if (DONATE.pan && DONATE.pan !== "PASTE_TRUST_PAN_HERE") regLines.push(`PAN No: ${DONATE.pan}`);
+  if (DONATE.reg12A) regLines.push(`12A Reg: ${DONATE.reg12A}`);
   if (DONATE.reg80G) {
     let line = `80G Reg: ${DONATE.reg80G}`;
     if (DONATE.reg80GValidTo) line += ` (valid till ${DONATE.reg80GValidTo})`;
-    regParts.push(line);
+    regLines.push(line);
   }
-  const formattedDate = new Date(donationDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const formattedIssueDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const formattedDonationDate = new Date(donationDate).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const amountWords = amountInWordsIndian(amount);
   const taxNote = (DONATE.reg80G && DONATE.form10BDFiled)
-    ? "This donation qualifies for tax deduction under Section 80G of the Income Tax Act. Form 10BE certificate will be issued by the Income Tax Department portal."
-    : "";
+    ? "All donations are exempted under Section 80G of the Income Tax Act, 1961. This document is an acknowledgement of your payment; your official 80G certificate (Form 10BE) will follow separately."
+    : "This document is only an acknowledgement of your payment. Please retain it as your transaction receipt for future reference.";
 
-  const row = (label, value, highlight = false) => value
+  const detailRow = (label, value) => value
     ? `<tr>
-        <td style="padding:11px 18px;border-bottom:1px solid rgba(0,200,230,.1);font-size:13px;color:#7ab8d4;width:40%">${label}</td>
-        <td style="padding:11px 18px;border-bottom:1px solid rgba(0,200,230,.1);font-size:14px;color:${highlight ? "#ffd96b" : "#f0f8ff"};font-weight:${highlight ? "700" : "500"};text-align:right">${value}</td>
+        <td style="padding:9px 4px;font-size:12.5px;color:#7ab8d4;width:38%;vertical-align:top">${label}</td>
+        <td style="padding:9px 4px;font-size:13.5px;color:#f0f8ff;font-weight:500">: ${value}</td>
        </tr>`
     : "";
 
   const invoiceHtml = `
-  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(0,200,230,.25);">
+  <div style="font-family:Arial,sans-serif;max-width:580px;margin:0 auto;background:#0d1f2d;border:2px solid #00c8e6;border-radius:6px;overflow:hidden;">
 
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#071c2a,#0d2d40);padding:28px 24px;text-align:center;border-bottom:1px solid rgba(0,200,230,.2);">
-      <div style="font-size:32px;margin-bottom:6px">📖</div>
-      <div style="font-size:13px;color:rgba(0,200,230,.7);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">Donation Receipt</div>
-      <div style="font-size:22px;font-weight:700;color:#f0f8ff">${charityName}</div>
-      <div style="font-size:12px;color:rgba(122,184,212,.65);margin-top:4px">Quranic Vocab Learning Platform</div>
+    <!-- Header: org identity + reg block -->
+    <div style="padding:22px 24px 16px;border-bottom:2px solid rgba(0,200,230,.3);">
+      <div style="font-size:19px;font-weight:700;color:#ffd96b;letter-spacing:.02em">${charityName}</div>
+      ${regLines.length > 0 ? `<div style="margin-top:8px;font-size:11px;color:#7ab8d4;line-height:1.9">${regLines.join("<br/>")}</div>` : ""}
     </div>
 
-    <!-- Receipt Number Banner -->
-    <div style="background:rgba(0,200,230,.08);padding:14px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(0,200,230,.15);">
-      <span style="font-size:12px;color:#7ab8d4;letter-spacing:.08em;text-transform:uppercase">Receipt Number</span>
-      <span style="font-family:monospace;font-size:18px;font-weight:700;color:#00c8e6;letter-spacing:.05em">${receiptNo}</span>
+    <!-- Title -->
+    <div style="text-align:center;padding:16px 24px 8px;">
+      <div style="display:inline-block;font-size:16px;font-weight:700;color:#00c8e6;border-bottom:2px solid #00c8e6;padding-bottom:4px;letter-spacing:.04em">Donation Receipt</div>
     </div>
 
-    <!-- Invoice Table -->
-    <div style="padding:0 0 8px;background:#0d1f2d;">
+    <!-- Receipt No / Date -->
+    <div style="display:flex;justify-content:space-between;padding:10px 24px;font-size:12.5px;color:#a9c9dc;">
+      <span>Receipt No: <strong style="color:#ffd96b;font-family:monospace">${receiptNo}</strong></span>
+      <span>Date: <strong style="color:#f0f8ff">${formattedIssueDate}</strong></span>
+    </div>
+
+    <!-- Donor + payment details -->
+    <div style="padding:4px 24px 8px;">
       <table style="width:100%;border-collapse:collapse;">
         <tbody>
-          ${row("Donor Name", donorName)}
-          ${row("Donor Email", toEmail)}
-          ${row("Amount Received", `<span style="font-size:18px;color:#ffd96b;font-weight:700">₹${Number(amount).toLocaleString("en-IN")}</span>`, true)}
-          ${row("Date Received", formattedDate)}
-          ${row("Purpose", purpose)}
-          ${note ? row("Note", note) : ""}
+          ${detailRow("Donor Name", donorName)}
+          ${detailRow("Donor Email", toEmail)}
+          ${detailRow("Address", donorAddress || "")}
+          ${detailRow("PAN No", donorPan || "")}
+          ${detailRow("Amount (in words)", amountWords)}
+          ${detailRow("Amount", `<span style="font-size:16px;color:#ffd96b;font-weight:700">₹${Number(amount).toLocaleString("en-IN")}</span>`)}
+          ${detailRow("Donation Date", formattedDonationDate)}
+          ${detailRow("Payment Mode", paymentMode || "Online (UPI)")}
+          ${detailRow("Purpose", purpose)}
+          ${note ? detailRow("Note", note) : ""}
         </tbody>
       </table>
     </div>
 
-    <!-- Registration Details -->
-    ${regParts.length > 0 ? `
-    <div style="margin:0 18px 16px;padding:12px 16px;background:rgba(0,200,230,.06);border:1px solid rgba(0,200,230,.15);border-radius:8px;font-size:12px;color:#7ab8d4;line-height:1.8">
-      ${regParts.join(" &nbsp;·&nbsp; ")}
-    </div>` : ""}
+    <!-- Thank you -->
+    <div style="margin:8px 24px 16px;padding:12px 16px;background:rgba(0,200,230,.06);border-radius:6px;font-size:12.5px;color:#a9c9dc;line-height:1.7">
+      Thank you so much for contributing to ${charityName}. Your donation benefits Qur'anic education and dawah for all.
+    </div>
 
-    <!-- Tax Note -->
-    ${taxNote ? `
-    <div style="margin:0 18px 16px;padding:12px 16px;background:rgba(0,200,230,.06);border-left:3px solid #00c8e6;border-radius:0 6px 6px 0;font-size:12.5px;color:#00c8e6;line-height:1.7">
+    <!-- Legal note -->
+    <div style="margin:0 24px 18px;font-size:11px;color:#7ab8d4;line-height:1.8">
       ${taxNote}
-    </div>` : ""}
+    </div>
 
-    <!-- Thank You -->
-    <div style="padding:16px 24px 20px;text-align:center;background:rgba(0,0,0,.2);border-top:1px solid rgba(0,200,230,.12)">
-      <p style="margin:0 0 6px;font-size:18px;color:#ffd96b">جَزَاكَ اللَّهُ خَيْرًا</p>
-      <p style="margin:0;font-size:13px;color:#7ab8d4;line-height:1.6">Thank you for your generous contribution.<br/>May Allah accept it and reward you abundantly.</p>
+    <!-- Signature block -->
+    <div style="display:flex;justify-content:flex-end;padding:0 24px 20px;">
+      <div style="text-align:center;">
+        <div style="font-size:12px;color:#a9c9dc;margin-bottom:28px;">For ${charityName}</div>
+        <div style="border-top:1px solid rgba(122,184,212,.4);padding-top:6px;font-size:11px;color:#7ab8d4;">Authorized Signatory</div>
+      </div>
     </div>
 
     <!-- Footer -->
-    <div style="padding:12px 24px;background:#071c2a;text-align:center;border-top:1px solid rgba(0,200,230,.1)">
+    <div style="padding:12px 24px;background:#071c2a;text-align:center;border-top:1px solid rgba(0,200,230,.15)">
       <p style="margin:0;font-size:11px;color:rgba(122,184,212,.5)">${charityName} &nbsp;·&nbsp; support@awamibaitulmaal.org.in</p>
     </div>
 
@@ -555,6 +647,69 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
     email_heading: `Donation Receipt ${receiptNo} — ${charityName}`,
     email_body_html: invoiceHtml,
   });
+}
+
+// Client-side PDF version of the same receipt — free, no EmailJS attachment
+// plan needed. Triggers a browser download; doesn't touch email at all.
+async function generateReceiptPDF(receipt) {
+  const jsPDF = await loadJsPDF();
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const charityName = DONATE.charityName && DONATE.charityName !== "Your Charity Name Here"
+    ? DONATE.charityName
+    : "Awami Baitulmaal Committee (Reg.)";
+  const regLines = [];
+  if (DONATE.regdNo) regLines.push(`Regd No: ${DONATE.regdNo}`);
+  if (DONATE.pan && DONATE.pan !== "PASTE_TRUST_PAN_HERE") regLines.push(`PAN No: ${DONATE.pan}`);
+  if (DONATE.reg12A) regLines.push(`12A Reg: ${DONATE.reg12A}`);
+  if (DONATE.reg80G) regLines.push(`80G Reg: ${DONATE.reg80G}${DONATE.reg80GValidTo ? ` (valid till ${DONATE.reg80GValidTo})` : ""}`);
+
+  const marginX = 48; let y = 60;
+  doc.setDrawColor(0, 150, 180); doc.setLineWidth(1.5);
+  doc.rect(30, 30, 535, 700);
+
+  doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(20, 60, 90);
+  doc.text(charityName, marginX, y); y += 16;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+  regLines.forEach(line => { doc.text(line, marginX, y); y += 12; });
+
+  y += 12;
+  doc.setDrawColor(0, 150, 180); doc.line(marginX, y, 547, y); y += 24;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(0, 130, 160);
+  doc.text("Donation Receipt", 297, y, { align: "center" }); y += 26;
+
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(40, 40, 40);
+  const issueDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+  doc.text(`Receipt No: ${receipt.receiptNo}`, marginX, y);
+  doc.text(`Date: ${issueDate}`, 420, y); y += 24;
+
+  const field = (label, value) => {
+    doc.setFont("helvetica", "bold"); doc.text(label, marginX, y);
+    doc.setFont("helvetica", "normal"); doc.text(`: ${value}`, marginX + 130, y);
+    y += 20;
+  };
+  field("Donor Name", receipt.donorName || "");
+  field("Donor Email", receipt.donorEmail || "");
+  field("Amount", `Rs. ${Number(receipt.amount).toLocaleString("en-IN")}`);
+  field("Amount (words)", amountInWordsIndian(receipt.amount));
+  field("Donation Date", new Date(receipt.donationDate).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }));
+  field("Payment Mode", "Online (UPI)");
+  field("Purpose", receipt.purpose || "Donation");
+  if (receipt.note) field("Note", receipt.note);
+
+  y += 20;
+  doc.setFont("helvetica", "italic"); doc.setFontSize(9); doc.setTextColor(90, 90, 90);
+  const legal = doc.splitTextToSize(
+    "This document is only an acknowledgement of your payment. Please retain it as your transaction receipt for future reference.",
+    460
+  );
+  doc.text(legal, marginX, y); y += legal.length * 12 + 40;
+
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(40, 40, 40);
+  doc.text(`For ${charityName}`, 460, y, { align: "center" }); y += 34;
+  doc.line(410, y, 510, y); y += 12;
+  doc.setFontSize(9); doc.text("Authorized Signatory", 460, y, { align: "center" });
+
+  doc.save(`${receipt.receiptNo}.pdf`);
 }
 
 // ── Invite a Friend (EmailJS, dedicated template — see EMAILJS_INVITE_TEMPLATE_ID) ─
@@ -1493,6 +1648,7 @@ const DONATE = {
   // it's safe to update these one at a time as each gets confirmed, without
   // needing any other code changes.
   pan:           "PASTE_TRUST_PAN_HERE",       // confirmed — fill in the actual PAN
+  regdNo:        null,  // Trust/Society registration number, once confirmed (e.g. "255/2015")
   reg80G:        null,  // 80G registration number, once confirmed (e.g. "AABCT1234R/2026/0001")
   reg80GValidTo: null,  // 80G validity expiry date, if applicable (e.g. "2031-03-31")
   reg12A:        null,  // 12A registration number, once confirmed
@@ -1589,6 +1745,8 @@ export default function App() {
   const [financeUnlocked, setFinanceUnlocked] = useState(() => sessionStorage.getItem("qv_finance_unlocked") === "1");
   const [messages, setMessages] = useState([]);
   const [receipts, setReceipts] = useState([]);
+  const [receiptRequests, setReceiptRequests] = useState([]);
+  const [showRequestReceipt, setShowRequestReceipt] = useState(false);
 
   useEffect(() => {
     setMessages(getMessages());
@@ -1646,6 +1804,7 @@ export default function App() {
         // reloading with an already-valid login.
         fetchAllWords().then(words => { if (words) setAllWords(words); });
         fetchAllReceipts().then(r => { if (r) setReceipts(r); });
+        fetchReceiptRequests().then(r => { if (r) setReceiptRequests(r); });
       } else {
         if (cached) {
           // Supabase session truly expired — clear the optimistic restore
@@ -1698,6 +1857,7 @@ export default function App() {
         // a successful login.
         fetchAllWords().then(words => { if (words) setAllWords(words); });
         fetchAllReceipts().then(r => { if (r) setReceipts(r); });
+        fetchReceiptRequests().then(r => { if (r) setReceiptRequests(r); });
       }
       if (event === "USER_UPDATED" && session?.user) {
         // Email change confirmed — sync public.users with the new auth email
@@ -2124,11 +2284,21 @@ export default function App() {
   // Admin-issued donation receipt, sent after the finance team confirms funds
   // were actually received (outside the app). Not an automated/verified
   // payment confirmation — see the note above insertReceiptRow() for why.
-  const issueReceipt = async ({ donorName, donorEmail, amount, donationDate, purpose, note }) => {
+  // `requestId`, when present, means this receipt was issued from a donor's
+  // self-service Request Receipt entry — mark that request resolved once the
+  // receipt is actually issued, so it drops off Finance's pending queue.
+  const issueReceipt = async ({ donorName, donorEmail, amount, donationDate, purpose, note, requestId }) => {
     const result = await insertReceiptRow({ donorName, donorEmail, amount, donationDate, purpose, note });
     if (!result.ok) return { ok: false };
     const updated = await fetchAllReceipts();
     if (updated) setReceipts(updated);
+    if (requestId) {
+      await updateReceiptRequestRow(requestId, {
+        status: "issued", resolved_receipt_id: result.dbId, resolved_at: new Date().toISOString(),
+      });
+      const updatedReqs = await fetchReceiptRequests();
+      if (updatedReqs) setReceiptRequests(updatedReqs);
+    }
     try {
       await sendReceiptEmail({
         toEmail: donorEmail, donorName, receiptNo: result.receiptNo,
@@ -2139,6 +2309,29 @@ export default function App() {
       console.error("Receipt email failed to send:", err);
       return { ok: true, receiptNo: result.receiptNo, emailFailed: true };
     }
+  };
+
+  // Donor-initiated: "I already paid, please email my receipt." Just logs
+  // the claim for Finance to verify — see the note above insertReceiptRow().
+  const submitRequestReceipt = async ({ donorName, donorEmail, amount, donationDate, note }) => {
+    const ok = await insertReceiptRequestRow({
+      userId: user?.dbId || null, donorName, donorEmail, amount, donationDate, note,
+    });
+    if (ok && (user?.role === "admin" || user?.role === "finance")) {
+      const updated = await fetchReceiptRequests();
+      if (updated) setReceiptRequests(updated);
+    }
+    return ok;
+  };
+
+  // Finance dismisses a request without issuing (duplicate, spam, can't verify, etc.)
+  const dismissReceiptRequest = async (id) => {
+    const ok = await updateReceiptRequestRow(id, { status: "dismissed", resolved_at: new Date().toISOString() });
+    if (ok) {
+      const updated = await fetchReceiptRequests();
+      if (updated) setReceiptRequests(updated);
+    }
+    return ok;
   };
 
   const startQuiz = (day = null, customPool = null) => {
@@ -2502,6 +2695,7 @@ export default function App() {
                       <div className="nuser-menu-email">{user.email}</div>
                       <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("profile"); }}>👤 Profile Settings</button>
                       <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("history"); }}>📋 My History</button>
+                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setShowRequestReceipt(true); }}>🧾 Request Receipt</button>
                       <button className="nuser-menu-item logout" onClick={() => { setShowUserMenu(false); logout(); }}>↪ Log Out</button>
                     </div>
                   )}
@@ -2517,7 +2711,7 @@ export default function App() {
             : <AdminGate onLogin={loginUser} />
         ) : isFinanceRoute || view === "finance" ? (
           financeUnlocked
-            ? <FinancePage receipts={receipts} onIssueReceipt={issueReceipt} toast_={toast_} participants={participants} />
+            ? <FinancePage receipts={receipts} receiptRequests={receiptRequests} onIssueReceipt={issueReceipt} onDismissRequest={dismissReceiptRequest} toast_={toast_} participants={participants} />
             : <FinanceGate onLogin={loginUser} />
         ) : (
           <>
@@ -2535,8 +2729,9 @@ export default function App() {
           </>
         )}
 
-        {!isAdminRoute && !isFinanceRoute && showDonate && <DonateModal onClose={() => setShowDonate(false)} toast_={toast_} user={user} />}
+        {!isAdminRoute && !isFinanceRoute && showDonate && <DonateModal onClose={() => setShowDonate(false)} toast_={toast_} user={user} onRequestReceipt={() => { setShowDonate(false); setShowRequestReceipt(true); }} />}
         {!isAdminRoute && !isFinanceRoute && showInvite && <InviteModal onClose={() => setShowInvite(false)} toast_={toast_} user={user} />}
+        {!isAdminRoute && !isFinanceRoute && showRequestReceipt && <RequestReceiptModal onClose={() => setShowRequestReceipt(false)} toast_={toast_} user={user} onSubmit={submitRequestReceipt} />}
         {/* Mobile bottom navigation bar — visible only on small screens (CSS-controlled) */}
         {!isAdminRoute && !isFinanceRoute && (
           <nav className="mobile-nav">
@@ -4530,7 +4725,7 @@ function ChangePasswordModal({ label, onClose, toast_ }) {
 // ─── Shared Receipt Manager — used inside Admin's Receipts tab AND the ───────
 // standalone Finance Panel, so both stay in sync with one implementation
 // instead of two copies to maintain separately.
-function ReceiptManager({ receipts, onIssueReceipt, toast_, participants = [] }) {
+function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDismissRequest, toast_, participants = [] }) {
   const [rcptName, setRcptName] = useState("");
   const [rcptEmail, setRcptEmail] = useState("");
   const [rcptAmount, setRcptAmount] = useState("");
@@ -4540,6 +4735,8 @@ function ReceiptManager({ receipts, onIssueReceipt, toast_, participants = [] })
   const [rcptError, setRcptError] = useState("");
   const [rcptSending, setRcptSending] = useState(false);
   const [rcptSuccess, setRcptSuccess] = useState(null);
+  const [activeRequestId, setActiveRequestId] = useState(null); // set when filling the form from a pending request
+  const [downloadingId, setDownloadingId] = useState(null);
 
   // User search for auto-populate
   const [userSearch, setUserSearch] = useState("");
@@ -4560,6 +4757,29 @@ function ReceiptManager({ receipts, onIssueReceipt, toast_, participants = [] })
     setRcptError("");
   };
 
+  const pendingRequests = receiptRequests.filter(r => r.status === "pending");
+
+  // Pull a pending request's details into the issue form. Finance still
+  // reviews/edits everything before submitting — this just saves retyping.
+  const fillFromRequest = (req) => {
+    setRcptName(req.donorName || "");
+    setRcptEmail(req.donorEmail || "");
+    setRcptAmount(req.amount != null ? String(req.amount) : "");
+    setRcptDate(req.donationDate || new Date().toISOString().slice(0, 10));
+    setRcptPurpose("Donation");
+    setRcptNote(req.note || "");
+    setActiveRequestId(req.id);
+    setRcptError("");
+    setRcptSuccess(null);
+  };
+
+  const dismiss = async (id) => {
+    const ok = await onDismissRequest(id);
+    if (ok) toast_("Request dismissed.");
+    else toast_("Couldn't dismiss the request — try again.");
+    if (activeRequestId === id) setActiveRequestId(null);
+  };
+
   const submitReceipt = async () => {
     setRcptError("");
     if (!rcptName.trim() || !rcptEmail.trim() || !rcptAmount || !rcptDate) {
@@ -4578,6 +4798,7 @@ function ReceiptManager({ receipts, onIssueReceipt, toast_, participants = [] })
       donationDate: rcptDate,
       purpose: rcptPurpose.trim() || "Donation",
       note: rcptNote.trim(),
+      requestId: activeRequestId,
     });
     setRcptSending(false);
     if (result.ok) {
@@ -4585,18 +4806,61 @@ function ReceiptManager({ receipts, onIssueReceipt, toast_, participants = [] })
       setRcptName(""); setRcptEmail(""); setRcptAmount(""); setRcptNote("");
       setRcptDate(new Date().toISOString().slice(0, 10));
       setRcptPurpose("Donation");
+      setActiveRequestId(null);
     } else {
       setRcptError("Could not issue receipt. Please try again.");
     }
   };
 
+  const downloadPDF = async (r) => {
+    setDownloadingId(r.id);
+    try {
+      await generateReceiptPDF(r);
+    } catch (err) {
+      console.error("generateReceiptPDF error:", err);
+      toast_("Couldn't generate the PDF — try again.");
+    }
+    setDownloadingId(null);
+  };
+
   return (
     <>
+      {pendingRequests.length > 0 && (
+        <div className="card" style={{ maxWidth: 480, marginBottom: 16 }}>
+          <div className="lbl">Receipt Requests ({pendingRequests.length} pending)</div>
+          <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
+            Donors have asked for these — verify the payment actually came in, then "Fill Form" to issue.
+          </p>
+          {pendingRequests.map(req => (
+            <div key={req.id} style={{ padding: "10px 12px", marginBottom: 8, borderRadius: 7, background: activeRequestId === req.id ? "rgba(0,200,230,.1)" : "rgba(0,200,230,.04)", border: activeRequestId === req.id ? "1px solid rgba(0,200,230,.4)" : "1px solid rgba(0,200,230,.12)" }}>
+              <div style={{ fontSize: 13.5, color: "var(--text)", fontWeight: 500 }}>{req.donorName}</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{req.donorEmail}</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>
+                {req.amount ? `₹${Number(req.amount).toLocaleString("en-IN")}` : "Amount not given"}
+                {req.donationDate ? ` · ${new Date(req.donationDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}
+              </div>
+              {req.note && <div style={{ fontSize: 11.5, color: "var(--gold3)", marginTop: 2 }}>Note: {req.note}</div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button className="copy-btn" onClick={() => fillFromRequest(req)}>Fill Form</button>
+                <button className="copy-btn" style={{ color: "var(--err)", borderColor: "rgba(220,90,90,.35)" }} onClick={() => dismiss(req.id)}>Dismiss</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="card" style={{ maxWidth: 480, marginBottom: 16 }}>
         <div className="lbl">Issue Donation Receipt</div>
         <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
           Only issue after the finance team confirms payment was received.
         </p>
+
+        {activeRequestId && (
+          <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 7, background: "rgba(0,200,230,.08)", border: "1px solid rgba(0,200,230,.25)", fontSize: 12, color: "var(--cyan2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>Filled from donor's request</span>
+            <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => setActiveRequestId(null)}>Clear</span>
+          </div>
+        )}
 
         {/* User search — auto-populates name + email from registered members */}
         <div className="field" style={{ position: "relative" }}>
@@ -4652,7 +4916,7 @@ function ReceiptManager({ receipts, onIssueReceipt, toast_, participants = [] })
           <div style={{ textAlign: "center", color: "var(--muted)", padding: 30 }}>No receipts issued yet.</div>
         ) : (
           <table className="tbl">
-            <thead><tr><th>Receipt #</th><th>Donor</th><th>Amount</th><th>Date</th><th>Issued</th></tr></thead>
+            <thead><tr><th>Receipt #</th><th>Donor</th><th>Amount</th><th>Date</th><th>Issued</th><th></th></tr></thead>
             <tbody>
               {receipts.map(r => (
                 <tr key={r.id}>
@@ -4661,6 +4925,7 @@ function ReceiptManager({ receipts, onIssueReceipt, toast_, participants = [] })
                   <td style={{ color: "var(--ok)" }}>₹{r.amount}</td>
                   <td>{new Date(r.donationDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td>
                   <td style={{ color: "var(--muted)", fontSize: 11 }}>{new Date(r.issuedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</td>
+                  <td><button className="copy-btn" onClick={() => downloadPDF(r)} disabled={downloadingId === r.id}>{downloadingId === r.id ? "…" : "PDF"}</button></td>
                 </tr>
               ))}
             </tbody>
@@ -4672,14 +4937,14 @@ function ReceiptManager({ receipts, onIssueReceipt, toast_, participants = [] })
 }
 
 // ─── Finance Panel — restricted to receipt issuing only, nothing else ────────
-function FinancePage({ receipts, onIssueReceipt, toast_, participants = [] }) {
+function FinancePage({ receipts, receiptRequests, onIssueReceipt, onDismissRequest, toast_, participants = [] }) {
   return (
     <div className="page">
       <div style={{ marginBottom: 20 }}>
         <div className="lbl" style={{ marginBottom: 4 }}>Finance Panel</div>
         <h2 style={{ fontSize: 20 }}>Donation Receipts</h2>
       </div>
-      <ReceiptManager receipts={receipts} onIssueReceipt={onIssueReceipt} toast_={toast_} participants={participants} />
+      <ReceiptManager receipts={receipts} receiptRequests={receiptRequests} onIssueReceipt={onIssueReceipt} onDismissRequest={onDismissRequest} toast_={toast_} participants={participants} />
     </div>
   );
 }
@@ -5201,7 +5466,7 @@ function ClearReceiptsPanel({ onClearAllReceipts }) {
 }
 
 // ─── Donate Modal ─────────────────────────────────────────────────────────────
-function DonateModal({ onClose, toast_, user }) {
+function DonateModal({ onClose, toast_, user, onRequestReceipt }) {
   const [frequency, setFrequency] = useState("once"); // once | monthly | yearly
 
   const copy = (text, label) => {
@@ -5318,6 +5583,12 @@ function DonateModal({ onClose, toast_, user }) {
             Prefer a direct bank transfer instead of UPI? Email <strong>admin@awamibaitulmaal.org.in</strong> and the admin will get in touch to arrange it.
           </div>
 
+          {onRequestReceipt && (
+            <div className="bank-login-prompt" style={{ marginTop: 8 }}>
+              Already donated? <span style={{ color: "var(--cyan)", cursor: "pointer", textDecoration: "underline" }} onClick={onRequestReceipt}>Request your receipt</span>
+            </div>
+          )}
+
           {/* ── FOOTER AYAH ── */}
           <div className="donate-ayah">
             <div className="arabic" style={{ fontFamily: "'Scheherazade New',serif", fontSize: 22, color: "var(--gold2)", direction: "rtl", marginBottom: 6 }}>
@@ -5385,6 +5656,76 @@ function InviteModal({ onClose, toast_, user }) {
               <div style={{ fontSize: 40, marginBottom: 10 }}>🤲</div>
               <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Invite sent to <strong style={{ color: "var(--gold2)" }}>{friendName}</strong>!</p>
               <p style={{ fontSize: 13, color: "var(--muted)" }}>May Allah reward you for sharing knowledge.</p>
+              <button className="btn bh" style={{ marginTop: 16 }} onClick={onClose}>Close</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Request a Receipt modal — self-service, donor-initiated ──────────────────
+// Does NOT issue anything automatically. Logs the donor's claim into the
+// receipt_requests queue for Finance to verify against funds actually
+// received, then issue normally (see the note above insertReceiptRow()).
+function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
+  const [donorName, setDonorName] = useState(user?.name || "");
+  const [donorEmail, setDonorEmail] = useState(user?.email || "");
+  const [amount, setAmount] = useState("");
+  const [donationDate, setDonationDate] = useState("");
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState(false);
+
+  const handleOverlay = (e) => { if (e.target === e.currentTarget) onClose(); };
+
+  const submit = async () => {
+    setError("");
+    if (!donorName.trim()) { setError("Please enter your name."); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(donorEmail.trim())) { setError("Please enter a valid email address."); return; }
+    setSending(true);
+    const ok = await onSubmit({
+      donorName: donorName.trim(), donorEmail: donorEmail.trim(),
+      amount: amount ? Number(amount) : null, donationDate: donationDate || null,
+      note: note.trim(),
+    });
+    setSending(false);
+    if (ok) setSent(true);
+    else setError("Couldn't submit your request right now — please try again in a moment.");
+  };
+
+  return (
+    <div className="modal-overlay" onClick={handleOverlay}>
+      <div className="modal" style={{ maxWidth: 420 }}>
+        <div className="modal-head">
+          <h3>🧾 Request a Receipt</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {!sent ? (
+            <>
+              <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+                Already made a donation? Let us know and our finance team will verify the payment and email your official receipt.
+              </p>
+              <div className="field"><label>Your Name</label><input value={donorName} onChange={e => setDonorName(e.target.value)} placeholder="Full name" /></div>
+              <div className="field"><label>Your Email</label><input type="email" value={donorEmail} onChange={e => setDonorEmail(e.target.value)} placeholder="you@email.com" /></div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <div className="field" style={{ flex: 1 }}><label>Amount Paid (₹, optional)</label><input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="1000" /></div>
+                <div className="field" style={{ flex: 1 }}><label>Date Paid (optional)</label><input type="date" value={donationDate} onChange={e => setDonationDate(e.target.value)} /></div>
+              </div>
+              <div className="field"><label>Note (optional)</label><input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. UPI reference number, helps us match your payment" /></div>
+              {error && <div className="enroll-error">⚠ {error}</div>}
+              <button className="btn bg bfw" onClick={submit} disabled={sending} style={{ marginTop: 8 }}>
+                {sending ? "Submitting…" : "Submit Request →"}
+              </button>
+            </>
+          ) : (
+            <div style={{ textAlign: "center", padding: "12px 0" }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>🧾</div>
+              <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Request received!</p>
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>Our finance team will verify your payment and email your receipt soon.</p>
               <button className="btn bh" style={{ marginTop: 16 }} onClick={onClose}>Close</button>
             </div>
           )}
