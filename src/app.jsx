@@ -1978,6 +1978,7 @@ export default function App() {
   const [adminProfileOpen, setAdminProfileOpen] = useState(false);
   const [financeProfileOpen, setFinanceProfileOpen] = useState(false);
   const [passwordChangeRequests, setPasswordChangeRequests] = useState([]); // Admin's view of all requests
+  const [showNotifCenter, setShowNotifCenter] = useState(false);
   // Admin unlock is session-only (sessionStorage, not localStorage) — closing
   // the browser tab re-locks it. This is intentionally separate from regular
   // learner accounts; it gates the single shared Admin password, not a
@@ -2072,9 +2073,17 @@ export default function App() {
 
     // ── Supabase: listen for auth events (login, verify, logout) ───────────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Safety net: verifyOtp(type:'recovery') below can also fire this event.
-      // Harmless if it does — we're already on the resetPassword view by then.
+      // Safety net for a genuine incoming recovery link Supabase detects on
+      // its own (not currently used — the app is fully code-based now, no
+      // clickable links — but kept as a defensive fallback). Only acts when
+      // isPasswordRecovery.current is still false, meaning OUR code didn't
+      // already know this was coming — both the learner's ResetPasswordPage
+      // and Finance's in-modal flow set that flag themselves before calling
+      // verifyOtp(type:'recovery'), which itself also fires this same event.
+      // Without this guard, Finance's flow would get its screen hijacked to
+      // this generic page right after successfully finishing inline.
       if (event === "PASSWORD_RECOVERY") {
+        if (isPasswordRecovery.current) return;
         isPasswordRecovery.current = true;
         // Clear any existing logged-in user so wrong account doesn't show
         setUser(null);
@@ -2431,7 +2440,10 @@ export default function App() {
     await supabase.from("scores").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     await supabase.from("progress").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     await supabase.from("messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await supabase.from("words").delete().eq("is_custom", true); // built-in words untouched
+    // Words (built-in AND custom — single-added or Bulk Uploaded) are
+    // deliberately NOT touched by this reset. They're real content once
+    // added, not disposable test data — this only clears learner accounts,
+    // scores, and progress.
     // Sign out current user if any
     await supabase.auth.signOut();
     // Clear localStorage
@@ -2939,9 +2951,27 @@ export default function App() {
           </div>
           {isAdminRoute || view === "admin" ? (
             <div className="nright">
-              {adminUnlocked && messages.filter(m => !m.resolved).length > 0 && (
-                <span className="admin-msg-badge">✉ {messages.filter(m => !m.resolved).length}</span>
-              )}
+              {adminUnlocked && (() => {
+                const pendingCount = passwordChangeRequests.filter(r => r.status === "pending").length
+                  + receiptRequests.filter(r => r.status === "pending").length;
+                return pendingCount > 0 ? (
+                  <div style={{ position: "relative" }}>
+                    <span className="admin-msg-badge" style={{ cursor: "pointer" }} onClick={e => { e.stopPropagation(); setShowNotifCenter(s => !s); }}>
+                      🔔 {pendingCount}
+                    </span>
+                    {showNotifCenter && (
+                      <AdminNotificationCenter
+                        passwordChangeRequests={passwordChangeRequests}
+                        receiptRequests={receiptRequests}
+                        onApprovePasswordChange={approvePasswordChangeRequest}
+                        onRejectPasswordChange={rejectPasswordChangeRequest}
+                        onClose={() => setShowNotifCenter(false)}
+                        toast_={toast_}
+                      />
+                    )}
+                  </div>
+                ) : null;
+              })()}
               {adminUnlocked && (
                 <div className="nuser-wrap">
                   <button className="nuser" onClick={e => { e.stopPropagation(); setShowAdminMenu(s => !s); }}>🔧 Admin <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
@@ -3193,31 +3223,38 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
             ))}
           </div>
 
-          {/* Mastered words modal */}
-          {showMasteredList && (
-            <div className="modal-overlay" onClick={() => setShowMasteredList(false)}>
-              <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
-                <div className="modal-head">
-                  <h3>🎯 Mastered Words ({homeMastered.size})</h3>
-                  <button className="modal-close" onClick={() => setShowMasteredList(false)}>×</button>
-                </div>
-                <div className="modal-body" style={{ maxHeight: 360, overflowY: "auto" }}>
-                  {allWords.filter(w => homeMastered.has(w.arabic)).map((w, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 4px", borderBottom: "1px solid rgba(0,200,230,.08)" }}>
-                      <span className="arabic" style={{ fontSize: 20, color: "var(--gold2)" }}>{w.arabic}</span>
-                      <span style={{ fontSize: 13, color: "var(--text)" }}>{w.english}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Mastered words modal moved outside this card — see below the
+              closing of this card. backdrop-filter (from .card) creates a
+              containing block for position:fixed descendants, which was
+              trapping this modal inside the card's own stacking context
+              instead of letting it escape to the true top of the page. */}
           <div style={{ overflow: "hidden", marginTop: 4, direction: "ltr" }}>
             <div style={{ display: "inline-flex", whiteSpace: "nowrap", animation: "marquee 22s linear infinite", fontSize: 11, color: "var(--muted)" }}>
               <span>Keep going — each quiz unlocks more words on your path to the Quran.</span>
               <span style={{ margin: "0 20px", color: "var(--cyan2)", opacity: .5 }}>✦</span>
               <span>Keep going — each quiz unlocks more words on your path to the Quran.</span>
               <span style={{ margin: "0 20px", color: "var(--cyan2)", opacity: .5 }}>✦</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mastered words modal — deliberately outside the "Your Progress" card
+          above (see the note there for why) */}
+      {showMasteredList && (
+        <div className="modal-overlay" onClick={() => setShowMasteredList(false)}>
+          <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>🎯 Mastered Words ({homeMastered.size})</h3>
+              <button className="modal-close" onClick={() => setShowMasteredList(false)}>×</button>
+            </div>
+            <div className="modal-body" style={{ maxHeight: 360, overflowY: "auto" }}>
+              {allWords.filter(w => homeMastered.has(w.arabic)).map((w, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 4px", borderBottom: "1px solid rgba(0,200,230,.08)" }}>
+                  <span className="arabic" style={{ fontSize: 20, color: "var(--gold2)" }}>{w.arabic}</span>
+                  <span style={{ fontSize: 13, color: "var(--text)" }}>{w.english}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -5830,7 +5867,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
       )}
       {tab === "settings" && <ResetTestDataPanel onResetAllTestData={onResetAllTestData} />}
       {tab === "settings" && <ClearReceiptsPanel onClearAllReceipts={onClearAllReceipts} />}
-      {tab === "settings" && <PasswordChangeRequestsPanel requests={passwordChangeRequests} onApprove={onApprovePasswordChange} onReject={onRejectPasswordChange} toast_={toast_} />}
+      {/* Finance password change requests moved to the top-level 🔔 notification center */}
 
       {resetTarget && (
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeReset(); }}>
@@ -5927,7 +5964,7 @@ function ResetTestDataPanel({ onResetAllTestData }) {
     <div className="card" style={{ maxWidth: 440, marginTop: 16, borderColor: "rgba(192,80,74,.3)" }}>
       <div className="lbl" style={{ color: "var(--err)" }}>⚠ Danger Zone</div>
       <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
-        Permanently erases <strong style={{ color: "var(--text)" }}>every participant, score, day progress, message, and custom word</strong> created so far. Use this once, right before going live, to start with a clean slate. Admin/Finance accounts and passwords are untouched. Donation receipts are handled separately below.
+        Permanently erases <strong style={{ color: "var(--text)" }}>every participant, score, and day progress</strong> created so far. Use this once, right before going live, to start with a clean slate. Words (built-in and custom, however added) are never touched — Admin/Finance accounts and passwords are untouched too. Donation receipts are handled separately below.
       </p>
       {!open ? (
         <button className="btn" style={{ background: "var(--err)", color: "#fff" }} onClick={() => setOpen(true)}>
@@ -6023,48 +6060,75 @@ function ClearReceiptsPanel({ onClearAllReceipts }) {
 // approvePasswordChangeRequest() in the main app) — it just emails Finance
 // a reset code, same as the learner Forgot Password flow. Admin never sees
 // or chooses the actual new password.
-function PasswordChangeRequestsPanel({ requests = [], onApprove, onReject, toast_ }) {
+// ─── Admin Notification Center — dropdown from the 🔔 badge in the nav ──────
+// Consolidates everything Admin needs to act on or be aware of, in one place
+// reachable from anywhere in the Admin panel, instead of buried in a
+// specific tab. Replaces the old localStorage-only "messages" badge, which
+// nothing had actually written to since the Supabase migration — it was
+// dead weight, always showing zero.
+function AdminNotificationCenter({ passwordChangeRequests, receiptRequests, onApprovePasswordChange, onRejectPasswordChange, onClose, toast_ }) {
   const [busyId, setBusyId] = useState(null);
-  const pending = requests.filter(r => r.status === "pending");
+  const pendingPasswordReqs = passwordChangeRequests.filter(r => r.status === "pending");
+  const pendingReceiptReqs = receiptRequests.filter(r => r.status === "pending");
 
   const approve = async (req) => {
     setBusyId(req.id);
-    const ok = await onApprove(req.id, req.requesterEmail);
+    const ok = await onApprovePasswordChange(req.id, req.requesterEmail);
     setBusyId(null);
     toast_(ok ? `Approved — reset code emailed to ${req.requesterEmail}.` : "Couldn't approve — check the Titan/Supabase email connection and try again.");
   };
-
   const reject = async (req) => {
     setBusyId(req.id);
-    const ok = await onReject(req.id);
+    const ok = await onRejectPasswordChange(req.id);
     setBusyId(null);
     toast_(ok ? "Request declined." : "Couldn't decline — try again.");
   };
 
-  if (pending.length === 0) return null;
-
   return (
-    <div className="card" style={{ maxWidth: 440, marginTop: 16 }}>
-      <div className="lbl">🔑 Finance Password Change Requests ({pending.length})</div>
-      <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
-        Approving emails a reset code to the requester — it doesn't set or reveal any password.
-      </p>
-      {pending.map(req => (
-        <div key={req.id} style={{ padding: "10px 12px", marginBottom: 8, borderRadius: 7, background: "rgba(0,200,230,.04)", border: "1px solid rgba(0,200,230,.12)" }}>
-          <div style={{ fontSize: 13.5, color: "var(--text)", fontWeight: 500 }}>{req.requesterEmail}</div>
-          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>
-            Requested {new Date(req.requestedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button className="copy-btn" style={{ color: "var(--ok)", borderColor: "rgba(74,158,92,.35)" }} disabled={busyId === req.id} onClick={() => approve(req)}>
-              {busyId === req.id ? "…" : "Approve"}
-            </button>
-            <button className="copy-btn" style={{ color: "var(--err)", borderColor: "rgba(220,90,90,.35)" }} disabled={busyId === req.id} onClick={() => reject(req)}>
-              Decline
-            </button>
-          </div>
+    <div className="nuser-menu" style={{ minWidth: 340, maxWidth: 380, maxHeight: 480, overflowY: "auto" }} onMouseLeave={onClose}>
+      <div className="nuser-menu-email" style={{ fontWeight: 600, color: "var(--text)", fontSize: 13 }}>🔔 Notifications</div>
+
+      {pendingPasswordReqs.length > 0 && (
+        <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(0,200,230,.1)" }}>
+          <div style={{ fontSize: 12, color: "var(--cyan2)", fontWeight: 600, marginBottom: 8 }}>🔑 Finance Password Requests ({pendingPasswordReqs.length})</div>
+          {pendingPasswordReqs.map(req => (
+            <div key={req.id} style={{ padding: "8px 10px", marginBottom: 6, borderRadius: 7, background: "rgba(0,200,230,.04)", border: "1px solid rgba(0,200,230,.12)" }}>
+              <div style={{ fontSize: 12.5, color: "var(--text)" }}>{req.requesterEmail}</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
+                {new Date(req.requestedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                <button className="copy-btn" style={{ color: "var(--ok)", borderColor: "rgba(74,158,92,.35)", fontSize: 11 }} disabled={busyId === req.id} onClick={() => approve(req)}>
+                  {busyId === req.id ? "…" : "Approve"}
+                </button>
+                <button className="copy-btn" style={{ color: "var(--err)", borderColor: "rgba(220,90,90,.35)", fontSize: 11 }} disabled={busyId === req.id} onClick={() => reject(req)}>
+                  Decline
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+
+      {pendingReceiptReqs.length > 0 && (
+        <div style={{ padding: "10px 14px" }}>
+          <div style={{ fontSize: 12, color: "var(--gold3)", fontWeight: 600, marginBottom: 8 }}>🧾 Receipt Requests ({pendingReceiptReqs.length})</div>
+          {pendingReceiptReqs.map(req => (
+            <div key={req.id} style={{ padding: "8px 10px", marginBottom: 6, borderRadius: 7, background: "rgba(255,217,107,.05)", border: "1px solid rgba(255,217,107,.15)" }}>
+              <div style={{ fontSize: 12.5, color: "var(--text)" }}>{req.donorName}</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
+                {req.amount ? `₹${Number(req.amount).toLocaleString("en-IN")}` : "Amount not given"}
+                {req.utrReference ? ` · UTR: ${req.utrReference}` : ""}
+              </div>
+            </div>
+          ))}
+          <p style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>Issue these from the Finance Panel.</p>
+        </div>
+      )}
+
+      {pendingPasswordReqs.length === 0 && pendingReceiptReqs.length === 0 && (
+        <div style={{ padding: "16px 14px", textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>You're all caught up.</div>
+      )}
     </div>
   );
 }
