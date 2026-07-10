@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
 
-
 const WORDS_PER_DAY = 10;
 // Safety-net fallback only — every real call site below passes the live,
 // Supabase-derived day count explicitly. If this default is ever hit, it
