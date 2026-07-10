@@ -1,61 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
 
-const WORD_BANK = [
-  { arabic: "اللَّهُ", translit: "Allāh", english: "Allah / God", urdu: "اللہ", root: "أله", rootEnglish: "to worship, deity", rootUrdu: "عبادت کرنا، معبود" },
-  { arabic: "رَبُّ", translit: "Rabb", english: "Lord / Sustainer", urdu: "رب، پالنے والا", root: "ربب", rootEnglish: "to nurture, sustain", rootUrdu: "پرورش کرنا" },
-  { arabic: "الرَّحْمَنُ", translit: "Ar-Rahmān", english: "The Most Gracious", urdu: "نہایت رحم کرنے والا", root: "رحم", rootEnglish: "mercy, womb", rootUrdu: "رحم، مہربانی" },
-  { arabic: "الرَّحِيمُ", translit: "Ar-Raheem", english: "The Most Merciful", urdu: "نہایت مہربان", root: "رحم", rootEnglish: "mercy, womb", rootUrdu: "رحم، مہربانی" },
-  { arabic: "الْحَمْدُ", translit: "Al-Hamd", english: "All Praise", urdu: "تمام تعریف", root: "حمد", rootEnglish: "to praise", rootUrdu: "تعریف کرنا" },
-  { arabic: "فِي", translit: "fī", english: "in / within", urdu: "میں", root: "—", rootEnglish: "—", rootUrdu: "—" },
-  { arabic: "مِن", translit: "min", english: "from / of", urdu: "سے", root: "—", rootEnglish: "—", rootUrdu: "—" },
-  { arabic: "عَلَى", translit: "'alā", english: "on / upon / over", urdu: "پر", root: "—", rootEnglish: "—", rootUrdu: "—" },
-  { arabic: "إِلَى", translit: "ilā", english: "to / towards", urdu: "کی طرف", root: "—", rootEnglish: "—", rootUrdu: "—" },
-  { arabic: "كَانَ", translit: "kāna", english: "was / to be", urdu: "تھا، ہونا", root: "كون", rootEnglish: "to be, existence", rootUrdu: "ہونا، وجود" },
-  { arabic: "هُوَ", translit: "huwa", english: "He / It", urdu: "وہ", root: "—", rootEnglish: "—", rootUrdu: "—" },
-  { arabic: "الَّذِي", translit: "alladhī", english: "who / that / which", urdu: "جو، وہ جو", root: "—", rootEnglish: "—", rootUrdu: "—" },
-  { arabic: "مَا", translit: "mā", english: "what / that which / not", urdu: "جو، نہیں", root: "—", rootEnglish: "—", rootUrdu: "—" },
-  { arabic: "لَا", translit: "lā", english: "no / not", urdu: "نہیں", root: "—", rootEnglish: "—", rootUrdu: "—" },
-  { arabic: "قَالَ", translit: "qāla", english: "he said", urdu: "اس نے کہا", root: "قول", rootEnglish: "to say, speech", rootUrdu: "کہنا، بات" },
-  { arabic: "إِنَّ", translit: "inna", english: "verily / indeed", urdu: "بے شک", root: "—", rootEnglish: "—", rootUrdu: "—" },
-  { arabic: "آمَنَ", translit: "āmana", english: "to believe / have faith", urdu: "ایمان لانا", root: "أمن", rootEnglish: "safety, trust, faith", rootUrdu: "امن، اعتماد، ایمان" },
-  { arabic: "عَمِلَ", translit: "'amila", english: "to do / work / act", urdu: "عمل کرنا", root: "عمل", rootEnglish: "to do, work", rootUrdu: "کام کرنا، عمل" },
-  { arabic: "عَلِمَ", translit: "'alima", english: "to know", urdu: "جاننا", root: "علم", rootEnglish: "knowledge", rootUrdu: "علم، جاننا" },
-  { arabic: "نَاسٌ", translit: "nās", english: "people / mankind", urdu: "لوگ، انسان", root: "نوس", rootEnglish: "people, humankind", rootUrdu: "لوگ، انسانیت" },
-  { arabic: "قَوْمٌ", translit: "qawm", english: "people / nation / tribe", urdu: "قوم، گروہ", root: "قوم", rootEnglish: "nation, to stand/rise", rootUrdu: "قوم، کھڑا ہونا" },
-  { arabic: "يَوْمٌ", translit: "yawm", english: "day", urdu: "دن", root: "يوم", rootEnglish: "day", rootUrdu: "دن" },
-  { arabic: "أَرْضٌ", translit: "ard", english: "earth / land / ground", urdu: "زمین", root: "أرض", rootEnglish: "earth, land", rootUrdu: "زمین" },
-  { arabic: "سَمَاءٌ", translit: "samā'", english: "sky / heaven", urdu: "آسمان", root: "سمو", rootEnglish: "to be high, elevated", rootUrdu: "بلند ہونا" },
-  { arabic: "كِتَابٌ", translit: "kitāb", english: "book / scripture", urdu: "کتاب", root: "كتب", rootEnglish: "to write, book", rootUrdu: "لکھنا، کتاب" },
-  { arabic: "نَفْسٌ", translit: "nafs", english: "soul / self", urdu: "نفس، جان", root: "نفس", rootEnglish: "soul, self, breath", rootUrdu: "جان، نفس" },
-  { arabic: "قَلْبٌ", translit: "qalb", english: "heart", urdu: "دل", root: "قلب", rootEnglish: "heart, to turn/change", rootUrdu: "دل، پلٹنا" },
-  { arabic: "إِيمَانٌ", translit: "īmān", english: "faith / belief", urdu: "ایمان", root: "أمن", rootEnglish: "safety, trust, faith", rootUrdu: "امن، اعتماد، ایمان" },
-  { arabic: "تَقْوَى", translit: "taqwā", english: "piety / God-consciousness", urdu: "تقویٰ، پرہیزگاری", root: "وقي", rootEnglish: "to protect, guard", rootUrdu: "حفاظت کرنا، بچانا" },
-  { arabic: "صَلَاةٌ", translit: "salāh", english: "prayer", urdu: "نماز", root: "صلو", rootEnglish: "to pray, connection", rootUrdu: "دعا، تعلق" },
-  { arabic: "جَنَّةٌ", translit: "jannah", english: "paradise / garden", urdu: "جنت، باغ", root: "جنن", rootEnglish: "to conceal, garden", rootUrdu: "چھپانا، باغ" },
-  { arabic: "نَارٌ", translit: "nār", english: "fire / hell", urdu: "آگ، دوزخ", root: "نور", rootEnglish: "light, fire", rootUrdu: "روشنی، آگ" },
-  { arabic: "آخِرَةٌ", translit: "ākhirah", english: "the Hereafter", urdu: "آخرت", root: "أخر", rootEnglish: "to be last, end", rootUrdu: "پیچھے، آخر" },
-  { arabic: "مَوْتٌ", translit: "mawt", english: "death", urdu: "موت", root: "موت", rootEnglish: "death", rootUrdu: "موت" },
-  { arabic: "نَبِيٌّ", translit: "nabī", english: "prophet", urdu: "نبی، پیغمبر", root: "نبأ", rootEnglish: "to inform, news", rootUrdu: "خبر دینا" },
-  { arabic: "رَسُولٌ", translit: "rasūl", english: "messenger", urdu: "رسول، پیغام لانے والا", root: "رسل", rootEnglish: "to send, message", rootUrdu: "بھیجنا، پیغام" },
-  { arabic: "مَلَكٌ", translit: "malak", english: "angel", urdu: "فرشتہ", root: "ملك", rootEnglish: "to possess, dominion", rootUrdu: "مالک ہونا، بادشاہت" },
-  { arabic: "عِلْمٌ", translit: "'ilm", english: "knowledge", urdu: "علم", root: "علم", rootEnglish: "knowledge", rootUrdu: "علم، جاننا" },
-  { arabic: "حَقٌّ", translit: "haqq", english: "truth / right", urdu: "حق، سچ", root: "حقق", rootEnglish: "to be true, established", rootUrdu: "سچائی، ثابت ہونا" },
-  { arabic: "صَبْرٌ", translit: "sabr", english: "patience / perseverance", urdu: "صبر", root: "صبر", rootEnglish: "patience, to restrain", rootUrdu: "صبر، روکنا" },
-  { arabic: "رَحْمَةٌ", translit: "rahmah", english: "mercy / compassion", urdu: "رحمت", root: "رحم", rootEnglish: "mercy, womb", rootUrdu: "رحم، مہربانی" },
-  { arabic: "نُورٌ", translit: "nūr", english: "light", urdu: "نور، روشنی", root: "نور", rootEnglish: "light, fire", rootUrdu: "روشنی، آگ" },
-  { arabic: "هُدًى", translit: "hudan", english: "guidance", urdu: "ہدایت", root: "هدي", rootEnglish: "to guide", rootUrdu: "راہ دکھانا" },
-  { arabic: "تَوْبَةٌ", translit: "tawbah", english: "repentance", urdu: "توبہ", root: "توب", rootEnglish: "to return, repent", rootUrdu: "لوٹنا، توبہ کرنا" },
-  { arabic: "دُعَاءٌ", translit: "du'ā'", english: "supplication", urdu: "دعا", root: "دعو", rootEnglish: "to call, invoke", rootUrdu: "بلانا، دعا کرنا" },
-  { arabic: "سَلَامٌ", translit: "salām", english: "peace / greeting", urdu: "سلام، امن", root: "سلم", rootEnglish: "peace, safety", rootUrdu: "امن، سلامتی" },
-  { arabic: "حِكْمَةٌ", translit: "hikmah", english: "wisdom", urdu: "حکمت", root: "حكم", rootEnglish: "wisdom, judgment", rootUrdu: "حکمت، فیصلہ" },
-  { arabic: "عَدْلٌ", translit: "'adl", english: "justice / equity", urdu: "عدل، انصاف", root: "عدل", rootEnglish: "justice, fairness", rootUrdu: "انصاف، برابری" },
-  { arabic: "رِزْقٌ", translit: "rizq", english: "provision / sustenance", urdu: "رزق", root: "رزق", rootEnglish: "provision, sustenance", rootUrdu: "روزی، رزق" },
-  { arabic: "شُكْرٌ", translit: "shukr", english: "gratitude", urdu: "شکر", root: "شكر", rootEnglish: "to thank, gratitude", rootUrdu: "شکر ادا کرنا" },
-];
-
 const WORDS_PER_DAY = 10;
-const TOTAL_DAYS = Math.ceil(WORD_BANK.length / WORDS_PER_DAY);
+// Safety-net fallback only — every real call site below passes the live,
+// Supabase-derived day count explicitly. If this default is ever hit, it
+// means a caller forgot to pass one; capping at 1 is the safest failure mode
+// (a learner stuck on Day 1 is far better than one shown a wrong high number).
+const TOTAL_DAYS = 1;
 // A set unlocks the next one via EITHER of two paths, whichever comes first:
 //  1. Score at least PASSING_SCORE_PCT (90%) on a single quiz attempt of
 //     this set, OR
@@ -91,27 +42,44 @@ function getUnlockedDays(enrolledAt, dayProgress = {}, totalDays = TOTAL_DAYS) {
   return day;
 }
 
-function getWordsForDay(day, allWords = WORD_BANK) {
+function getWordsForDay(day, allWords = []) {
   return allWords.slice((day - 1) * WORDS_PER_DAY, day * WORDS_PER_DAY);
 }
 
-function getUnlockedWords(enrolledAt, dayProgress = {}, allWords = WORD_BANK) {
+function getUnlockedWords(enrolledAt, dayProgress = {}, allWords = []) {
   const totalDays = Math.ceil(allWords.length / WORDS_PER_DAY);
   return allWords.slice(0, getUnlockedDays(enrolledAt, dayProgress, totalDays) * WORDS_PER_DAY);
 }
 
-// Mastery restricted to words belonging to COMPLETED sets only — words from
-// sets not yet completed (e.g. attempted via All Sets Quiz) don't count in
-// headline mastery displays (Your Progress tile, Leaderboard).
-function getCompletedSetsMastery(scores, dayProgress = {}, allWords = WORD_BANK) {
+// A word counts as mastered the moment its most recent 3 attempts are all
+// correct — regardless of whether those attempts came from that set's own
+// quiz, the All Sets Quiz, or a Weak Words Practice quiz, and regardless of
+// whether that set's own quiz has ever been taken. Set-quiz, All Sets Quiz,
+// and Weak Practice are just three different ways to practice the same
+// underlying word bank — mastery attributes back to whichever set the word
+// belongs to either way. Ranks/Home/Rewards totals are simply every mastered
+// word across every set, summed.
+function getMasteredWords(scores, allWords = []) {
   const { masteredSet } = buildStrictMastery(scores || []);
-  const completedDays = Object.keys(dayProgress || {}).filter(k => k !== "free").map(Number);
-  const completedWordKeys = new Set();
+  const wordBankKeys = new Set(allWords.map(w => w.arabic));
+  return new Set([...masteredSet].filter(k => wordBankKeys.has(k)));
+}
+
+// Words from sets the learner has actually completed (passed 90%+ or hit the
+// 70% mastery gate) — NOT simply "unlocked". Used to scope the All Sets Quiz
+// pool so it only reviews material already finished, never previewing words
+// from the set currently in progress (that set's own dedicated quiz is the
+// only way to first encounter and complete it).
+function getCompletedWords(dayProgress = {}, allWords = []) {
+  const completedDays = Object.keys(dayProgress || {}).filter(k => k !== "free" && dayProgress[k]).map(Number);
+  const seen = new Set();
+  const result = [];
   completedDays.forEach(d => {
-    allWords.slice((d - 1) * WORDS_PER_DAY, d * WORDS_PER_DAY).forEach(w => completedWordKeys.add(w.arabic));
+    allWords.slice((d - 1) * WORDS_PER_DAY, d * WORDS_PER_DAY).forEach(w => {
+      if (!seen.has(w.arabic)) { seen.add(w.arabic); result.push(w); }
+    });
   });
-  const filtered = new Set([...masteredSet].filter(k => completedWordKeys.has(k)));
-  return { masteredSet: filtered, completedWordCount: completedWordKeys.size };
+  return result;
 }
 
 function getWrongs(pool, correct, field) {
@@ -218,15 +186,18 @@ function buildStrictMastery(scores) {
 
 // Checks whether a specific set has reached MASTERY_GATE_PCT (70%) of its
 // words individually mastered — the alternative unlock path alongside a
-// single 90%+ quiz pass. Counts attempts from both that set's own quiz and
-// the All Sets Quiz, same as the calendar page's mastery display, so this
-// check and what the learner actually sees on screen always agree.
+// single 90%+ quiz pass. Uses every score, not just this set's own quiz,
+// then filters the *result* down to this set's words — a word can only ever
+// appear in its own set's quiz, the All Sets Quiz, or a weak-practice quiz,
+// so this naturally captures progress from all three consistently (weak
+// -practice attempts exist specifically to help a learner reach mastery on
+// words they've struggled with — they should count here, same as everywhere
+// else mastery is shown).
 function hasMetMasteryGate(setDay, allScores, allWords) {
   const setWords = getWordsForDay(setDay, allWords);
   if (setWords.length === 0) return false;
   const setWordArabics = new Set(setWords.map(w => w.arabic));
-  const relevantScores = allScores.filter(s => s.day === setDay || s.day == null);
-  const { masteredSet } = buildStrictMastery(relevantScores);
+  const { masteredSet } = buildStrictMastery(allScores);
   const masteredInSet = [...masteredSet].filter(arabic => setWordArabics.has(arabic)).length;
   return (masteredInSet / setWords.length) * 100 >= MASTERY_GATE_PCT;
 }
@@ -448,6 +419,16 @@ async function deleteWordRow(dbId) {
   const { error } = await supabase.from("words").delete().eq("id", dbId);
   if (error) console.error("deleteWordRow error:", error.message);
   return !error;
+}
+
+// One-time pre-launch action — wipes every donation receipt. Deliberately
+// separate from resetAllTestData: receipts are real financial/bookkeeping
+// records, not disposable QA data, so this needs its own explicit, guarded
+// action rather than being bundled into routine test-data cleanup.
+async function clearAllReceiptsRows() {
+  const { error } = await supabase.from("receipts").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) { console.error("clearAllReceiptsRows error:", error.message); return false; }
+  return true;
 }
 
 // ── EmailJS configuration ──────────────────────────────────────────────────────
@@ -1575,11 +1556,15 @@ export default function App() {
   const [user, setUser] = useState(() => storageGet("qv_user") || null); // instant restore on PWA reload — Supabase session reconciles async
   const userRef = React.useRef(null);
   React.useEffect(() => { userRef.current = user; }, [user]);
-  // allWords: WORD_BANK is the instant-paint fallback (same pattern as qv_user),
-  // replaced by the real Supabase-backed word list once it loads — see
-  // loadAllWords() in the init effect below. Built-in and custom words are
+  // allWords: instant-painted from the last successful Supabase fetch (cached
+  // in qv_words_cache, same pattern as qv_user), then reconciled for real via
+  // fetchAllWords() in the init effect below. Built-in and custom words are
   // both just rows in one table now; no more separate overrides system.
-  const [allWords, setAllWords] = useState(WORD_BANK);
+  const [allWords, setAllWordsState] = useState(() => storageGet("qv_words_cache") || []);
+  const setAllWords = (words) => {
+    setAllWordsState(words);
+    storageSet("qv_words_cache", words);
+  };
   const [participants, setParticipants] = useState([]);
   const [quiz, setQuiz] = useState(null);
   const quizRef = React.useRef(null);
@@ -2052,6 +2037,16 @@ export default function App() {
     window.location.href = "/admin";
   };
 
+  // Pre-launch only: wipes every real donation receipt, separate from the
+  // test-data reset above. Since receipt numbers are computed from however
+  // many receipts exist for the current year, clearing them also naturally
+  // resets numbering back to 001 — no extra step needed.
+  const clearAllReceipts = async () => {
+    const ok = await clearAllReceiptsRows();
+    if (ok) setReceipts([]);
+    return ok;
+  };
+
   // Sets a learner's new password using the 6-digit code emailed to them
   // (see the "Reset Password" screen). Uses supabase.auth.verifyOtp to
   // establish a session from the code, then updates the password — no
@@ -2134,13 +2129,22 @@ export default function App() {
 
   const startQuiz = (day = null, customPool = null) => {
     if (!user) { toast_("Please enroll first"); return; }
-    const pool = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords);
+    const pool = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords); // wrong-answer distractors + general fallback
     if (pool.length < 4) { toast_("Need more unlocked words"); return; }
-    const src = customPool ? customPool : day ? getWordsForDay(day, allWords) : pool;
-    const use = src.length >= 4 ? src : pool;
-    // All Sets Quiz (day === null, no customPool) = all unlocked words, timed
-    // Set quiz or custom (weak word practice) = capped at 10, no timer
     const isAllSetsQuiz = day === null && !customPool;
+    let src;
+    if (isAllSetsQuiz) {
+      // All Sets Quiz reviews already-completed sets only — never previews
+      // words from the set currently in progress (that set's own dedicated
+      // quiz is the only way to first encounter and complete it).
+      src = getCompletedWords(user.dayProgress, allWords);
+      if (src.length < 4) { toast_("Complete at least one set first to unlock All Sets Quiz"); return; }
+    } else {
+      src = customPool ? customPool : getWordsForDay(day, allWords);
+    }
+    const use = src.length >= 4 ? src : pool;
+    // All Sets Quiz = all completed-set words, timed
+    // Set quiz or custom (weak word practice) = capped at 10, no timer
     const questionCount = isAllSetsQuiz ? use.length : Math.min(10, use.length);
     const questions = shuffle(use).slice(0, questionCount).map(w => {
       const dir = Math.random() > .5 ? "ar2en" : "en2ar";
@@ -2494,7 +2498,7 @@ export default function App() {
 
         {isAdminRoute || view === "admin" ? (
           adminUnlocked
-            ? <AdminPage allWords={allWords} onAddWord={addWord} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} />
+            ? <AdminPage allWords={allWords} onAddWord={addWord} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} onClearAllReceipts={clearAllReceipts} />
             : <AdminGate onLogin={loginUser} />
         ) : isFinanceRoute || view === "finance" ? (
           financeUnlocked
@@ -2562,9 +2566,10 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
   const [showAllSetsReady, setShowAllSetsReady] = useState(false);
   const [showMasteredList, setShowMasteredList] = useState(false);
   const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).length : 0;
+  const completedWordsCount = user ? getCompletedWords(user.dayProgress, allWords).length : 0;
   const dayN = user ? getUnlockedDays(user.enrolledAt, user.dayProgress, Math.ceil(allWords.length / WORDS_PER_DAY)) : 0;
   const best = user?.scores?.length ? Math.max(...user.scores.map(s => s.pct)) : null;
-  const { masteredSet: homeMastered } = getCompletedSetsMastery(user?.scores || [], user?.dayProgress || {}, allWords);
+  const homeMastered = getMasteredWords(user?.scores || [], allWords);
   const streak = calcStreak(user?.scores || []);
   // Actual quiz completion = distinct numbered days completed / total days in programme
   // (deliberately excludes "free" quick-quiz attempts and is 0 for a brand-new user)
@@ -2596,7 +2601,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <button className="btn bg" onClick={() => setView("learn")}>Continue — Set {dayN}</button>
             <button className="btn bh" onClick={() => {
-              if (unlocked < 10) {
+              if (completedWordsCount < 4) {
                 toast_("⚠ Complete at least Set 1 first to unlock All Sets Quiz!");
                 return;
               }
@@ -2617,11 +2622,11 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
             <div className="modal-body" style={{ textAlign: "center" }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>🎯</div>
               <p style={{ fontSize: 15, color: "var(--text)", marginBottom: 8, fontWeight: 500 }}>
-                You're about to quiz on <strong style={{ color: "var(--cyan2)" }}>{unlocked}</strong> unlocked words
+                You're about to quiz on <strong style={{ color: "var(--cyan2)" }}>{completedWordsCount}</strong> completed words
               </p>
               <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 20, lineHeight: 1.7 }}>
                 The timer starts as soon as you begin.<br/>
-                You have <strong style={{ color: "var(--gold2)" }}>~{Math.round(unlocked * 1.5)}s</strong> total — about 1.5s per word.<br/>
+                You have <strong style={{ color: "var(--gold2)" }}>~{Math.round(completedWordsCount * 1.5)}s</strong> total — about 1.5s per word.<br/>
                 Find a quiet moment and stay focused.
               </p>
               <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
@@ -3470,15 +3475,15 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
   // mastered once its most recent MASTERY_STREAK_REQUIRED (3) attempts were
   // all correct, in a row. Older mistakes don't permanently block mastery
   // once that streak is achieved, but any wrong answer resets it back to
-  // zero. Counts attempts from BOTH this set's own dedicated quiz AND the
-  // All Sets Quiz — mastery reflects whether the learner actually knows the
-  // word, regardless of which quiz mode they demonstrated that through.
+  // zero. Uses every score, not just this set's own quiz — a word can only
+  // ever appear in its own set's quiz, the All Sets Quiz, or a weak-practice
+  // quiz, so this naturally reflects progress from all three, matching how
+  // mastery is counted everywhere else (Leaderboard, Home, set-unlock gate).
   let setMastery = null;
   let setMasteredKeys = null;
   if (selectedDay) {
     const setWordArabics = new Set((words || []).map(w => w.arabic));
-    const relevantScores = (user.scores || []).filter(s => s.day === selectedDay || s.day == null);
-    const { masteredSet } = buildStrictMastery(relevantScores);
+    const { masteredSet } = buildStrictMastery(user.scores || []);
     // Only count mastery for words that actually belong to this set — an
     // All Sets Quiz attempt covers many sets' words at once, so we filter
     // its contribution down to just the words shown on this page.
@@ -4315,7 +4320,7 @@ function LBPage({ participants, user, allWords }) {
     .map(p => {
       const scores = p.scores || [];
       const unlocked = getUnlockedDays(p.enrolledAt, p.dayProgress, Math.ceil(allWords.length / WORDS_PER_DAY)) * WORDS_PER_DAY || 1;
-      const { masteredSet } = getCompletedSetsMastery(scores, p.dayProgress, allWords);
+      const masteredSet = getMasteredWords(scores, allWords);
       const masteryPct = Math.round((masteredSet.size / unlocked) * 100);
       const bestQuiz = scores.length > 0 ? Math.max(...scores.map(s => s.pct)) : 0;
       return { ...p, masteryPct, bestQuiz, unlockedWords: unlocked, masteredWords: masteredSet.size, sessions: scores.length };
@@ -4737,7 +4742,7 @@ function RewardsTab({ participants, toast_, allWords }) {
   const eligible = participants.filter(p => (p.scores || []).length > 0);
 
   const getMastered = (p) => {
-    const { masteredSet } = getCompletedSetsMastery(p.scores || [], p.dayProgress, allWords);
+    const masteredSet = getMasteredWords(p.scores || [], allWords);
     return masteredSet.size;
   };
 
@@ -4825,7 +4830,7 @@ function RewardsTab({ participants, toast_, allWords }) {
   );
 }
 
-function AdminPage({ allWords, onAddWord, onEditWord, onDeleteWord, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData }) {
+function AdminPage({ allWords, onAddWord, onEditWord, onDeleteWord, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData, onClearAllReceipts }) {
   const [resetTarget, setResetTarget] = useState(null); // userId being reset, or null
   const [resetMessageId, setResetMessageId] = useState(null); // linked message, if reset was triggered from Messages tab
   const [resetSending, setResetSending] = useState(false);
@@ -4992,6 +4997,7 @@ function AdminPage({ allWords, onAddWord, onEditWord, onDeleteWord, participants
         <RewardsTab participants={participants} toast_={toast_} allWords={allWords} />
       )}
       {tab === "settings" && <ResetTestDataPanel onResetAllTestData={onResetAllTestData} />}
+      {tab === "settings" && <ClearReceiptsPanel onClearAllReceipts={onClearAllReceipts} />}
 
       {resetTarget && (
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeReset(); }}>
@@ -5088,7 +5094,7 @@ function ResetTestDataPanel({ onResetAllTestData }) {
     <div className="card" style={{ maxWidth: 440, marginTop: 16, borderColor: "rgba(192,80,74,.3)" }}>
       <div className="lbl" style={{ color: "var(--err)" }}>⚠ Danger Zone</div>
       <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
-        Permanently erases <strong style={{ color: "var(--text)" }}>every participant, score, day progress, message, and reset/verification link</strong> created so far. Use this once, right before going live, to start with a clean slate. The admin password also reverts to the default and must be set again.
+        Permanently erases <strong style={{ color: "var(--text)" }}>every participant, score, day progress, message, and custom word</strong> created so far. Use this once, right before going live, to start with a clean slate. Admin/Finance accounts and passwords are untouched. Donation receipts are handled separately below.
       </p>
       {!open ? (
         <button className="btn" style={{ background: "var(--err)", color: "#fff" }} onClick={() => setOpen(true)}>
@@ -5115,6 +5121,63 @@ function ResetTestDataPanel({ onResetAllTestData }) {
               Permanently Delete Everything
             </button>
             <button className="btn bh" onClick={close}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Clear All Receipts (one-time, pre-launch only) ───────────────────────────
+// Deliberately separate from Reset All Test Data above: receipts are real
+// financial/bookkeeping records, not disposable QA data, so this gets its
+// own explicit, clearly-labeled, equally-guarded action — never bundled into
+// routine test-data cleanup where it could be erased by accident.
+function ClearReceiptsPanel({ onClearAllReceipts }) {
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [clearing, setClearing] = useState(false);
+  const CONFIRM_PHRASE = "DELETE RECEIPTS";
+
+  const close = () => { setOpen(false); setConfirmText(""); };
+  const confirm = async () => {
+    setClearing(true);
+    const ok = await onClearAllReceipts();
+    setClearing(false);
+    if (ok) close();
+  };
+
+  return (
+    <div className="card" style={{ maxWidth: 440, marginTop: 16, borderColor: "rgba(192,80,74,.3)" }}>
+      <div className="lbl" style={{ color: "var(--err)" }}>⚠ Danger Zone — Receipts</div>
+      <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
+        Permanently erases <strong style={{ color: "var(--text)" }}>every donation receipt</strong> issued so far. Use this once, right before going live, to start real receipt numbering fresh at 001. This does not affect participants, scores, or words.
+      </p>
+      {!open ? (
+        <button className="btn" style={{ background: "var(--err)", color: "#fff" }} onClick={() => setOpen(true)}>
+          🧾 Clear All Receipts
+        </button>
+      ) : (
+        <div style={{ background: "rgba(192,80,74,.06)", border: "1px solid rgba(192,80,74,.25)", borderRadius: 8, padding: "14px 16px" }}>
+          <p style={{ fontSize: 13, color: "var(--text)", marginBottom: 10, lineHeight: 1.6 }}>
+            This cannot be undone. Type <strong style={{ color: "var(--err)", fontFamily: "monospace" }}>{CONFIRM_PHRASE}</strong> below to confirm.
+          </p>
+          <input
+            value={confirmText}
+            onChange={e => setConfirmText(e.target.value)}
+            placeholder={CONFIRM_PHRASE}
+            style={{ width: "100%", background: "var(--s2)", border: "1px solid rgba(192,80,74,.3)", color: "var(--text)", padding: "9px 13px", borderRadius: 7, fontFamily: "monospace", fontSize: 13, marginBottom: 12, outline: "none" }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className="btn"
+              style={{ background: "var(--err)", color: "#fff" }}
+              disabled={confirmText !== CONFIRM_PHRASE || clearing}
+              onClick={confirm}
+            >
+              {clearing ? "Clearing…" : "Permanently Delete All Receipts"}
+            </button>
+            <button className="btn bh" onClick={close} disabled={clearing}>Cancel</button>
           </div>
         </div>
       )}
