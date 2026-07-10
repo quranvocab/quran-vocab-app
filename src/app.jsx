@@ -442,6 +442,17 @@ async function updatePasswordChangeRequestStatus(id, status) {
   return true;
 }
 
+// Called by Finance right after successfully redeeming their reset code —
+// marks their own approved request "completed" so re-opening the modal
+// later shows a fresh "none" state instead of re-showing a stale, already-
+// used code-entry screen forever. Must run BEFORE signOut() ends the
+// session (see onBeforeSignOut in verifyResetCodeAndSetPassword), since
+// current_user_id() inside the function needs an active session.
+async function completePasswordChangeRequestRPC() {
+  const { error } = await supabase.rpc("complete_password_change_request");
+  if (error) console.error("completePasswordChangeRequestRPC error:", error.message);
+}
+
 // ── Supabase: scores + progress (Phase 3) ──────────────────────────────────
 // A `scores` row -> the shape the rest of the app already expects everywhere
 // (Home, History, Leaderboard, Admin) so those screens need zero changes.
@@ -752,6 +763,7 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
     recipient_name: donorName,
     receipt_no: receiptNo,
     from_email: "admin@awamibaitulmaal.org.in", // must match the admin@ Titan SMTP auth user on EMAILJS_RECEIPT_SERVICE_ID (see deploy notes)
+    reply_to: "finance@awamibaitulmaal.org.in", // alias forwarding to admin@ — replies land in the same inbox either way
     email_heading: `Donation Receipt ${receiptNo} — ${charityName}`,
     email_body_html: invoiceHtml,
   });
@@ -2342,7 +2354,7 @@ export default function App() {
   // clickable link involved, so nothing for Outlook's Safe Links (or any
   // other email link-scanner) to silently consume before the user acts.
   // ── SUPABASE AUTH: Set new password from emailed reset code ────────────
-  const verifyResetCodeAndSetPassword = async (email, code, newPassword) => {
+  const verifyResetCodeAndSetPassword = async (email, code, newPassword, onBeforeSignOut) => {
     isPasswordRecovery.current = true; // guard: don't auto-login on the SIGNED_IN this triggers
     const { error: verifyErr } = await supabase.auth.verifyOtp({
       email: email.trim().toLowerCase(), token: code.trim(), type: "recovery",
@@ -2355,6 +2367,11 @@ export default function App() {
     if (updateErr) {
       isPasswordRecovery.current = false;
       return { ok: false, reason: "error" };
+    }
+    // Run any extra cleanup that needs the still-active session (e.g. Finance
+    // marking its approval request "completed") before signOut() ends it.
+    if (onBeforeSignOut) {
+      try { await onBeforeSignOut(); } catch (err) { console.error("onBeforeSignOut error:", err); }
     }
     // Sign out after reset — user must login fresh with new password
     isPasswordRecovery.current = false;
@@ -2917,7 +2934,9 @@ export default function App() {
           <RequestPasswordChangeModal
             onClose={() => setFinanceProfileOpen(false)}
             toast_={toast_}
-            onSetPassword={verifyResetCodeAndSetPassword}
+            onSetPassword={(email, code, newPassword) =>
+              verifyResetCodeAndSetPassword(email, code, newPassword, completePasswordChangeRequestRPC)
+            }
           />
         )}
         {toast && <div className="toast">{toast}</div>}
@@ -3516,6 +3535,7 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
         to_email: oldEmail,
         recipient_name: user.name,
         from_email: "support@awamibaitulmaal.org.in",
+        reply_to: "support@awamibaitulmaal.org.in",
         email_heading: "Security notice — email change requested on your Quranic Vocab account",
         email_body_html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(0,200,230,.25);"><div style="padding:28px 24px;text-align:center;"><div style="font-size:34px;margin-bottom:10px">🔔</div><h2 style="color:#00c8e6;font-size:20px;margin:0 0 12px">Email Change Requested</h2><p style="color:#7ab8d4;font-size:14px;line-height:1.8;margin:0">A request was made to change the email on your Quranic Vocab account from <strong style="color:#f0f8ff">${oldEmail}</strong> to <strong style="color:#f0f8ff">${newEmail}</strong>.<br/><br/>If this was you, no action is needed — just confirm via the link sent to the new address.<br/><br/>If this was NOT you, contact <a href="mailto:support@awamibaitulmaal.org.in" style="color:#00c8e6">support@awamibaitulmaal.org.in</a> immediately.</p></div></div>`,
       });
@@ -5340,10 +5360,11 @@ function RewardsTab({ participants, toast_, allWords }) {
 
     try {
       const emailjs = await loadEmailJS();
-      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_RECEIPT_TEMPLATE_ID, {
+      await emailjs.send(EMAILJS_RECEIPT_SERVICE_ID, EMAILJS_RECEIPT_TEMPLATE_ID, {
         to_email: p.email,
         recipient_name: p.name,
-        from_email: "support@awamibaitulmaal.org.in",
+        from_email: "admin@awamibaitulmaal.org.in", // must match the admin@ Titan SMTP auth user on EMAILJS_RECEIPT_SERVICE_ID (see deploy notes)
+        reply_to: "admin@awamibaitulmaal.org.in",
         email_heading: `🏆 Certificate of Achievement — Quranic Vocab`,
         email_body_html: certHtml,
       });
