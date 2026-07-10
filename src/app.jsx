@@ -2521,7 +2521,7 @@ export default function App() {
             : <FinanceGate onLogin={loginUser} />
         ) : (
           <>
-            {view === "home" && <HomePage user={user} allWords={allWords} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onInvite={() => setShowInvite(true)} onReview={reviewSession} />}
+            {view === "home" && <HomePage user={user} allWords={allWords} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onInvite={() => setShowInvite(true)} onReview={reviewSession} toast_={toast_} />}
             {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} setView={setView} onGoToResetCode={(email) => { setPendingResetEmail(email); setView("resetPassword"); }} />}
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
             {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} optsVisible={optsVisible} />}
@@ -2577,7 +2577,7 @@ export default function App() {
   );
 }
 
-function HomePage({ user, allWords, participants, onStart, setView, onDonate, onInvite, onReview }) {
+function HomePage({ user, allWords, participants, onStart, setView, onDonate, onInvite, onReview, toast_ }) {
   const [showAllSetsReady, setShowAllSetsReady] = useState(false);
   const [showMasteredList, setShowMasteredList] = useState(false);
   const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).length : 0;
