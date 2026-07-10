@@ -28,6 +28,7 @@ function shuffle(arr) {
   }
   return a;
 }
+
 // Activity-based unlock: Day 1 is always available immediately on enrollment.
 // Day N+1 unlocks only once Day N has actually been completed with a quiz
 // (i.e. dayProgress[N] exists) — never just by time passing. A learner who
@@ -444,11 +445,13 @@ async function updatePasswordChangeRequestStatus(id, status) {
 // Called by Finance right after successfully redeeming their reset code —
 // marks their own approved request "completed" so re-opening the modal
 // later shows a fresh "none" state instead of re-showing a stale, already-
-// used code-entry screen forever. Must run BEFORE signOut() ends the
-// session (see onBeforeSignOut in verifyResetCodeAndSetPassword), since
-// current_user_id() inside the function needs an active session.
-async function completePasswordChangeRequestRPC() {
-  const { error } = await supabase.rpc("complete_password_change_request");
+// used code-entry screen forever. Matches by email rather than
+// current_user_id()/auth.uid() — right after verifyOtp() the session is
+// mid-transition, and relying on session-derived identity here caused this
+// to silently match zero rows instead of erroring (no exception, nothing
+// to catch — the UPDATE just ran and touched nothing).
+async function completePasswordChangeRequestRPC(email) {
+  const { error } = await supabase.rpc("complete_password_change_request", { p_email: email });
   if (error) console.error("completePasswordChangeRequestRPC error:", error.message);
 }
 
@@ -551,6 +554,120 @@ async function deleteWordRow(dbId) {
   const { error } = await supabase.from("words").delete().eq("id", dbId);
   if (error) console.error("deleteWordRow error:", error.message);
   return !error;
+}
+
+// ── Bulk word upload (CSV) ──────────────────────────────────────────────
+// Hand-rolled parser instead of a library — keeps the app dependency-free
+// (no package.json/npm install changes needed, just this one file, same as
+// every other change this whole project). Handles quoted fields with
+// embedded commas/newlines, which a naive text.split(',') would break on.
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i], next = text[i + 1];
+    if (inQuotes) {
+      if (c === '"' && next === '"') { field += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else { field += c; }
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ""; }
+      else if (c === '\r') { /* skip, \n handles the line break */ }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ""; }
+      else field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows.filter(r => !(r.length === 1 && r[0].trim() === ""));
+}
+
+// Accepts a few reasonable header spellings so a non-technical person
+// rearranging/renaming columns in Excel doesn't break the upload.
+const CSV_HEADER_ALIASES = {
+  arabic: ["arabic", "arabic word"],
+  translit: ["transliteration", "translit"],
+  english: ["english", "english meaning", "meaning"],
+  urdu: ["urdu", "urdu meaning"],
+  root: ["root", "root letters"],
+  rootEnglish: ["root meaning english", "rootenglish", "root english"],
+  rootUrdu: ["root meaning urdu", "rooturdu", "root urdu"],
+  ayahRef: ["ayah reference", "ayahref", "quran reference", "reference"],
+};
+
+function mapCSVHeaders(headerRow) {
+  const normalized = headerRow.map(h => h.trim().toLowerCase());
+  const colIndex = {};
+  for (const [field, aliases] of Object.entries(CSV_HEADER_ALIASES)) {
+    const idx = normalized.findIndex(h => aliases.includes(h));
+    if (idx !== -1) colIndex[field] = idx;
+  }
+  return colIndex;
+}
+
+// Parses + validates in one pass, returning both the rows ready to upload
+// and per-row problems so the UI can show a preview before anything is sent.
+function parseWordsCSV(text) {
+  const rows = parseCSV(text.trim());
+  if (rows.length === 0) return { headerError: "File appears to be empty.", words: [] };
+  const colIndex = mapCSVHeaders(rows[0]);
+  if (colIndex.arabic === undefined || colIndex.english === undefined) {
+    return { headerError: "Couldn't find 'Arabic' and 'English' columns — check the header row matches the template.", words: [] };
+  }
+  const words = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.every(cell => cell.trim() === "")) continue; // skip blank lines
+    const get = (field) => (colIndex[field] !== undefined ? (r[colIndex[field]] || "").trim() : "");
+    const arabic = get("arabic"), english = get("english");
+    const errors = [];
+    if (!arabic) errors.push("missing Arabic");
+    if (!english) errors.push("missing English meaning");
+    words.push({
+      rowNum: i + 1, arabic, english,
+      translit: get("translit"), urdu: get("urdu") || "—",
+      root: get("root") || "—", rootEnglish: get("rootEnglish") || "—", rootUrdu: get("rootUrdu") || "—",
+      ayahRef: get("ayahRef"), errors,
+    });
+  }
+  return { headerError: null, words };
+}
+
+// Single batch INSERT — computes the starting set/order position once, then
+// increments locally per row instead of round-tripping to the DB for each
+// one (which is what looping insertWord() per-row would do).
+async function bulkInsertWords(words) {
+  if (words.length === 0) return { ok: true, count: 0 };
+  const { data: { user: authUser } } = await supabase.auth.getUser();
+  let addedBy = null;
+  if (authUser) {
+    const { data: profile } = await supabase.from("users").select("id").eq("auth_id", authUser.id).maybeSingle();
+    addedBy = profile?.id || null;
+  }
+  const { data: last } = await supabase.from("words").select("set_number, order_in_set")
+    .order("set_number", { ascending: false }).order("order_in_set", { ascending: false })
+    .limit(1).maybeSingle();
+  let setNum = 1, orderNum = 1;
+  if (last) {
+    orderNum = last.order_in_set + 1;
+    setNum = last.set_number;
+    if (orderNum > WORDS_PER_DAY) { setNum += 1; orderNum = 1; }
+  }
+  const nowIso = new Date().toISOString();
+  const rows = words.map(word => {
+    const row = {
+      arabic: word.arabic, translit: word.translit, english: word.english,
+      urdu: word.urdu, root: word.root, root_meaning: word.rootEnglish, root_urdu: word.rootUrdu,
+      ayah_ref: word.ayahRef || null, set_number: setNum, order_in_set: orderNum,
+      is_custom: true, is_active: true, added_by: addedBy, added_at: nowIso,
+    };
+    orderNum += 1;
+    if (orderNum > WORDS_PER_DAY) { setNum += 1; orderNum = 1; }
+    return row;
+  });
+  const { error } = await supabase.from("words").insert(rows);
+  if (error) { console.error("bulkInsertWords error:", error.message); return { ok: false }; }
+  return { ok: true, count: rows.length };
 }
 
 // One-time pre-launch action — wipes every donation receipt. Deliberately
@@ -2367,10 +2484,12 @@ export default function App() {
       isPasswordRecovery.current = false;
       return { ok: false, reason: "error" };
     }
-    // Run any extra cleanup that needs the still-active session (e.g. Finance
-    // marking its approval request "completed") before signOut() ends it.
+    // Run any extra cleanup that needs identifying who this was for (e.g.
+    // Finance marking its approval request "completed") before signOut()
+    // ends the session — passed by email, not session state (see the note
+    // on completePasswordChangeRequestRPC for why).
     if (onBeforeSignOut) {
-      try { await onBeforeSignOut(); } catch (err) { console.error("onBeforeSignOut error:", err); }
+      try { await onBeforeSignOut(email); } catch (err) { console.error("onBeforeSignOut error:", err); }
     }
     // Sign out after reset — user must login fresh with new password
     isPasswordRecovery.current = false;
@@ -2652,6 +2771,11 @@ export default function App() {
     if (ok) { const words = await fetchAllWords(); if (words) setAllWords(words); }
     return ok;
   };
+  const bulkAddWords = async (words) => {
+    const result = await bulkInsertWords(words);
+    if (result.ok) { const updated = await fetchAllWords(); if (updated) setAllWords(updated); }
+    return result;
+  };
   const editWord = async (dbId, fields) => {
     const ok = await updateWord(dbId, fields);
     if (ok) { const words = await fetchAllWords(); if (words) setAllWords(words); }
@@ -2876,7 +3000,7 @@ export default function App() {
           <DownloadReceiptPage prefillReceiptNo={receiptParam} toast_={toast_} />
         ) : isAdminRoute || view === "admin" ? (
           adminUnlocked
-            ? <AdminPage allWords={allWords} onAddWord={addWord} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} onClearAllReceipts={clearAllReceipts} passwordChangeRequests={passwordChangeRequests} onApprovePasswordChange={approvePasswordChangeRequest} onRejectPasswordChange={rejectPasswordChangeRequest} />
+            ? <AdminPage allWords={allWords} onAddWord={addWord} onBulkAddWords={bulkAddWords} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} onClearAllReceipts={clearAllReceipts} passwordChangeRequests={passwordChangeRequests} onApprovePasswordChange={approvePasswordChangeRequest} onRejectPasswordChange={rejectPasswordChangeRequest} />
             : <AdminGate onLogin={loginUser} />
         ) : isFinanceRoute || view === "finance" ? (
           financeUnlocked
@@ -5313,6 +5437,130 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
   );
 }
 
+// ─── Bulk Word Upload — CSV file or paste ────────────────────────────────────
+function BulkUploadPanel({ onBulkAddWords, toast_ }) {
+  const [rawText, setRawText] = useState("");
+  const [parsed, setParsed] = useState(null); // { headerError, words } | null
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState(null); // { count } | null
+  const fileInputRef = React.useRef(null);
+
+  const handleFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setRawText(e.target.result);
+      setParsed(parseWordsCSV(e.target.result));
+      setResult(null);
+    };
+    reader.readAsText(file);
+  };
+
+  const handlePasteChange = (text) => {
+    setRawText(text);
+    setResult(null);
+    if (text.trim()) setParsed(parseWordsCSV(text));
+    else setParsed(null);
+  };
+
+  const downloadTemplate = () => {
+    const csv = 'Arabic,Transliteration,English Meaning,Urdu Meaning,Root Letters,Root Meaning English,Root Meaning Urdu,Ayah Reference\n'
+      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,سجد,to prostrate,سجدہ کرنا,"Surah Al-Baqarah 2:144"\n';
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "word_upload_template.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const validWords = parsed?.words.filter(w => w.errors.length === 0) || [];
+  const invalidWords = parsed?.words.filter(w => w.errors.length > 0) || [];
+
+  const doUpload = async () => {
+    if (validWords.length === 0) return;
+    setUploading(true);
+    const res = await onBulkAddWords(validWords);
+    setUploading(false);
+    if (res.ok) {
+      setResult({ count: res.count });
+      setRawText(""); setParsed(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      toast_(`✅ ${res.count} word${res.count === 1 ? "" : "s"} uploaded!`);
+    } else {
+      toast_("⚠ Upload failed — please try again.");
+    }
+  };
+
+  return (
+    <div className="card" style={{ maxWidth: 620 }}>
+      <div className="lbl" style={{ marginBottom: 4 }}>Bulk Upload Words</div>
+      <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+        Upload a CSV file, or paste CSV content directly. Arabic and English Meaning are required for every row — everything else is optional.
+      </p>
+
+      <button className="copy-btn" onClick={downloadTemplate} style={{ marginBottom: 16 }}>⬇ Download CSV Template</button>
+
+      <div className="field">
+        <label>Upload CSV File</label>
+        <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={e => handleFile(e.target.files[0])} />
+      </div>
+
+      <div className="field">
+        <label>...or Paste CSV Content</label>
+        <textarea
+          value={rawText}
+          onChange={e => handlePasteChange(e.target.value)}
+          placeholder="Arabic,Transliteration,English Meaning,...&#10;مَسْجِدٌ,Masjid,Mosque,..."
+          rows={6}
+          style={{ width: "100%", fontFamily: "monospace", fontSize: 12.5, background: "rgba(0,200,230,.04)", border: "1px solid rgba(0,200,230,.15)", borderRadius: 8, color: "var(--text)", padding: 10 }}
+        />
+      </div>
+
+      {parsed?.headerError && <div className="enroll-error">⚠ {parsed.headerError}</div>}
+
+      {parsed && !parsed.headerError && (
+        <>
+          <div style={{ display: "flex", gap: 16, margin: "14px 0", fontSize: 13 }}>
+            <span style={{ color: "var(--ok)" }}>✓ {validWords.length} ready to upload</span>
+            {invalidWords.length > 0 && <span style={{ color: "var(--err)" }}>⚠ {invalidWords.length} skipped (errors)</span>}
+          </div>
+
+          {parsed.words.length > 0 && (
+            <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid rgba(0,200,230,.12)", borderRadius: 8, marginBottom: 16 }}>
+              <table className="tbl" style={{ margin: 0 }}>
+                <thead><tr><th>Row</th><th>Arabic</th><th>English</th><th>Status</th></tr></thead>
+                <tbody>
+                  {parsed.words.map(w => (
+                    <tr key={w.rowNum}>
+                      <td style={{ color: "var(--muted)" }}>{w.rowNum}</td>
+                      <td style={{ fontFamily: "'Scheherazade New','Amiri',serif", fontSize: 16, direction: "rtl" }}>{w.arabic || "—"}</td>
+                      <td>{w.english || "—"}</td>
+                      <td>{w.errors.length === 0
+                        ? <span style={{ color: "var(--ok)" }}>✓ OK</span>
+                        : <span style={{ color: "var(--err)", fontSize: 11.5 }}>{w.errors.join(", ")}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <button className="btn bg" onClick={doUpload} disabled={validWords.length === 0 || uploading}>
+            {uploading ? "Uploading…" : `Upload ${validWords.length} Word${validWords.length === 1 ? "" : "s"}`}
+          </button>
+        </>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 7, background: "rgba(74,158,92,.08)", border: "1px solid rgba(74,158,92,.25)" }}>
+          <div style={{ fontSize: 13, color: "var(--ok)" }}>✅ {result.count} word{result.count === 1 ? "" : "s"} added successfully.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Rewards Tab — Certificate for 100+ mastered words ───────────────────────
 function RewardsTab({ participants, toast_, allWords }) {
   const [selected, setSelected] = useState(null);
@@ -5412,7 +5660,7 @@ function RewardsTab({ participants, toast_, allWords }) {
   );
 }
 
-function AdminPage({ allWords, onAddWord, onEditWord, onDeleteWord, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData, onClearAllReceipts, passwordChangeRequests, onApprovePasswordChange, onRejectPasswordChange }) {
+function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWord, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData, onClearAllReceipts, passwordChangeRequests, onApprovePasswordChange, onRejectPasswordChange }) {
   const [resetTarget, setResetTarget] = useState(null); // userId being reset, or null
   const [resetMessageId, setResetMessageId] = useState(null); // linked message, if reset was triggered from Messages tab
   const [resetSending, setResetSending] = useState(false);
@@ -5510,6 +5758,7 @@ function AdminPage({ allWords, onAddWord, onEditWord, onDeleteWord, participants
       <div className="tabs">
         <button className={`tab ${tab === "words" ? "on" : ""}`} onClick={() => setTab("words")}>All Words ({allWords.length})</button>
         <button className={`tab ${tab === "add" ? "on" : ""}`} onClick={() => setTab("add")}>Add Word</button>
+        <button className={`tab ${tab === "bulk" ? "on" : ""}`} onClick={() => setTab("bulk")}>Bulk Upload</button>
         <button className={`tab ${tab === "parts" ? "on" : ""}`} onClick={() => setTab("parts")}>Participants ({participants.length})</button>
         <button className={`tab ${tab === "rewards" ? "on" : ""}`} onClick={() => setTab("rewards")}>🏆 Rewards</button>
         <button className={`tab ${tab === "settings" ? "on" : ""}`} onClick={() => setTab("settings")}>⚙ Settings</button>
@@ -5533,6 +5782,7 @@ function AdminPage({ allWords, onAddWord, onEditWord, onDeleteWord, participants
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 11 }}>Custom words unlock day-by-day after the built-in words.</p>
         </div>
       )}
+      {tab === "bulk" && <BulkUploadPanel onBulkAddWords={onBulkAddWords} toast_={toast_} />}
       {tab === "parts" && (
         <div className="card">
           {participants.length === 0 ? <div style={{ textAlign: "center", color: "var(--muted)", padding: 36 }}>No participants yet.</div>
