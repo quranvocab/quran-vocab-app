@@ -270,13 +270,24 @@ function markMessageResolved(id) {
 }
 
 // ── Donation receipts (admin-issued, after finance team confirms payment) ──────
-// Sequential numbering per calendar year, e.g. ABM-2026-001, ABM-2026-002...
+// Numbering: ABM-2026-001-X7K9 — the sequential part (2026-001) is for human
+// bookkeeping/ordering; the 4-char suffix is random and exists purely so the
+// receipt number itself can't be brute-forced on the donor-facing PDF lookup
+// (get_receipt_for_download, see deploy notes) — without it, an attacker who
+// already knows a donor's email would only need to try ~999 guesses/year.
 // This is admin-issued bookkeeping, not an automated/verified payment receipt
 // — the app has no way to independently confirm a UPI payment occurred, since
 // UPI deep-links and QR scans complete entirely inside the donor's own banking
 // app with no callback to this site. The finance team confirms funds received
 // (outside the app) and tells admin, who then issues the receipt manually.
 const RECEIPT_PREFIX = "ABM";
+// Excludes visually-ambiguous characters (0/O, 1/I/L) — still ~1M combos (32^4).
+const RECEIPT_SUFFIX_CHARS = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+function randomReceiptSuffix() {
+  let s = "";
+  for (let i = 0; i < 4; i++) s += RECEIPT_SUFFIX_CHARS[Math.floor(Math.random() * RECEIPT_SUFFIX_CHARS.length)];
+  return s;
+}
 
 function mapReceiptRow(row) {
   return {
@@ -303,7 +314,7 @@ async function insertReceiptRow(receipt) {
       .select("id", { count: "exact", head: true })
       .like("receipt_no", `${RECEIPT_PREFIX}-${year}-%`);
     const next = String((count || 0) + 1 + attempt).padStart(3, "0");
-    const receiptNo = `${RECEIPT_PREFIX}-${year}-${next}`;
+    const receiptNo = `${RECEIPT_PREFIX}-${year}-${next}-${randomReceiptSuffix()}`;
     const { data, error } = await supabase.from("receipts").insert({
       receipt_no: receiptNo, donor_name: receipt.donorName, donor_email: receipt.donorEmail,
       amount: receipt.amount, donation_date: receipt.donationDate, purpose: receipt.purpose,
@@ -342,19 +353,40 @@ async function fetchReceiptRequests() {
   return (data || []).map(mapReceiptRequestRow);
 }
 
+// Goes through submit_receipt_request() (SECURITY DEFINER, rate-limited by
+// IP) rather than inserting into receipt_requests directly — direct insert
+// access to that table is revoked, this function is the only way in.
 async function insertReceiptRequestRow({ userId, donorName, donorEmail, amount, donationDate, note }) {
-  const { error } = await supabase.from("receipt_requests").insert({
-    user_id: userId || null, donor_name: donorName, donor_email: donorEmail,
-    amount: amount || null, donation_date: donationDate || null, note: note || null,
+  const { data, error } = await supabase.rpc("submit_receipt_request", {
+    p_user_id: userId || null, p_donor_name: donorName, p_donor_email: donorEmail,
+    p_amount: amount || null, p_donation_date: donationDate || null, p_note: note || null,
   });
   if (error) { console.error("insertReceiptRequestRow error:", error.message); return false; }
-  return true;
+  return data === true;
 }
 
 async function updateReceiptRequestRow(id, fields) {
   const { error } = await supabase.from("receipt_requests").update(fields).eq("id", id);
   if (error) { console.error("updateReceiptRequestRow error:", error.message); return false; }
   return true;
+}
+
+// Donor-facing, no-login-required receipt lookup — used by the
+// "Download Receipt PDF" page linked from the receipt email. Goes through
+// get_receipt_for_download(), a SECURITY DEFINER function that only returns
+// a row when BOTH the receipt number and email match (see deploy notes).
+async function fetchReceiptForDownload(receiptNo, email) {
+  const { data, error } = await supabase.rpc("get_receipt_for_download", {
+    p_receipt_no: receiptNo.trim(), p_email: email.trim(),
+  });
+  if (error) { console.error("fetchReceiptForDownload error:", error.message); return null; }
+  if (!data || data.length === 0) return null;
+  const row = data[0];
+  return {
+    receiptNo: row.receipt_no, donorName: row.donor_name, donorEmail: row.donor_email,
+    amount: row.amount, donationDate: row.donation_date, purpose: row.purpose,
+    note: row.notes, issuedAt: row.issued_at,
+  };
 }
 
 // ── Supabase: scores + progress (Phase 3) ──────────────────────────────────
@@ -515,6 +547,18 @@ async function loadJsPDF() {
   return _jsPDFLoaded;
 }
 
+// ── HTML-escape user-supplied text before it goes into any email template.
+// EmailJS templates use {{{email_body_html}}} (triple-mustache = unescaped)
+// so whatever we build here goes out verbatim — donor names, notes, and
+// even a learner's registered display name are all free text a person
+// typed in, so without this a crafted name/note could inject links or
+// broken markup into an outbound receipt/invite/certificate email.
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
 // ── Amount in words, Indian numbering system (Lakh/Crore) — for the formal
 // receipt format. Handles ₹0 to ₹99,99,99,999 (sufficient for donations).
 function amountInWordsIndian(num) {
@@ -600,16 +644,16 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
     <div style="padding:4px 24px 8px;">
       <table style="width:100%;border-collapse:collapse;">
         <tbody>
-          ${detailRow("Donor Name", donorName)}
-          ${detailRow("Donor Email", toEmail)}
-          ${detailRow("Address", donorAddress || "")}
-          ${detailRow("PAN No", donorPan || "")}
+          ${detailRow("Donor Name", escapeHtml(donorName))}
+          ${detailRow("Donor Email", escapeHtml(toEmail))}
+          ${detailRow("Address", escapeHtml(donorAddress || ""))}
+          ${detailRow("PAN No", escapeHtml(donorPan || ""))}
           ${detailRow("Amount (in words)", amountWords)}
           ${detailRow("Amount", `<span style="font-size:16px;color:#ffd96b;font-weight:700">₹${Number(amount).toLocaleString("en-IN")}</span>`)}
           ${detailRow("Donation Date", formattedDonationDate)}
-          ${detailRow("Payment Mode", paymentMode || "Online (UPI)")}
-          ${detailRow("Purpose", purpose)}
-          ${note ? detailRow("Note", note) : ""}
+          ${detailRow("Payment Mode", escapeHtml(paymentMode || "Online (UPI)"))}
+          ${detailRow("Purpose", escapeHtml(purpose))}
+          ${note ? detailRow("Note", escapeHtml(note)) : ""}
         </tbody>
       </table>
     </div>
@@ -622,6 +666,13 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
     <!-- Legal note -->
     <div style="margin:0 24px 18px;font-size:11px;color:#7ab8d4;line-height:1.8">
       ${taxNote}
+    </div>
+
+    <!-- Download PDF -->
+    <div style="text-align:center;margin:0 24px 20px;">
+      <a href="${window.location.origin}/?receipt=${encodeURIComponent(receiptNo)}" style="display:inline-block;padding:10px 22px;background:rgba(0,200,230,.1);border:1px solid rgba(0,200,230,.4);color:#00c8e6;font-size:12.5px;font-weight:600;text-decoration:none;border-radius:8px;">
+        📄 Download as PDF
+      </a>
     </div>
 
     <!-- Signature block -->
@@ -730,10 +781,10 @@ async function sendInviteEmail({ toEmail, friendName, inviterName }) {
     <!-- Body -->
     <div style="padding:28px 24px;background:#0d1f2d;text-align:center;">
       <p style="font-size:15px;color:#f0f8ff;line-height:1.7;margin:0 0 16px">
-        Assalamu Alaikum${friendName ? " " + friendName : ""},
+        Assalamu Alaikum${friendName ? " " + escapeHtml(friendName) : ""},
       </p>
       <p style="font-size:14px;color:#a9c9dc;line-height:1.8;margin:0 0 22px">
-        <strong style="color:#ffd96b">${inviterName}</strong> thought you'd love to join them on a journey to understand the words of the Qur'an — learning its most frequently used vocabulary, one set of 10 words at a time, at your own pace.
+        <strong style="color:#ffd96b">${escapeHtml(inviterName)}</strong> thought you'd love to join them on a journey to understand the words of the Qur'an — learning its most frequently used vocabulary, one set of 10 words at a time, at your own pace.
       </p>
       <p style="font-size:13px;color:#7ab8d4;line-height:1.7;margin:0 0 26px;font-style:italic">
         "Whoever follows a path in pursuit of knowledge, Allah will make easy for him a path to Paradise." — Sahih Muslim
@@ -1708,6 +1759,9 @@ function GateScreen({ onUnlock }) {
 export default function App() {
   const isAdminRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/admin";
   const isFinanceRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/finance";
+  // ?receipt=ABM-2026-001 in the URL (from the receipt email's "Download as
+  // PDF" link) opens the no-login-required download page, pre-filled.
+  const receiptParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("receipt") : null;
   const [view, setView] = useState(isAdminRoute ? "admin" : isFinanceRoute ? "finance" : "home");
   const [user, setUser] = useState(() => storageGet("qv_user") || null); // instant restore on PWA reload — Supabase session reconciles async
   const userRef = React.useRef(null);
@@ -2696,6 +2750,7 @@ export default function App() {
                       <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("profile"); }}>👤 Profile Settings</button>
                       <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("history"); }}>📋 My History</button>
                       <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setShowRequestReceipt(true); }}>🧾 Request Receipt</button>
+                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("downloadReceipt"); }}>📄 Download Receipt PDF</button>
                       <button className="nuser-menu-item logout" onClick={() => { setShowUserMenu(false); logout(); }}>↪ Log Out</button>
                     </div>
                   )}
@@ -2705,7 +2760,9 @@ export default function App() {
           )}
         </nav>
 
-        {isAdminRoute || view === "admin" ? (
+        {receiptParam ? (
+          <DownloadReceiptPage prefillReceiptNo={receiptParam} toast_={toast_} />
+        ) : isAdminRoute || view === "admin" ? (
           adminUnlocked
             ? <AdminPage allWords={allWords} onAddWord={addWord} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} onClearAllReceipts={clearAllReceipts} />
             : <AdminGate onLogin={loginUser} />
@@ -2725,6 +2782,7 @@ export default function App() {
             {view === "leaderboard" && <LBPage participants={participants} user={user} allWords={allWords} />}
             {view === "resetPassword" && <ResetPasswordPage onSetPassword={verifyResetCodeAndSetPassword} initialEmail={pendingResetEmail} setView={setView} />}
             {view === "profile" && user && <ProfilePage user={user} saveUser={saveUser} setView={setView} toast_={toast_} />}
+            {view === "downloadReceipt" && <DownloadReceiptPage prefillReceiptNo="" toast_={toast_} />}
             {/* Email verification handled automatically by Supabase via onAuthStateChange */}
           </>
         )}
@@ -5041,7 +5099,7 @@ function RewardsTab({ participants, toast_, allWords }) {
       </div>
       <div style="padding:32px 24px;text-align:center;background:#0d1f2d;">
         <p style="color:#7ab8d4;font-size:14px;margin:0 0 6px">This is to certify that</p>
-        <h2 style="color:#ffd96b;font-size:26px;margin:0 0 6px;font-weight:700">${p.name}</h2>
+        <h2 style="color:#ffd96b;font-size:26px;margin:0 0 6px;font-weight:700">${escapeHtml(p.name)}</h2>
         <p style="color:#7ab8d4;font-size:14px;margin:0 0 20px">has successfully mastered</p>
         <div style="background:rgba(255,210,80,.08);border:1px solid rgba(255,210,80,.25);border-radius:10px;padding:18px;display:inline-block;margin-bottom:20px;">
           <div style="font-size:48px;font-weight:300;color:#ffd96b;line-height:1">${masteredCount}</div>
@@ -5730,6 +5788,64 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Download Receipt PDF — no login required. Reached either via the link
+// in the receipt email (?receipt=ABM-2026-001, pre-fills the receipt number)
+// or by typing both fields in manually. Only ever returns a match when BOTH
+// the receipt number AND email match (see get_receipt_for_download() SQL) —
+// so a donor can only ever pull their own receipt, never anyone else's.
+function DownloadReceiptPage({ prefillReceiptNo, toast_ }) {
+  const [receiptNo, setReceiptNo] = useState(prefillReceiptNo || "");
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    if (!receiptNo.trim() || !email.trim()) {
+      setError("Enter both your Receipt Number and the email it was issued to.");
+      return;
+    }
+    setLoading(true);
+    const receipt = await fetchReceiptForDownload(receiptNo, email);
+    if (!receipt) {
+      setLoading(false);
+      setError("No matching receipt found. Double-check the Receipt Number and email address.");
+      return;
+    }
+    try {
+      await generateReceiptPDF(receipt);
+      setDone(true);
+    } catch (err) {
+      console.error("generateReceiptPDF error:", err);
+      setError("Found your receipt, but couldn't generate the PDF — please try again.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="page">
+      <div className="card" style={{ maxWidth: 420, margin: "24px auto" }}>
+        <div className="lbl">📄 Download Receipt PDF</div>
+        <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+          Enter your Receipt Number and the email address it was issued to.
+        </p>
+        <div className="field"><label>Receipt Number</label><input value={receiptNo} onChange={e => setReceiptNo(e.target.value)} placeholder="ABM-2026-001-X7K9" /></div>
+        <div className="field"><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" /></div>
+        {error && <div className="enroll-error">⚠ {error}</div>}
+        <button className="btn bg bfw" onClick={submit} disabled={loading}>
+          {loading ? "Looking up…" : "Download PDF"}
+        </button>
+        {done && (
+          <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 7, background: "rgba(74,158,92,.08)", border: "1px solid rgba(74,158,92,.25)" }}>
+            <div style={{ fontSize: 13, color: "var(--ok)" }}>✅ PDF downloaded.</div>
+          </div>
+        )}
       </div>
     </div>
   );
