@@ -294,6 +294,7 @@ function mapReceiptRow(row) {
     id: row.id, receiptNo: row.receipt_no, donorName: row.donor_name,
     donorEmail: row.donor_email, amount: row.amount, donationDate: row.donation_date,
     purpose: row.purpose, note: row.notes, issuedAt: row.issued_at,
+    utrReference: row.utr_reference,
   };
 }
 
@@ -319,6 +320,7 @@ async function insertReceiptRow(receipt) {
       receipt_no: receiptNo, donor_name: receipt.donorName, donor_email: receipt.donorEmail,
       amount: receipt.amount, donation_date: receipt.donationDate, purpose: receipt.purpose,
       notes: receipt.note || null, issued_at: new Date().toISOString(),
+      utr_reference: receipt.utrReference || null,
     }).select().single();
     if (!error) return { ok: true, receiptNo, dbId: data.id };
     if (error.code !== "23505") { // not a receipt-number conflict — a real error, stop retrying
@@ -343,6 +345,7 @@ function mapReceiptRequestRow(row) {
     id: row.id, userId: row.user_id, donorName: row.donor_name,
     donorEmail: row.donor_email, amount: row.amount, donationDate: row.donation_date,
     note: row.note, status: row.status, requestedAt: row.requested_at,
+    utrReference: row.utr_reference,
   };
 }
 
@@ -356,10 +359,14 @@ async function fetchReceiptRequests() {
 // Goes through submit_receipt_request() (SECURITY DEFINER, rate-limited by
 // IP) rather than inserting into receipt_requests directly — direct insert
 // access to that table is revoked, this function is the only way in.
-async function insertReceiptRequestRow({ userId, donorName, donorEmail, amount, donationDate, note }) {
+// UTR reference is required (this flow is UPI-specific) — the function
+// rejects with false if it's missing, distinct from the "pretend success"
+// it returns when rate-limited, so the UI can show a real validation error.
+async function insertReceiptRequestRow({ userId, donorName, donorEmail, amount, donationDate, note, utrReference }) {
   const { data, error } = await supabase.rpc("submit_receipt_request", {
     p_user_id: userId || null, p_donor_name: donorName, p_donor_email: donorEmail,
     p_amount: amount || null, p_donation_date: donationDate || null, p_note: note || null,
+    p_utr_reference: utrReference,
   });
   if (error) { console.error("insertReceiptRequestRow error:", error.message); return false; }
   return data === true;
@@ -385,8 +392,54 @@ async function fetchReceiptForDownload(receiptNo, email) {
   return {
     receiptNo: row.receipt_no, donorName: row.donor_name, donorEmail: row.donor_email,
     amount: row.amount, donationDate: row.donation_date, purpose: row.purpose,
-    note: row.notes, issuedAt: row.issued_at,
+    note: row.notes, issuedAt: row.issued_at, utrReference: row.utr_reference,
   };
+}
+
+// ── Finance password-change approval workflow ───────────────────────────
+// Finance can't change their own password unilaterally — this queues a
+// request for Admin. Approval doesn't set a password directly (that would
+// need the Supabase service-role key, which must never be in the browser);
+// it just triggers the same "email me a reset code" flow already used for
+// the learner Forgot Password screen.
+function mapPasswordChangeRequestRow(row) {
+  return {
+    id: row.id, requesterUserId: row.requester_user_id, requesterEmail: row.requester_email,
+    status: row.status, requestedAt: row.requested_at, resolvedAt: row.resolved_at,
+  };
+}
+
+// Admin view — RLS returns every request when called by an admin account.
+async function fetchAllPasswordChangeRequests() {
+  const { data, error } = await supabase.from("password_change_requests").select("*")
+    .order("requested_at", { ascending: false });
+  if (error) { console.error("fetchAllPasswordChangeRequests error:", error.message); return null; }
+  return (data || []).map(mapPasswordChangeRequestRow);
+}
+
+// Finance's own view — RLS scopes this to only their own row(s) even
+// without an explicit filter, since the select policy is "own row or admin".
+async function fetchMyLatestPasswordChangeRequest() {
+  const { data, error } = await supabase.from("password_change_requests").select("*")
+    .order("requested_at", { ascending: false }).limit(1);
+  if (error) { console.error("fetchMyLatestPasswordChangeRequest error:", error.message); return null; }
+  return data && data[0] ? mapPasswordChangeRequestRow(data[0]) : null;
+}
+
+// Goes through request_password_change() (SECURITY DEFINER) which verifies
+// server-side that the caller is actually a Finance account before inserting
+// — direct insert access to the table is not granted at all.
+async function requestPasswordChangeRPC() {
+  const { data, error } = await supabase.rpc("request_password_change");
+  if (error) { console.error("requestPasswordChangeRPC error:", error.message); return false; }
+  return data === true;
+}
+
+async function updatePasswordChangeRequestStatus(id, status) {
+  const { error } = await supabase.from("password_change_requests")
+    .update({ status, resolved_at: new Date().toISOString() }).eq("id", id);
+  if (error) { console.error("updatePasswordChangeRequestStatus error:", error.message); return false; }
+  return true;
 }
 
 // ── Supabase: scores + progress (Phase 3) ──────────────────────────────────
@@ -505,14 +558,17 @@ async function clearAllReceiptsRows() {
 // connected through EmailJS. No backend server needed — EmailJS's public key is
 // safe to expose client-side by design (see EmailJS docs); their free tier caps
 // abuse at 200 emails/month.
-const EMAILJS_SERVICE_ID    = "service_u97pazt";
+const EMAILJS_SERVICE_ID    = "service_u97pazt"; // support@ — invites, certificates, misc.
+const EMAILJS_RECEIPT_SERVICE_ID = "service_jdrpzb6"; // admin@ — receipts only
 const EMAILJS_RECEIPT_TEMPLATE_ID = "template_hbjl6yv"; // dedicated receipt/invoice template
 const EMAILJS_INVITE_TEMPLATE_ID  = "template_1hfqxef"; // "Invite a Friend" template
 const EMAILJS_PUBLIC_KEY    = "lVfbS-yLSA3hkGGT5";
 // Supabase now handles verification + password reset emails via Titan SMTP.
-// EmailJS is used for donation receipts (template_hbjl6yv) and, as of this
-// change, "invite a friend" emails (a separate dedicated template) — an
-// intentional, agreed exception to the "receipts + certificates only" rule.
+// EmailJS is used for donation receipts (template_hbjl6yv, sent via the
+// separate admin@ service — see EMAILJS_RECEIPT_SERVICE_ID) and, as of this
+// change, "invite a friend" emails (a separate dedicated template, still on
+// the original support@ service) — an intentional, agreed exception to the
+// "receipts + certificates only" rule.
 
 let _emailjsLoaded = null;
 async function loadEmailJS() {
@@ -591,7 +647,7 @@ function amountInWordsIndian(num) {
 // standard 80G-style trust receipt (reg numbers up top, donor details block,
 // amount in figures + words, signatory block at the bottom), rendered in
 // the app's dark ocean / cyan / gold theme rather than a plain white page.
-async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donationDate, purpose, note, donorAddress, donorPan, paymentMode }) {
+async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donationDate, purpose, note, donorAddress, donorPan, paymentMode, utrReference }) {
   const emailjs = await loadEmailJS();
 
   const charityName = DONATE.charityName && DONATE.charityName !== "Your Charity Name Here"
@@ -652,6 +708,7 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
           ${detailRow("Amount", `<span style="font-size:16px;color:#ffd96b;font-weight:700">₹${Number(amount).toLocaleString("en-IN")}</span>`)}
           ${detailRow("Donation Date", formattedDonationDate)}
           ${detailRow("Payment Mode", escapeHtml(paymentMode || "Online (UPI)"))}
+          ${utrReference ? detailRow("UPI Reference (UTR)", escapeHtml(utrReference)) : ""}
           ${detailRow("Purpose", escapeHtml(purpose))}
           ${note ? detailRow("Note", escapeHtml(note)) : ""}
         </tbody>
@@ -685,16 +742,16 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
 
     <!-- Footer -->
     <div style="padding:12px 24px;background:#071c2a;text-align:center;border-top:1px solid rgba(0,200,230,.15)">
-      <p style="margin:0;font-size:11px;color:rgba(122,184,212,.5)">${charityName} &nbsp;·&nbsp; support@awamibaitulmaal.org.in</p>
+      <p style="margin:0;font-size:11px;color:rgba(122,184,212,.5)">${charityName} &nbsp;·&nbsp; admin@awamibaitulmaal.org.in</p>
     </div>
 
   </div>`;
 
-  return emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_RECEIPT_TEMPLATE_ID, {
+  return emailjs.send(EMAILJS_RECEIPT_SERVICE_ID, EMAILJS_RECEIPT_TEMPLATE_ID, {
     to_email: toEmail,
     recipient_name: donorName,
     receipt_no: receiptNo,
-    from_email: "support@awamibaitulmaal.org.in",
+    from_email: "admin@awamibaitulmaal.org.in", // must match the admin@ Titan SMTP auth user on EMAILJS_RECEIPT_SERVICE_ID (see deploy notes)
     email_heading: `Donation Receipt ${receiptNo} — ${charityName}`,
     email_body_html: invoiceHtml,
   });
@@ -744,6 +801,7 @@ async function generateReceiptPDF(receipt) {
   field("Amount (words)", amountInWordsIndian(receipt.amount));
   field("Donation Date", new Date(receipt.donationDate).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }));
   field("Payment Mode", "Online (UPI)");
+  if (receipt.utrReference) field("UPI Reference (UTR)", receipt.utrReference);
   field("Purpose", receipt.purpose || "Donation");
   if (receipt.note) field("Note", receipt.note);
 
@@ -1791,6 +1849,7 @@ export default function App() {
   const [showFinanceMenu, setShowFinanceMenu] = useState(false);
   const [adminProfileOpen, setAdminProfileOpen] = useState(false);
   const [financeProfileOpen, setFinanceProfileOpen] = useState(false);
+  const [passwordChangeRequests, setPasswordChangeRequests] = useState([]); // Admin's view of all requests
   // Admin unlock is session-only (sessionStorage, not localStorage) — closing
   // the browser tab re-locks it. This is intentionally separate from regular
   // learner accounts; it gates the single shared Admin password, not a
@@ -1859,6 +1918,7 @@ export default function App() {
         fetchAllWords().then(words => { if (words) setAllWords(words); });
         fetchAllReceipts().then(r => { if (r) setReceipts(r); });
         fetchReceiptRequests().then(r => { if (r) setReceiptRequests(r); });
+        fetchAllPasswordChangeRequests().then(r => { if (r) setPasswordChangeRequests(r); });
       } else {
         if (cached) {
           // Supabase session truly expired — clear the optimistic restore
@@ -1912,6 +1972,7 @@ export default function App() {
         fetchAllWords().then(words => { if (words) setAllWords(words); });
         fetchAllReceipts().then(r => { if (r) setReceipts(r); });
         fetchReceiptRequests().then(r => { if (r) setReceiptRequests(r); });
+        fetchAllPasswordChangeRequests().then(r => { if (r) setPasswordChangeRequests(r); });
       }
       if (event === "USER_UPDATED" && session?.user) {
         // Email change confirmed — sync public.users with the new auth email
@@ -2341,8 +2402,8 @@ export default function App() {
   // `requestId`, when present, means this receipt was issued from a donor's
   // self-service Request Receipt entry — mark that request resolved once the
   // receipt is actually issued, so it drops off Finance's pending queue.
-  const issueReceipt = async ({ donorName, donorEmail, amount, donationDate, purpose, note, requestId }) => {
-    const result = await insertReceiptRow({ donorName, donorEmail, amount, donationDate, purpose, note });
+  const issueReceipt = async ({ donorName, donorEmail, amount, donationDate, purpose, note, requestId, utrReference }) => {
+    const result = await insertReceiptRow({ donorName, donorEmail, amount, donationDate, purpose, note, utrReference });
     if (!result.ok) return { ok: false };
     const updated = await fetchAllReceipts();
     if (updated) setReceipts(updated);
@@ -2356,7 +2417,7 @@ export default function App() {
     try {
       await sendReceiptEmail({
         toEmail: donorEmail, donorName, receiptNo: result.receiptNo,
-        amount, donationDate, purpose, note,
+        amount, donationDate, purpose, note, utrReference,
       });
       return { ok: true, receiptNo: result.receiptNo };
     } catch (err) {
@@ -2367,9 +2428,10 @@ export default function App() {
 
   // Donor-initiated: "I already paid, please email my receipt." Just logs
   // the claim for Finance to verify — see the note above insertReceiptRow().
-  const submitRequestReceipt = async ({ donorName, donorEmail, amount, donationDate, note }) => {
+  // utrReference is required (enforced both in the modal and server-side).
+  const submitRequestReceipt = async ({ donorName, donorEmail, amount, donationDate, note, utrReference }) => {
     const ok = await insertReceiptRequestRow({
-      userId: user?.dbId || null, donorName, donorEmail, amount, donationDate, note,
+      userId: user?.dbId || null, donorName, donorEmail, amount, donationDate, note, utrReference,
     });
     if (ok && (user?.role === "admin" || user?.role === "finance")) {
       const updated = await fetchReceiptRequests();
@@ -2384,6 +2446,40 @@ export default function App() {
     if (ok) {
       const updated = await fetchReceiptRequests();
       if (updated) setReceiptRequests(updated);
+    }
+    return ok;
+  };
+
+  // Finance-initiated: queues a request for Admin instead of changing the
+  // password directly. See the note above request_password_change() SQL.
+  const requestPasswordChange = async () => {
+    return await requestPasswordChangeRPC();
+  };
+
+  // Admin approves — this doesn't set a password. It emails Finance a
+  // 6-digit reset code (same mechanism as the learner Forgot Password flow),
+  // which Finance then redeems themselves to actually set the new password.
+  const approvePasswordChangeRequest = async (id, email) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/`,
+    });
+    if (error) {
+      console.error("approvePasswordChangeRequest error:", error.message);
+      return false;
+    }
+    const ok = await updatePasswordChangeRequestStatus(id, "approved");
+    if (ok) {
+      const updated = await fetchAllPasswordChangeRequests();
+      if (updated) setPasswordChangeRequests(updated);
+    }
+    return ok;
+  };
+
+  const rejectPasswordChangeRequest = async (id) => {
+    const ok = await updatePasswordChangeRequestStatus(id, "rejected");
+    if (ok) {
+      const updated = await fetchAllPasswordChangeRequests();
+      if (updated) setPasswordChangeRequests(updated);
     }
     return ok;
   };
@@ -2764,7 +2860,7 @@ export default function App() {
           <DownloadReceiptPage prefillReceiptNo={receiptParam} toast_={toast_} />
         ) : isAdminRoute || view === "admin" ? (
           adminUnlocked
-            ? <AdminPage allWords={allWords} onAddWord={addWord} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} onClearAllReceipts={clearAllReceipts} />
+            ? <AdminPage allWords={allWords} onAddWord={addWord} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} onClearAllReceipts={clearAllReceipts} passwordChangeRequests={passwordChangeRequests} onApprovePasswordChange={approvePasswordChangeRequest} onRejectPasswordChange={rejectPasswordChangeRequest} />
             : <AdminGate onLogin={loginUser} />
         ) : isFinanceRoute || view === "finance" ? (
           financeUnlocked
@@ -2818,10 +2914,10 @@ export default function App() {
           />
         )}
         {financeProfileOpen && (
-          <ChangePasswordModal
-            label="Finance"
+          <RequestPasswordChangeModal
             onClose={() => setFinanceProfileOpen(false)}
             toast_={toast_}
+            onSetPassword={verifyResetCodeAndSetPassword}
           />
         )}
         {toast && <div className="toast">{toast}</div>}
@@ -4780,6 +4876,128 @@ function ChangePasswordModal({ label, onClose, toast_ }) {
   );
 }
 
+// ─── Finance's password-change flow — requires Admin approval ───────────────
+// Replaces ChangePasswordModal for Finance only (Admin keeps the direct
+// self-service version above). Two things happen here, not one form: (1)
+// requesting the change, which just queues it for Admin — no password
+// typed at this stage — and (2), once Admin has approved and Finance has
+// the emailed code, actually redeeming that code to set the new password.
+// Both live in this one modal so Finance never has to hunt for a separate
+// screen or get logged out mid-flow.
+function RequestPasswordChangeModal({ onClose, toast_, onSetPassword }) {
+  const [phase, setPhase] = useState("loading"); // loading | none | pending | approved | rejected
+  const [email, setEmail] = useState("");
+  const [requesting, setRequesting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Code-redemption fields (only used once phase === "approved")
+  const [code, setCode] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [codeError, setCodeError] = useState("");
+  const [submittingCode, setSubmittingCode] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const loadStatus = async () => {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (authUser?.email) setEmail(authUser.email);
+    const latest = await fetchMyLatestPasswordChangeRequest();
+    setPhase(latest ? latest.status : "none");
+  };
+
+  useEffect(() => { loadStatus(); }, []);
+
+  const sendRequest = async () => {
+    setRequesting(true);
+    const ok = await requestPasswordChangeRPC();
+    setRequesting(false);
+    if (ok) {
+      setPhase("pending");
+      toast_("Request sent to Admin for approval.");
+    } else {
+      toast_("Couldn't send the request — please try again.");
+    }
+  };
+
+  const refreshStatus = async () => {
+    setRefreshing(true);
+    await loadStatus();
+    setRefreshing(false);
+  };
+
+  const submitCode = async () => {
+    setCodeError("");
+    if (!code.trim()) { setCodeError("Enter the 6-digit code from your email."); return; }
+    const complexityError = getPasswordComplexityError(newPw);
+    if (complexityError) { setCodeError(complexityError); return; }
+    if (newPw !== confirmPw) { setCodeError("New password and confirmation don't match."); return; }
+    setSubmittingCode(true);
+    const result = await onSetPassword(email, code.trim(), newPw);
+    setSubmittingCode(false);
+    if (result.ok) {
+      setDone(true);
+    } else {
+      setCodeError(result.reason === "invalid-code" ? "Invalid or expired code — check your email for the latest one." : "Couldn't update password. Please try again.");
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 420 }}>
+        <div className="modal-head">
+          <h3>Finance — Change Password</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {done ? (
+            <div style={{ textAlign: "center", padding: "12px 0" }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+              <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Password updated!</p>
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>You've been signed out — log back in with your new password.</p>
+              <button className="btn bh" style={{ marginTop: 16 }} onClick={onClose}>Close</button>
+            </div>
+          ) : phase === "loading" ? (
+            <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", padding: "20px 0" }}>Checking status…</p>
+          ) : phase === "approved" ? (
+            <>
+              <p style={{ fontSize: 13, color: "var(--ok)", marginBottom: 16, lineHeight: 1.6 }}>
+                ✅ Admin approved your request. Check <strong>{email}</strong> for a 6-digit code, then enter it below with your new password.
+              </p>
+              <div className="field"><label>6-Digit Code</label><input value={code} onChange={e => setCode(e.target.value)} placeholder="123456" /></div>
+              <div className="field"><label>New Password</label><input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
+              <div className="field"><label>Confirm New Password</label><input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Re-enter new password" /></div>
+              {codeError && <div className="enroll-error">⚠ {codeError}</div>}
+              <button className="btn bg bfw" onClick={submitCode} disabled={submittingCode}>
+                {submittingCode ? "Updating…" : "Set New Password"}
+              </button>
+            </>
+          ) : phase === "pending" ? (
+            <>
+              <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+                ⏳ Your request is awaiting Admin approval. You'll be able to set a new password here once it's approved.
+              </p>
+              <button className="btn bh" onClick={refreshStatus} disabled={refreshing}>
+                {refreshing ? "Checking…" : "Refresh Status"}
+              </button>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+                {phase === "rejected"
+                  ? "Your last request was declined by Admin. You can submit a new one below."
+                  : "Password changes for Finance accounts require Admin approval — request one below, and you'll get an email once it's approved."}
+              </p>
+              <button className="btn bg bfw" onClick={sendRequest} disabled={requesting}>
+                {requesting ? "Sending…" : "Request Password Change"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Shared Receipt Manager — used inside Admin's Receipts tab AND the ───────
 // standalone Finance Panel, so both stay in sync with one implementation
 // instead of two copies to maintain separately.
@@ -4790,6 +5008,7 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
   const [rcptDate, setRcptDate] = useState(new Date().toISOString().slice(0, 10));
   const [rcptPurpose, setRcptPurpose] = useState("Donation");
   const [rcptNote, setRcptNote] = useState("");
+  const [rcptUtr, setRcptUtr] = useState("");
   const [rcptError, setRcptError] = useState("");
   const [rcptSending, setRcptSending] = useState(false);
   const [rcptSuccess, setRcptSuccess] = useState(null);
@@ -4826,6 +5045,7 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
     setRcptDate(req.donationDate || new Date().toISOString().slice(0, 10));
     setRcptPurpose("Donation");
     setRcptNote(req.note || "");
+    setRcptUtr(req.utrReference || "");
     setActiveRequestId(req.id);
     setRcptError("");
     setRcptSuccess(null);
@@ -4856,12 +5076,13 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
       donationDate: rcptDate,
       purpose: rcptPurpose.trim() || "Donation",
       note: rcptNote.trim(),
+      utrReference: rcptUtr.trim() || null,
       requestId: activeRequestId,
     });
     setRcptSending(false);
     if (result.ok) {
       setRcptSuccess({ receiptNo: result.receiptNo, emailFailed: result.emailFailed });
-      setRcptName(""); setRcptEmail(""); setRcptAmount(""); setRcptNote("");
+      setRcptName(""); setRcptEmail(""); setRcptAmount(""); setRcptNote(""); setRcptUtr("");
       setRcptDate(new Date().toISOString().slice(0, 10));
       setRcptPurpose("Donation");
       setActiveRequestId(null);
@@ -4898,6 +5119,7 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
                 {req.donationDate ? ` · ${new Date(req.donationDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}
               </div>
               {req.note && <div style={{ fontSize: 11.5, color: "var(--gold3)", marginTop: 2 }}>Note: {req.note}</div>}
+              <div style={{ fontSize: 11.5, color: "var(--cyan2)", marginTop: 2, fontFamily: "monospace" }}>UTR: {req.utrReference || "—"}</div>
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <button className="copy-btn" onClick={() => fillFromRequest(req)}>Fill Form</button>
                 <button className="copy-btn" style={{ color: "var(--err)", borderColor: "rgba(220,90,90,.35)" }} onClick={() => dismiss(req.id)}>Dismiss</button>
@@ -4955,6 +5177,7 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
           <div className="field" style={{ flex: 1 }}><label>Date Received</label><input type="date" value={rcptDate} onChange={e => setRcptDate(e.target.value)} /></div>
         </div>
         <div className="field"><label>Purpose</label><input value={rcptPurpose} onChange={e => setRcptPurpose(e.target.value)} placeholder="Donation" /></div>
+        <div className="field"><label>UPI Reference / UTR (optional)</label><input value={rcptUtr} onChange={e => setRcptUtr(e.target.value)} placeholder="For reconciliation against bank statement" /></div>
         <div className="field"><label>Note (optional)</label><input value={rcptNote} onChange={e => setRcptNote(e.target.value)} placeholder="Any additional note for the donor" /></div>
         {rcptError && <div className="enroll-error">⚠ {rcptError}</div>}
         <button className="btn bg bfw" onClick={submitReceipt} disabled={rcptSending}>
@@ -4974,7 +5197,7 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
           <div style={{ textAlign: "center", color: "var(--muted)", padding: 30 }}>No receipts issued yet.</div>
         ) : (
           <table className="tbl">
-            <thead><tr><th>Receipt #</th><th>Donor</th><th>Amount</th><th>Date</th><th>Issued</th><th></th></tr></thead>
+            <thead><tr><th>Receipt #</th><th>Donor</th><th>Amount</th><th>Date</th><th>UTR</th><th>Issued</th><th></th></tr></thead>
             <tbody>
               {receipts.map(r => (
                 <tr key={r.id}>
@@ -4982,6 +5205,7 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
                   <td>{r.donorName}<br/><span style={{ color: "var(--muted)", fontSize: 11 }}>{r.donorEmail}</span></td>
                   <td style={{ color: "var(--ok)" }}>₹{r.amount}</td>
                   <td>{new Date(r.donationDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td>
+                  <td style={{ color: "var(--cyan2)", fontSize: 11, fontFamily: "monospace" }}>{r.utrReference || "—"}</td>
                   <td style={{ color: "var(--muted)", fontSize: 11 }}>{new Date(r.issuedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</td>
                   <td><button className="copy-btn" onClick={() => downloadPDF(r)} disabled={downloadingId === r.id}>{downloadingId === r.id ? "…" : "PDF"}</button></td>
                 </tr>
@@ -5168,7 +5392,7 @@ function RewardsTab({ participants, toast_, allWords }) {
   );
 }
 
-function AdminPage({ allWords, onAddWord, onEditWord, onDeleteWord, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData, onClearAllReceipts }) {
+function AdminPage({ allWords, onAddWord, onEditWord, onDeleteWord, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData, onClearAllReceipts, passwordChangeRequests, onApprovePasswordChange, onRejectPasswordChange }) {
   const [resetTarget, setResetTarget] = useState(null); // userId being reset, or null
   const [resetMessageId, setResetMessageId] = useState(null); // linked message, if reset was triggered from Messages tab
   const [resetSending, setResetSending] = useState(false);
@@ -5336,6 +5560,7 @@ function AdminPage({ allWords, onAddWord, onEditWord, onDeleteWord, participants
       )}
       {tab === "settings" && <ResetTestDataPanel onResetAllTestData={onResetAllTestData} />}
       {tab === "settings" && <ClearReceiptsPanel onClearAllReceipts={onClearAllReceipts} />}
+      {tab === "settings" && <PasswordChangeRequestsPanel requests={passwordChangeRequests} onApprove={onApprovePasswordChange} onReject={onRejectPasswordChange} toast_={toast_} />}
 
       {resetTarget && (
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeReset(); }}>
@@ -5519,6 +5744,57 @@ function ClearReceiptsPanel({ onClearAllReceipts }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Finance Password Change Requests — Admin approval queue ────────────────
+// Approving doesn't set a password (see the note above
+// approvePasswordChangeRequest() in the main app) — it just emails Finance
+// a reset code, same as the learner Forgot Password flow. Admin never sees
+// or chooses the actual new password.
+function PasswordChangeRequestsPanel({ requests = [], onApprove, onReject, toast_ }) {
+  const [busyId, setBusyId] = useState(null);
+  const pending = requests.filter(r => r.status === "pending");
+
+  const approve = async (req) => {
+    setBusyId(req.id);
+    const ok = await onApprove(req.id, req.requesterEmail);
+    setBusyId(null);
+    toast_(ok ? `Approved — reset code emailed to ${req.requesterEmail}.` : "Couldn't approve — check the Titan/Supabase email connection and try again.");
+  };
+
+  const reject = async (req) => {
+    setBusyId(req.id);
+    const ok = await onReject(req.id);
+    setBusyId(null);
+    toast_(ok ? "Request declined." : "Couldn't decline — try again.");
+  };
+
+  if (pending.length === 0) return null;
+
+  return (
+    <div className="card" style={{ maxWidth: 440, marginTop: 16 }}>
+      <div className="lbl">🔑 Finance Password Change Requests ({pending.length})</div>
+      <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
+        Approving emails a reset code to the requester — it doesn't set or reveal any password.
+      </p>
+      {pending.map(req => (
+        <div key={req.id} style={{ padding: "10px 12px", marginBottom: 8, borderRadius: 7, background: "rgba(0,200,230,.04)", border: "1px solid rgba(0,200,230,.12)" }}>
+          <div style={{ fontSize: 13.5, color: "var(--text)", fontWeight: 500 }}>{req.requesterEmail}</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>
+            Requested {new Date(req.requestedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button className="copy-btn" style={{ color: "var(--ok)", borderColor: "rgba(74,158,92,.35)" }} disabled={busyId === req.id} onClick={() => approve(req)}>
+              {busyId === req.id ? "…" : "Approve"}
+            </button>
+            <button className="copy-btn" style={{ color: "var(--err)", borderColor: "rgba(220,90,90,.35)" }} disabled={busyId === req.id} onClick={() => reject(req)}>
+              Decline
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -5732,6 +6008,7 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
   const [donorEmail, setDonorEmail] = useState(user?.email || "");
   const [amount, setAmount] = useState("");
   const [donationDate, setDonationDate] = useState("");
+  const [utrReference, setUtrReference] = useState("");
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -5743,15 +6020,16 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
     setError("");
     if (!donorName.trim()) { setError("Please enter your name."); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(donorEmail.trim())) { setError("Please enter a valid email address."); return; }
+    if (!utrReference.trim()) { setError("UPI Reference (UTR) Number is required — check your UPI app's transaction history."); return; }
     setSending(true);
     const ok = await onSubmit({
       donorName: donorName.trim(), donorEmail: donorEmail.trim(),
       amount: amount ? Number(amount) : null, donationDate: donationDate || null,
-      note: note.trim(),
+      note: note.trim(), utrReference: utrReference.trim(),
     });
     setSending(false);
     if (ok) setSent(true);
-    else setError("Couldn't submit your request right now — please try again in a moment.");
+    else setError("Couldn't submit your request right now — please check your UTR Number and try again.");
   };
 
   return (
@@ -5773,7 +6051,9 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
                 <div className="field" style={{ flex: 1 }}><label>Amount Paid (₹, optional)</label><input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="1000" /></div>
                 <div className="field" style={{ flex: 1 }}><label>Date Paid (optional)</label><input type="date" value={donationDate} onChange={e => setDonationDate(e.target.value)} /></div>
               </div>
-              <div className="field"><label>Note (optional)</label><input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. UPI reference number, helps us match your payment" /></div>
+              <div className="field"><label>UPI Reference / UTR Number</label><input value={utrReference} onChange={e => setUtrReference(e.target.value)} placeholder="e.g. 402812345678" /></div>
+              <p style={{ fontSize: 11, color: "var(--muted)", marginTop: -8, marginBottom: 12, lineHeight: 1.5 }}>Found in your UPI app's transaction/payment history — this is how we match your payment to your receipt.</p>
+              <div className="field"><label>Note (optional)</label><input value={note} onChange={e => setNote(e.target.value)} placeholder="Anything else that helps us identify your payment" /></div>
               {error && <div className="enroll-error">⚠ {error}</div>}
               <button className="btn bg bfw" onClick={submit} disabled={sending} style={{ marginTop: 8 }}>
                 {sending ? "Submitting…" : "Submit Request →"}
