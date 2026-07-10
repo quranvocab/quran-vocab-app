@@ -1591,9 +1591,7 @@ export default function App() {
   const [receipts, setReceipts] = useState([]);
 
   useEffect(() => {
-    fetchAllWords().then(words => { if (words) setAllWords(words); });
     setMessages(getMessages());
-    fetchAllReceipts().then(r => { if (r) setReceipts(r); });
 
     // ── Supabase: load every participant's profile + scores + progress ──────
     // Two bulk queries (not one per participant) — RLS means a regular
@@ -1640,6 +1638,14 @@ export default function App() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         await loadUserProfile(session.user.id, { silent: !!cached });
+        // Re-fetch words/receipts now that we're actually authenticated — the
+        // calls at the top of this effect only ever run once, at page mount,
+        // before any session could possibly be confirmed yet (so they run as
+        // anon and correctly get blocked by RLS). Without this, allWords and
+        // receipts would stay empty for the rest of the session even when
+        // reloading with an already-valid login.
+        fetchAllWords().then(words => { if (words) setAllWords(words); });
+        fetchAllReceipts().then(r => { if (r) setReceipts(r); });
       } else {
         if (cached) {
           // Supabase session truly expired — clear the optimistic restore
@@ -1684,6 +1690,14 @@ export default function App() {
         const alreadyLoggedIn = userRef.current?.supabaseId === session.user.id;
         await loadUserProfile(session.user.id, { silent: alreadyLoggedIn });
         await loadParticipants();
+        // Re-fetch words/receipts now that we're actually authenticated — the
+        // calls at the top of this effect only ever run once, at page mount,
+        // before any login could possibly have happened yet (so they run as
+        // anon and correctly get blocked by RLS). Without this, allWords and
+        // receipts would stay empty for a learner's entire session even after
+        // a successful login.
+        fetchAllWords().then(words => { if (words) setAllWords(words); });
+        fetchAllReceipts().then(r => { if (r) setReceipts(r); });
       }
       if (event === "USER_UPDATED" && session?.user) {
         // Email change confirmed — sync public.users with the new auth email
