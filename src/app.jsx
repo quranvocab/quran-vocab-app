@@ -2726,10 +2726,10 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
             <div className="allsets-ribbon-detail">
               You answered <strong>{bestAllSetsHome.score}</strong> word{bestAllSetsHome.score !== 1 ? "s" : ""} correctly
               {bestAllSetsHome.timeUsedSec != null && (
-                bestAllSetsHome.score === unlocked
+                bestAllSetsHome.score === bestAllSetsHome.total
                   ? <> in just <strong>{bestAllSetsHome.timeUsedSec}</strong> seconds! 🎉</>
                   : <> in <strong>{bestAllSetsHome.timeUsedSec}</strong> seconds</>
-              )} out of <strong>{unlocked}</strong> unlocked words
+              )} out of <strong>{bestAllSetsHome.total}</strong> words
             </div>
           </div>
           <div className="allsets-ribbon-arrow">→</div>
