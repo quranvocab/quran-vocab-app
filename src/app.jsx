@@ -1949,9 +1949,8 @@ function GateScreen({ onUnlock }) {
         <h2 className="gate-title">Quranic Vocab</h2>
         <p className="gate-sub">This app is currently in private beta.<br/>Enter the access code to continue.</p>
         <span className="gate-badge">🔒 PRIVATE BETA</span>
-        <input
+        <PasswordInput
           className={`gate-input${shake ? " shake" : ""}`}
-          type="password"
           placeholder="Enter access code"
           value={code}
           onChange={e => { setCode(e.target.value); setErr(""); }}
@@ -3530,7 +3529,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
         {mode === "login" && (
           <>
             <div className="field"><label>User ID</label><input value={loginId} onChange={e => { setLoginId(e.target.value); setError(""); }} placeholder="Your User ID" autoFocus /></div>
-            <div className="field"><label>Password</label><input type="password" value={loginPw} onChange={e => { setLoginPw(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && submitLogin()} placeholder="Your password" /></div>
+            <div className="field"><label>Password</label><PasswordInput value={loginPw} onChange={e => { setLoginPw(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && submitLogin()} placeholder="Your password" /></div>
             {error && <div className="enroll-error">⚠ {error}</div>}
             <button className="btn bg bfw" onClick={submitLogin} disabled={!loginId || !loginPw || checking}>
               {checking ? "Checking…" : "Login →"}
@@ -3561,8 +3560,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
             </div>
             <div className="field">
               <label>Choose a Password</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={suPw}
                 onChange={e => { setSuPw(e.target.value); setError(""); }}
                 placeholder="Min 10 chars, 1 number, 1 special char"
@@ -3588,8 +3586,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
             </div>
             <div className="field">
               <label>Confirm Password</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={suPwConfirm}
                 onChange={e => { setSuPwConfirm(e.target.value); setError(""); }}
                 placeholder="Re-enter password"
@@ -3813,10 +3810,10 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
                     <div className="field"><label>New Email Address</label><input type="email" value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="new@email.com" autoFocus /></div>
                   )}
                   {item.key === "password" && (<>
-                    <div className="field"><label>Current Password</label><input type="password" value={pw} onChange={e => { setPw(e.target.value); setError(""); }} placeholder="Enter your current password" autoFocus /></div>
+                    <div className="field"><label>Current Password</label><PasswordInput value={pw} onChange={e => { setPw(e.target.value); setError(""); }} placeholder="Enter your current password" autoFocus /></div>
                     <div className="field">
                       <label>New Password</label>
-                      <input type="password" value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char"
+                      <PasswordInput value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char"
                         style={val1 && !getPasswordComplexityError(val1) ? { borderColor: "var(--ok)" } : val1 ? { borderColor: "var(--err)" } : {}} />
                       {val1 && (() => {
                         const checks = [
@@ -3835,7 +3832,7 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
                         );
                       })()}
                     </div>
-                    <div className="field"><label>Confirm New Password</label><input type="password" value={val2} onChange={e => { setVal2(e.target.value); setError(""); }} placeholder="Re-enter password"
+                    <div className="field"><label>Confirm New Password</label><PasswordInput value={val2} onChange={e => { setVal2(e.target.value); setError(""); }} placeholder="Re-enter password"
                       style={val2 && val1 && val2 !== val1 ? { borderColor: "var(--err)" } : val2 && val1 && val2 === val1 ? { borderColor: "var(--ok)" } : {}} />
                       {val2 && val1 && val2 !== val1 && <div style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>⚠ Passwords don't match</div>}
                     </div>
@@ -3904,11 +3901,10 @@ function ResetPasswordPage({ onSetPassword, initialEmail = "", setView }) {
       <div className="card">
         <div className="field"><label>Your Registered Email</label><input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="The email you signed up with" autoFocus={!initialEmail} /></div>
         <div className="field"><label>Code From Your Email</label><input value={code} onChange={e => { setCode(e.target.value.replace(/\D/g, "").slice(0, 10)); setError(""); }} placeholder="Enter the code" inputMode="numeric" style={{ letterSpacing: "0.3em", fontSize: 18, textAlign: "center" }} autoFocus={!!initialEmail} /></div>
-        <div className="field"><label>New Password</label><input type="password" value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
+        <div className="field"><label>New Password</label><PasswordInput value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
         <div className="field">
           <label>Confirm New Password</label>
-          <input
-            type="password"
+          <PasswordInput
             value={confirmPw}
             onChange={e => { setConfirmPw(e.target.value); setError(""); }}
             placeholder="Re-enter password"
@@ -4930,6 +4926,39 @@ function LBPage({ participants, user, allWords }) {
 }
 
 // ─── Admin Password Gate ──────────────────────────────────────────────────────
+// ── Password input with a show/hide toggle — used everywhere a password is
+// typed (login, registration, change/reset password, the beta gate). Merges
+// any caller-supplied style (e.g. green/red border validation feedback)
+// with the padding needed to make room for the toggle button, and forwards
+// everything else (autoFocus, onKeyDown, className, etc.) straight through.
+function PasswordInput({ value, onChange, style, ...rest }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={onChange}
+        style={{ paddingRight: 42, ...style }}
+        {...rest}
+      />
+      <button
+        type="button"
+        onClick={() => setShow(s => !s)}
+        tabIndex={-1}
+        aria-label={show ? "Hide password" : "Show password"}
+        style={{
+          position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+          background: "none", border: "none", cursor: "pointer", padding: 2,
+          color: "var(--muted)", fontSize: 15, lineHeight: 1,
+        }}
+      >
+        {show ? "🙈" : "👁"}
+      </button>
+    </div>
+  );
+}
+
 function AdminGate({ onLogin }) {
   const [password, setPassword] = useState("");
   const [checking, setChecking] = useState(false);
@@ -4958,8 +4987,7 @@ function AdminGate({ onLogin }) {
       <div className="card">
         <div className="field">
           <label>Admin Password</label>
-          <input
-            type="password"
+          <PasswordInput
             value={password}
             onChange={e => { setPassword(e.target.value); setError(""); }}
             onKeyDown={e => e.key === "Enter" && submit()}
@@ -5002,8 +5030,7 @@ function FinanceGate({ onLogin }) {
       <div className="card">
         <div className="field">
           <label>Finance Password</label>
-          <input
-            type="password"
+          <PasswordInput
             value={password}
             onChange={e => { setPassword(e.target.value); setError(""); }}
             onKeyDown={e => e.key === "Enter" && submit()}
@@ -5071,9 +5098,9 @@ function ChangePasswordModal({ label, onClose, toast_ }) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          <div className="field"><label>Current Password</label><input type="password" value={currentPw} onChange={e => { setCurrentPw(e.target.value); setError(""); }} placeholder="Enter current password" autoFocus /></div>
-          <div className="field"><label>New Password</label><input type="password" value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
-          <div className="field"><label>Confirm New Password</label><input type="password" value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setError(""); }} placeholder="Re-enter new password" /></div>
+          <div className="field"><label>Current Password</label><PasswordInput value={currentPw} onChange={e => { setCurrentPw(e.target.value); setError(""); }} placeholder="Enter current password" autoFocus /></div>
+          <div className="field"><label>New Password</label><PasswordInput value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
+          <div className="field"><label>Confirm New Password</label><PasswordInput value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setError(""); }} placeholder="Re-enter new password" /></div>
           {error && <div className="enroll-error">⚠ {error}</div>}
           <button className="btn bg bfw" onClick={submit} disabled={checking}>
             {checking ? "Updating…" : "Update Password"}
@@ -5172,8 +5199,8 @@ function RequestPasswordChangeModal({ onClose, toast_, onSetPassword }) {
                 ✅ Admin approved your request. Check <strong>{email}</strong> for a 6-digit code, then enter it below with your new password.
               </p>
               <div className="field"><label>6-Digit Code</label><input value={code} onChange={e => setCode(e.target.value)} placeholder="123456" /></div>
-              <div className="field"><label>New Password</label><input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
-              <div className="field"><label>Confirm New Password</label><input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Re-enter new password" /></div>
+              <div className="field"><label>New Password</label><PasswordInput value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min 10 chars, 1 number, 1 special char" /></div>
+              <div className="field"><label>Confirm New Password</label><PasswordInput value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Re-enter new password" /></div>
               {codeError && <div className="enroll-error">⚠ {codeError}</div>}
               <button className="btn bg bfw" onClick={submitCode} disabled={submittingCode}>
                 {submittingCode ? "Updating…" : "Set New Password"}
