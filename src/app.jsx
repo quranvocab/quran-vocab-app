@@ -396,6 +396,18 @@ async function fetchReceiptForDownload(receiptNo, email) {
   };
 }
 
+// Logged-in donor's own receipt history — matches by their account email
+// server-side via get_my_receipts() (see deploy notes), not by anything the
+// client claims, so this can't be used to browse anyone else's receipts.
+async function fetchMyReceipts() {
+  const { data, error } = await supabase.rpc("get_my_receipts");
+  if (error) { console.error("fetchMyReceipts error:", error.message); return null; }
+  return (data || []).map(row => ({
+    receiptNo: row.receipt_no, amount: row.amount, donationDate: row.donation_date,
+    purpose: row.purpose, issuedAt: row.issued_at, utrReference: row.utr_reference,
+  }));
+}
+
 // ── Finance password-change approval workflow ───────────────────────────
 // Finance can't change their own password unilaterally — this queues a
 // request for Admin. Approval doesn't set a password directly (that would
@@ -3016,7 +3028,7 @@ export default function App() {
                       <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("profile"); }}>👤 Profile Settings</button>
                       <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("history"); }}>📋 My History</button>
                       <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setShowRequestReceipt(true); }}>🧾 Request Receipt</button>
-                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("downloadReceipt"); }}>📄 Download Receipt PDF</button>
+                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("downloadReceipt"); }}>🧾 My Receipts</button>
                       <button className="nuser-menu-item logout" onClick={() => { setShowUserMenu(false); logout(); }}>↪ Log Out</button>
                     </div>
                   )}
@@ -3027,7 +3039,7 @@ export default function App() {
         </nav>
 
         {receiptParam ? (
-          <DownloadReceiptPage prefillReceiptNo={receiptParam} toast_={toast_} />
+          <DownloadReceiptPage prefillReceiptNo={receiptParam} toast_={toast_} user={user} />
         ) : isAdminRoute || view === "admin" ? (
           adminUnlocked
             ? <AdminPage allWords={allWords} onAddWord={addWord} onBulkAddWords={bulkAddWords} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} onClearAllReceipts={clearAllReceipts} passwordChangeRequests={passwordChangeRequests} onApprovePasswordChange={approvePasswordChangeRequest} onRejectPasswordChange={rejectPasswordChangeRequest} />
@@ -3048,7 +3060,7 @@ export default function App() {
             {view === "leaderboard" && <LBPage participants={participants} user={user} allWords={allWords} />}
             {view === "resetPassword" && <ResetPasswordPage onSetPassword={verifyResetCodeAndSetPassword} initialEmail={pendingResetEmail} setView={setView} />}
             {view === "profile" && user && <ProfilePage user={user} saveUser={saveUser} setView={setView} toast_={toast_} />}
-            {view === "downloadReceipt" && <DownloadReceiptPage prefillReceiptNo="" toast_={toast_} />}
+            {view === "downloadReceipt" && <DownloadReceiptPage prefillReceiptNo="" toast_={toast_} user={user} />}
             {/* Email verification handled automatically by Supabase via onAuthStateChange */}
           </>
         )}
@@ -6257,6 +6269,10 @@ function DonateModal({ onClose, toast_, user, onRequestReceipt }) {
             </div>
           )}
 
+          <p style={{ fontSize: 10.5, color: "var(--muted)", textAlign: "center", marginTop: 12, lineHeight: 1.6, opacity: .75 }}>
+            🔒 Your name, email, and payment reference are used only to verify your donation and issue your receipt — never shared or used for anything else.
+          </p>
+
           {/* ── FOOTER AYAH ── */}
           <div className="donate-ayah">
             <div className="arabic" style={{ fontFamily: "'Scheherazade New',serif", fontSize: 22, color: "var(--gold2)", direction: "rtl", marginBottom: 6 }}>
@@ -6392,6 +6408,9 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
               <button className="btn bg bfw" onClick={submit} disabled={sending} style={{ marginTop: 8 }}>
                 {sending ? "Submitting…" : "Submit Request →"}
               </button>
+              <p style={{ fontSize: 10.5, color: "var(--muted)", textAlign: "center", marginTop: 10, lineHeight: 1.6, opacity: .75 }}>
+                🔒 Used only to verify your donation and issue your receipt — never shared or used for anything else.
+              </p>
             </>
           ) : (
             <div style={{ textAlign: "center", padding: "12px 0" }}>
@@ -6412,12 +6431,22 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
 // or by typing both fields in manually. Only ever returns a match when BOTH
 // the receipt number AND email match (see get_receipt_for_download() SQL) —
 // so a donor can only ever pull their own receipt, never anyone else's.
-function DownloadReceiptPage({ prefillReceiptNo, toast_ }) {
+function DownloadReceiptPage({ prefillReceiptNo, toast_, user }) {
   const [receiptNo, setReceiptNo] = useState(prefillReceiptNo || "");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+
+  // Logged-in donor's own receipt list — fetched server-side by account
+  // email (see get_my_receipts() deploy notes), so this can never show
+  // anyone else's receipts.
+  const [myReceipts, setMyReceipts] = useState(null); // null = not loaded yet, [] = loaded, none found
+  const [downloadingNo, setDownloadingNo] = useState(null);
+
+  useEffect(() => {
+    if (user) fetchMyReceipts().then(r => { if (r) setMyReceipts(r); });
+  }, [user]);
 
   const submit = async () => {
     setError("");
@@ -6442,12 +6471,47 @@ function DownloadReceiptPage({ prefillReceiptNo, toast_ }) {
     setLoading(false);
   };
 
+  const downloadFromList = async (r) => {
+    setDownloadingNo(r.receiptNo);
+    try {
+      await generateReceiptPDF(r);
+    } catch (err) {
+      console.error("generateReceiptPDF error:", err);
+      toast_("Couldn't generate the PDF — try again.");
+    }
+    setDownloadingNo(null);
+  };
+
   return (
     <div className="page">
-      <div className="card" style={{ maxWidth: 420, margin: "24px auto" }}>
-        <div className="lbl">📄 Download Receipt PDF</div>
+      {user && myReceipts && myReceipts.length > 0 && (
+        <div className="card" style={{ maxWidth: 420, margin: "24px auto 16px" }}>
+          <div className="lbl">🧾 Your Receipts</div>
+          <p style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 14, lineHeight: 1.5 }}>
+            Only shows receipts issued to your account email ({user.email}).
+          </p>
+          {myReceipts.map(r => (
+            <div key={r.receiptNo} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: "1px solid rgba(0,200,230,.08)" }}>
+              <div>
+                <div style={{ fontSize: 12.5, color: "var(--gold3)", fontFamily: "monospace" }}>{r.receiptNo}</div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                  ₹{Number(r.amount).toLocaleString("en-IN")} · {new Date(r.donationDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                </div>
+              </div>
+              <button className="copy-btn" onClick={() => downloadFromList(r)} disabled={downloadingNo === r.receiptNo}>
+                {downloadingNo === r.receiptNo ? "…" : "PDF"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="card" style={{ maxWidth: 420, margin: "0 auto 24px" }}>
+        <div className="lbl">📄 {user ? "Look Up Another Receipt" : "Download Receipt PDF"}</div>
         <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
-          Enter your Receipt Number and the email address it was issued to.
+          {user
+            ? "For a receipt issued under a different email than your account."
+            : "Enter your Receipt Number and the email address it was issued to."}
         </p>
         <div className="field"><label>Receipt Number</label><input value={receiptNo} onChange={e => setReceiptNo(e.target.value)} placeholder="ABM-2026-001-X7K9" /></div>
         <div className="field"><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" /></div>
