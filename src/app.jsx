@@ -624,7 +624,12 @@ function mapCSVHeaders(headerRow) {
 function normalizeArabic(s) { return (s || "").trim(); }
 
 function parseWordsCSV(text, existingArabicSet = new Set()) {
-  const rows = parseCSV(text.trim());
+  // Strip a leading UTF-8 BOM if present (our own downloaded CSVs include
+  // one now, for correct Arabic/Urdu rendering in Excel) — without this,
+  // the invisible BOM character would corrupt the very first header cell
+  // and break the "Arabic"/"English" column matching below.
+  const cleanText = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+  const rows = parseCSV(cleanText.trim());
   if (rows.length === 0) return { headerError: "File appears to be empty.", words: [] };
   const colIndex = mapCSVHeaders(rows[0]);
   if (colIndex.arabic === undefined || colIndex.english === undefined) {
@@ -5534,6 +5539,12 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   // needed since Arabic/Urdu text or notes could contain commas.
   const csvField = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 
+  // "\uFEFF" is a UTF-8 byte-order-mark — without it, Excel (especially on
+  // Windows) guesses the wrong character encoding when opening a CSV and
+  // garbles any Arabic/Urdu text into junk characters. Prepending this one
+  // invisible character tells Excel explicitly "this file is UTF-8."
+  const UTF8_BOM = "\uFEFF";
+
   // Exports every current word (built-in + custom) so Admin can review
   // what's already there and simply append new rows below before
   // re-uploading — the upload step itself skips anything matching an
@@ -5544,7 +5555,7 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
       csvField(w.arabic), csvField(w.translit), csvField(w.english), csvField(w.urdu),
       csvField(w.root), csvField(w.rootEnglish), csvField(w.rootUrdu), csvField(w.ayahRef),
     ].join(","));
-    const csv = [header, ...lines].join("\n") + "\n";
+    const csv = UTF8_BOM + [header, ...lines].join("\n") + "\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -5553,7 +5564,7 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   };
 
   const downloadBlankTemplate = () => {
-    const csv = 'Arabic,Transliteration,English Meaning,Urdu Meaning,Root Letters,Root Meaning English,Root Meaning Urdu,Ayah Reference\n'
+    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Root Letters,Root Meaning English,Root Meaning Urdu,Ayah Reference\n'
       + '"مَسْجِدٌ",Masjid,Mosque,مسجد,سجد,to prostrate,سجدہ کرنا,"Surah Al-Baqarah 2:144"\n';
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
