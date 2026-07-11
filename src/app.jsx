@@ -6214,6 +6214,15 @@ function DonateModal({ onClose, toast_, user, onRequestReceipt }) {
     navigator.clipboard.writeText(text).then(() => toast_(`${label} copied!`)).catch(() => toast_("Copy manually from screen"));
   };
 
+  // Donations aren't wired up until the real UPI ID replaces the placeholder
+  // — this automatically shows a clean "opening soon" message instead of
+  // fake payment details, and switches back to the real payment UI the
+  // moment DONATE.upiId is filled in for real. No flag to remember to flip.
+  const donationsConfigured = DONATE.upiId && DONATE.upiId !== "yourcharity@upi";
+  const displayCharityName = DONATE.charityName && DONATE.charityName !== "Your Charity Name Here"
+    ? DONATE.charityName
+    : "Awami Baitulmaal Committee (Reg.)";
+
   // Generate UPI payment deep-link (works on mobile with UPI apps).
   // Note: standard UPI deep-links only support one-time payments — there's no
   // universal cross-app deep-link for recurring UPI (that needs a registered
@@ -6235,9 +6244,19 @@ function DonateModal({ onClose, toast_, user, onRequestReceipt }) {
         <div className="modal-body">
 
           <div style={{ textAlign: "center", marginBottom: 16, fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
-            Your donation supports <strong style={{ color: "var(--gold2)" }}>{DONATE.charityName}</strong> — enabling free Quranic learning for all.
+            Your donation supports <strong style={{ color: "var(--gold2)" }}>{displayCharityName}</strong> — enabling free Quranic learning for all.
           </div>
 
+          {!donationsConfigured ? (
+            <div style={{ textAlign: "center", padding: "28px 16px" }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
+              <p style={{ fontSize: 15, color: "var(--text)", fontWeight: 600, marginBottom: 8 }}>Donations are opening soon</p>
+              <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, maxWidth: 360, margin: "0 auto" }}>
+                We're finishing setup so every donation gets a proper receipt. Check back shortly — thank you for your patience!
+              </p>
+            </div>
+          ) : (
+          <>
           {/* ── FREQUENCY SELECTOR ── */}
           <div className="freq-row">
             <button className={`freq-pill ${frequency === "once" ? "on" : ""}`} onClick={() => setFrequency("once")}>One-time</button>
@@ -6333,6 +6352,8 @@ function DonateModal({ onClose, toast_, user, onRequestReceipt }) {
           <p style={{ fontSize: 10.5, color: "var(--muted)", textAlign: "center", marginTop: 12, lineHeight: 1.6, opacity: .75 }}>
             🔒 Your name, email, and payment reference are used only to verify your donation and issue your receipt — never shared or used for anything else.
           </p>
+          </>
+          )}
 
           {/* ── FOOTER AYAH ── */}
           <div className="donate-ayah">
