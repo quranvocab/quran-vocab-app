@@ -619,7 +619,11 @@ function mapCSVHeaders(headerRow) {
 
 // Parses + validates in one pass, returning both the rows ready to upload
 // and per-row problems so the UI can show a preview before anything is sent.
-function parseWordsCSV(text) {
+// normalizeArabic: strips whitespace so trivial formatting differences
+// (extra space, etc.) don't defeat duplicate detection.
+function normalizeArabic(s) { return (s || "").trim(); }
+
+function parseWordsCSV(text, existingArabicSet = new Set()) {
   const rows = parseCSV(text.trim());
   if (rows.length === 0) return { headerError: "File appears to be empty.", words: [] };
   const colIndex = mapCSVHeaders(rows[0]);
@@ -627,19 +631,26 @@ function parseWordsCSV(text) {
     return { headerError: "Couldn't find 'Arabic' and 'English' columns — check the header row matches the template.", words: [] };
   }
   const words = [];
+  const seenInFile = new Set();
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     if (r.every(cell => cell.trim() === "")) continue; // skip blank lines
     const get = (field) => (colIndex[field] !== undefined ? (r[colIndex[field]] || "").trim() : "");
     const arabic = get("arabic"), english = get("english");
+    const normArabic = normalizeArabic(arabic);
     const errors = [];
     if (!arabic) errors.push("missing Arabic");
     if (!english) errors.push("missing English meaning");
+    // Duplicate against the existing word list (e.g. re-uploading the
+    // downloaded CSV after appending new rows) or against another row
+    // earlier in this same file (e.g. accidentally pasted twice).
+    const isDuplicate = normArabic && (existingArabicSet.has(normArabic) || seenInFile.has(normArabic));
+    if (normArabic) seenInFile.add(normArabic);
     words.push({
       rowNum: i + 1, arabic, english,
       translit: get("translit"), urdu: get("urdu") || "—",
       root: get("root") || "—", rootEnglish: get("rootEnglish") || "—", rootUrdu: get("rootUrdu") || "—",
-      ayahRef: get("ayahRef"), errors,
+      ayahRef: get("ayahRef"), errors, isDuplicate,
     });
   }
   return { headerError: null, words };
@@ -5487,19 +5498,26 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
 }
 
 // ─── Bulk Word Upload — CSV file or paste ────────────────────────────────────
-function BulkUploadPanel({ onBulkAddWords, toast_ }) {
+function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   const [rawText, setRawText] = useState("");
   const [parsed, setParsed] = useState(null); // { headerError, words } | null
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null); // { count } | null
   const fileInputRef = React.useRef(null);
 
+  // Set of existing Arabic words, for duplicate detection against a
+  // re-uploaded "existing words + newly appended" file.
+  const existingArabicSet = React.useMemo(
+    () => new Set(allWords.map(w => normalizeArabic(w.arabic))),
+    [allWords]
+  );
+
   const handleFile = (file) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
       setRawText(e.target.result);
-      setParsed(parseWordsCSV(e.target.result));
+      setParsed(parseWordsCSV(e.target.result, existingArabicSet));
       setResult(null);
     };
     reader.readAsText(file);
@@ -5508,11 +5526,33 @@ function BulkUploadPanel({ onBulkAddWords, toast_ }) {
   const handlePasteChange = (text) => {
     setRawText(text);
     setResult(null);
-    if (text.trim()) setParsed(parseWordsCSV(text));
+    if (text.trim()) setParsed(parseWordsCSV(text, existingArabicSet));
     else setParsed(null);
   };
 
-  const downloadTemplate = () => {
+  // Escapes a CSV field: wraps in quotes and doubles any embedded quotes,
+  // needed since Arabic/Urdu text or notes could contain commas.
+  const csvField = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+
+  // Exports every current word (built-in + custom) so Admin can review
+  // what's already there and simply append new rows below before
+  // re-uploading — the upload step itself skips anything matching an
+  // existing Arabic word, so re-uploading the existing rows is harmless.
+  const downloadExistingWords = () => {
+    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Root Letters,Root Meaning English,Root Meaning Urdu,Ayah Reference";
+    const lines = allWords.map(w => [
+      csvField(w.arabic), csvField(w.translit), csvField(w.english), csvField(w.urdu),
+      csvField(w.root), csvField(w.rootEnglish), csvField(w.rootUrdu), csvField(w.ayahRef),
+    ].join(","));
+    const csv = [header, ...lines].join("\n") + "\n";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "quranvocab_words.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadBlankTemplate = () => {
     const csv = 'Arabic,Transliteration,English Meaning,Urdu Meaning,Root Letters,Root Meaning English,Root Meaning Urdu,Ayah Reference\n'
       + '"مَسْجِدٌ",Masjid,Mosque,مسجد,سجد,to prostrate,سجدہ کرنا,"Surah Al-Baqarah 2:144"\n';
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -5522,8 +5562,9 @@ function BulkUploadPanel({ onBulkAddWords, toast_ }) {
     URL.revokeObjectURL(url);
   };
 
-  const validWords = parsed?.words.filter(w => w.errors.length === 0) || [];
+  const validWords = parsed?.words.filter(w => w.errors.length === 0 && !w.isDuplicate) || [];
   const invalidWords = parsed?.words.filter(w => w.errors.length > 0) || [];
+  const duplicateWords = parsed?.words.filter(w => w.errors.length === 0 && w.isDuplicate) || [];
 
   const doUpload = async () => {
     if (validWords.length === 0) return;
@@ -5547,7 +5588,13 @@ function BulkUploadPanel({ onBulkAddWords, toast_ }) {
         Upload a CSV file, or paste CSV content directly. Arabic and English Meaning are required for every row — everything else is optional.
       </p>
 
-      <button className="copy-btn" onClick={downloadTemplate} style={{ marginBottom: 16 }}>⬇ Download CSV Template</button>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <button className="copy-btn" onClick={downloadExistingWords}>⬇ Download Existing Words ({allWords.length})</button>
+        <button className="copy-btn" onClick={downloadBlankTemplate}>⬇ Blank Template</button>
+      </div>
+      <p style={{ fontSize: 11, color: "var(--muted)", marginTop: -10, marginBottom: 16, lineHeight: 1.6 }}>
+        Tip: download existing words, append your new ones below the last row, then upload the whole file — rows matching an existing word are automatically skipped, so nothing gets duplicated.
+      </p>
 
       <div className="field">
         <label>Upload CSV File</label>
@@ -5569,8 +5616,9 @@ function BulkUploadPanel({ onBulkAddWords, toast_ }) {
 
       {parsed && !parsed.headerError && (
         <>
-          <div style={{ display: "flex", gap: 16, margin: "14px 0", fontSize: 13 }}>
+          <div style={{ display: "flex", gap: 16, margin: "14px 0", fontSize: 13, flexWrap: "wrap" }}>
             <span style={{ color: "var(--ok)" }}>✓ {validWords.length} ready to upload</span>
+            {duplicateWords.length > 0 && <span style={{ color: "var(--gold3)" }}>⏭ {duplicateWords.length} already exist (skipped)</span>}
             {invalidWords.length > 0 && <span style={{ color: "var(--err)" }}>⚠ {invalidWords.length} skipped (errors)</span>}
           </div>
 
@@ -5584,9 +5632,11 @@ function BulkUploadPanel({ onBulkAddWords, toast_ }) {
                       <td style={{ color: "var(--muted)" }}>{w.rowNum}</td>
                       <td style={{ fontFamily: "'Scheherazade New','Amiri',serif", fontSize: 16, direction: "rtl" }}>{w.arabic || "—"}</td>
                       <td>{w.english || "—"}</td>
-                      <td>{w.errors.length === 0
-                        ? <span style={{ color: "var(--ok)" }}>✓ OK</span>
-                        : <span style={{ color: "var(--err)", fontSize: 11.5 }}>{w.errors.join(", ")}</span>}
+                      <td>{w.errors.length > 0
+                        ? <span style={{ color: "var(--err)", fontSize: 11.5 }}>{w.errors.join(", ")}</span>
+                        : w.isDuplicate
+                          ? <span style={{ color: "var(--gold3)", fontSize: 11.5 }}>⏭ Already exists</span>
+                          : <span style={{ color: "var(--ok)" }}>✓ OK</span>}
                       </td>
                     </tr>
                   ))}
@@ -5831,7 +5881,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 11 }}>Custom words unlock day-by-day after the built-in words.</p>
         </div>
       )}
-      {tab === "bulk" && <BulkUploadPanel onBulkAddWords={onBulkAddWords} toast_={toast_} />}
+      {tab === "bulk" && <BulkUploadPanel onBulkAddWords={onBulkAddWords} allWords={allWords} toast_={toast_} />}
       {tab === "parts" && (
         <div className="card">
           {participants.length === 0 ? <div style={{ textAlign: "center", color: "var(--muted)", padding: 36 }}>No participants yet.</div>
