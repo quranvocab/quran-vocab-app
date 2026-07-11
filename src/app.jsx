@@ -3771,13 +3771,13 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
     if (data?.user) {
       await supabase.from("users").update({ email: data.user.email }).eq("auth_id", data.user.id);
     }
-    toast_("✅ Email confirmed! You'll be logged out — log in again with your new email's password.");
-    setSuccess("Email changed to: " + pendingEmail + ". Logging you out…");
+    // Unlike User ID / password changes, email isn't a login credential in
+    // itself — no need to force a fresh login. The Supabase session is
+    // already valid post-verifyOtp, so just update local state in place.
+    saveUser({ ...user, email: pendingEmail });
+    toast_("✅ Email updated!");
+    setSuccess("Email changed to: " + pendingEmail + ".");
     setSaving(false);
-    setTimeout(async () => {
-      await supabase.auth.signOut();
-      setView("enroll");
-    }, 2500);
   };
 
   const submitPassword = async () => {
