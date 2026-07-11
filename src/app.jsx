@@ -1228,6 +1228,11 @@ h2{font-family:'Poppins',sans-serif;font-size:30px;font-weight:700;margin-bottom
 .field{margin-bottom:16px;}
 .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;letter-spacing:.07em;font-family:'Poppins',sans-serif;}
 .field input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(0,200,230,.2);color:var(--text);padding:11px 14px;border-radius:9px;font-family:'Poppins',sans-serif;font-size:15px;outline:none;transition:all .2s;box-shadow:inset 0 2px 8px rgba(0,0,0,.3);}
+/* Edge/IE auto-add their own "reveal password" eye icon inside every
+   type="password" field, which stacks/overlaps with our custom SVG eye
+   toggle — suppress the native one everywhere so there's only ever one. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear{display:none;}
 .field input::placeholder{color:rgba(122,184,152,.5);}
 .field input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(0,200,230,.15),inset 0 2px 8px rgba(0,0,0,.2);}
 
@@ -3521,8 +3526,17 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
       </p>
 
       <div className="auth-mode-tabs">
-        <button className={`auth-mode-tab ${mode === "login" ? "on" : ""}`} onClick={() => { setMode("login"); setError(""); }}>Login</button>
-        <button className={`auth-mode-tab ${mode === "signup" ? "on" : ""}`} onClick={() => { setMode("signup"); setError(""); }}>Sign Up</button>
+        <button className={`auth-mode-tab ${mode === "login" ? "on" : ""}`} onClick={() => {
+          setMode("login"); setError("");
+          // Clear whatever was typed in Sign Up so switching tabs doesn't
+          // leave stale credentials sitting in the other form.
+          setSuUserId(""); setSuPw(""); setSuPwConfirm(""); setSuName(""); setSuEmail("");
+          setUserIdHint(""); setTypoWarning(null); setIgnoreTypo(false); setEmailHint("");
+        }}>Login</button>
+        <button className={`auth-mode-tab ${mode === "signup" ? "on" : ""}`} onClick={() => {
+          setMode("signup"); setError("");
+          setLoginId(""); setLoginPw("");
+        }}>Sign Up</button>
       </div>
 
       <div className="card">
@@ -3675,8 +3689,11 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
+  const [emailCodeStep, setEmailCodeStep] = useState(false); // true once the code has been sent, awaiting entry
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [emailCode, setEmailCode] = useState("");
 
-  const reset = () => { setVal1(""); setVal2(""); setPw(""); setError(""); setSuccess(""); setSaving(false); };
+  const reset = () => { setVal1(""); setVal2(""); setPw(""); setError(""); setSuccess(""); setSaving(false); setEmailCodeStep(false); setPendingEmail(""); setEmailCode(""); };
   const open = (s) => { setSection(s); reset(); };
 
   const submitUserId = async () => {
@@ -3711,8 +3728,6 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
     const oldEmail = user.email;
     const { error: err } = await supabase.auth.updateUser({ email: newEmail });
     if (err) { setError("Failed to update email: " + err.message); setSaving(false); return; }
-    // Note: public.users email is synced automatically after the user
-    // confirms the link (see USER_UPDATED handler) — not before.
     // Send a courtesy notice to the OLD email so the owner is aware.
     try {
       const emailjs = await loadEmailJS();
@@ -3722,13 +3737,43 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
         from_email: "support@awamibaitulmaal.org.in",
         reply_to: "support@awamibaitulmaal.org.in",
         email_heading: "Security notice — email change requested on your Quranic Vocab account",
-        email_body_html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(0,200,230,.25);"><div style="padding:28px 24px;text-align:center;"><div style="font-size:34px;margin-bottom:10px">🔔</div><h2 style="color:#00c8e6;font-size:20px;margin:0 0 12px">Email Change Requested</h2><p style="color:#7ab8d4;font-size:14px;line-height:1.8;margin:0">A request was made to change the email on your Quranic Vocab account from <strong style="color:#f0f8ff">${oldEmail}</strong> to <strong style="color:#f0f8ff">${newEmail}</strong>.<br/><br/>If this was you, no action is needed — just confirm via the link sent to the new address.<br/><br/>If this was NOT you, contact <a href="mailto:support@awamibaitulmaal.org.in" style="color:#00c8e6">support@awamibaitulmaal.org.in</a> immediately.</p></div></div>`,
+        email_body_html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(0,200,230,.25);"><div style="padding:28px 24px;text-align:center;"><div style="font-size:34px;margin-bottom:10px">🔔</div><h2 style="color:#00c8e6;font-size:20px;margin:0 0 12px">Email Change Requested</h2><p style="color:#7ab8d4;font-size:14px;line-height:1.8;margin:0">A request was made to change the email on your Quranic Vocab account from <strong style="color:#f0f8ff">${oldEmail}</strong> to <strong style="color:#f0f8ff">${newEmail}</strong>.<br/><br/>If this was you, enter the code sent to your new address to confirm it.<br/><br/>If this was NOT you, contact <a href="mailto:support@awamibaitulmaal.org.in" style="color:#00c8e6">support@awamibaitulmaal.org.in</a> immediately.</p></div></div>`,
       });
     } catch (e) { console.warn("Old-email notice failed:", e); }
-    toast_("✅ Verification sent to your new email. You'll be logged out — log in again after confirming.");
-    setSuccess("Verification sent to: " + newEmail + ". Logging you out…");
+    toast_("✅ A 6-digit code was sent to your new email — enter it below to confirm.");
+    setPendingEmail(newEmail);
+    setEmailCodeStep(true);
     setSaving(false);
-    // Force re-login after a credential change
+  };
+
+  // Confirms the email change via the code sent to the NEW address — no
+  // clickable link involved at all, so there's nothing for a corporate
+  // email scanner (e.g. Outlook Safe Links) to prematurely trigger, which
+  // is exactly what silently broke this flow before (the scanner "clicked"
+  // the old confirmation link within seconds, completing the change on
+  // Supabase's side with no real browser session present to sync
+  // public.users.email — leaving it permanently stuck on the old address).
+  const submitEmailCode = async () => {
+    setError(""); setSaving(true);
+    if (!emailCode.trim()) { setError("Enter the 6-digit code from your email."); setSaving(false); return; }
+    const { data, error: err } = await supabase.auth.verifyOtp({
+      email: pendingEmail, token: emailCode.trim(), type: "email_change",
+    });
+    if (err) {
+      setError("Invalid or expired code — check your email for the latest one, or go back and try again.");
+      setSaving(false);
+      return;
+    }
+    // Explicit, immediate sync — don't rely solely on the USER_UPDATED
+    // session-event listener's timing to catch this (same lesson as an
+    // earlier bug this session: event timing right after verifyOtp isn't
+    // reliable enough to depend on alone for something this important).
+    if (data?.user) {
+      await supabase.from("users").update({ email: data.user.email }).eq("auth_id", data.user.id);
+    }
+    toast_("✅ Email confirmed! You'll be logged out — log in again with your new email's password.");
+    setSuccess("Email changed to: " + pendingEmail + ". Logging you out…");
+    setSaving(false);
     setTimeout(async () => {
       await supabase.auth.signOut();
       setView("enroll");
@@ -3806,8 +3851,16 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
                   {item.key === "userid" && (
                     <div className="field"><label>New User ID</label><input value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="4-20 chars, letters/numbers/underscore" autoFocus /></div>
                   )}
-                  {item.key === "email" && (
+                  {item.key === "email" && !emailCodeStep && (
                     <div className="field"><label>New Email Address</label><input type="email" value={val1} onChange={e => { setVal1(e.target.value); setError(""); }} placeholder="new@email.com" autoFocus /></div>
+                  )}
+                  {item.key === "email" && emailCodeStep && (
+                    <>
+                      <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
+                        Check <strong style={{ color: "var(--text)" }}>{pendingEmail}</strong> for a 6-digit code, then enter it below.
+                      </p>
+                      <div className="field"><label>6-Digit Code</label><input value={emailCode} onChange={e => { setEmailCode(e.target.value); setError(""); }} placeholder="123456" autoFocus /></div>
+                    </>
                   )}
                   {item.key === "password" && (<>
                     <div className="field"><label>Current Password</label><PasswordInput value={pw} onChange={e => { setPw(e.target.value); setError(""); }} placeholder="Enter your current password" autoFocus /></div>
@@ -3838,8 +3891,8 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
                     </div>
                   </>)}
                   {error && <div className="enroll-error" style={{ marginBottom: 10 }}>⚠ {error}</div>}
-                  <button className="btn bg" onClick={item.key === "userid" ? submitUserId : item.key === "email" ? submitEmail : submitPassword} disabled={saving}>
-                    {saving ? "Saving…" : "Save Changes"}
+                  <button className="btn bg" onClick={item.key === "userid" ? submitUserId : item.key === "email" ? (emailCodeStep ? submitEmailCode : submitEmail) : submitPassword} disabled={saving}>
+                    {saving ? "Saving…" : item.key === "email" && emailCodeStep ? "Confirm Code" : "Save Changes"}
                   </button>
                 </>
               )}
@@ -4931,43 +4984,62 @@ function LBPage({ participants, user, allWords }) {
 // any caller-supplied style (e.g. green/red border validation feedback)
 // with the padding needed to make room for the toggle button, and forwards
 // everything else (autoFocus, onKeyDown, className, etc.) straight through.
-function PasswordInput({ value, onChange, style, ...rest }) {
+function PasswordInput({ value, onChange, style, onKeyDown, onKeyUp, ...rest }) {
   const [show, setShow] = useState(false);
+  const [capsOn, setCapsOn] = useState(false);
+
+  // getModifierState reads the CURRENT physical Caps Lock state on every
+  // keystroke — this is detection only; browsers never allow a web page to
+  // read or change Caps Lock any other way (turning it on/off isn't
+  // something a web app can do at all, by design, for security reasons).
+  const checkCaps = (e) => {
+    if (e.getModifierState) setCapsOn(e.getModifierState("CapsLock"));
+  };
+
   return (
-    <div style={{ position: "relative" }}>
-      <input
-        type={show ? "text" : "password"}
-        value={value}
-        onChange={onChange}
-        style={{ paddingRight: 42, ...style }}
-        {...rest}
-      />
-      <button
-        type="button"
-        onClick={() => setShow(s => !s)}
-        tabIndex={-1}
-        aria-label={show ? "Hide password" : "Show password"}
-        style={{
-          position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-          background: "none", border: "none", cursor: "pointer", padding: 4,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "var(--muted)", lineHeight: 1,
-        }}
-      >
-        {show ? (
-          // Eye with a slash through it — "currently visible, click to hide"
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-6 0-10-8-10-8a19.7 19.7 0 0 1 4.22-5.44M9.9 4.24A10.4 10.4 0 0 1 12 4c6 0 10 8 10 8a19.7 19.7 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-            <line x1="1" y1="1" x2="23" y2="23"/>
-          </svg>
-        ) : (
-          // Plain open eye — "currently hidden, click to show"
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
-        )}
-      </button>
+    <div>
+      <div style={{ position: "relative" }}>
+        <input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={onChange}
+          onKeyDown={e => { checkCaps(e); if (onKeyDown) onKeyDown(e); }}
+          onKeyUp={e => { checkCaps(e); if (onKeyUp) onKeyUp(e); }}
+          style={{ paddingRight: 42, ...style }}
+          {...rest}
+        />
+        <button
+          type="button"
+          onClick={() => setShow(s => !s)}
+          tabIndex={-1}
+          aria-label={show ? "Hide password" : "Show password"}
+          style={{
+            position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+            background: "none", border: "none", cursor: "pointer", padding: 4,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "var(--muted)", lineHeight: 1,
+          }}
+        >
+          {show ? (
+            // Eye with a slash through it — "currently visible, click to hide"
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-6 0-10-8-10-8a19.7 19.7 0 0 1 4.22-5.44M9.9 4.24A10.4 10.4 0 0 1 12 4c6 0 10 8 10 8a19.7 19.7 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+              <line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+          ) : (
+            // Plain open eye — "currently hidden, click to show"
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          )}
+        </button>
+      </div>
+      {capsOn && (
+        <div style={{ fontSize: 11.5, color: "var(--gold3)", marginTop: 5, display: "flex", alignItems: "center", gap: 4 }}>
+          ⚠ Caps Lock is on
+        </div>
+      )}
     </div>
   );
 }
