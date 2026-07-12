@@ -4186,7 +4186,7 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
   // making the popup collapse into a tiny sliver instead of covering the screen.
   return ReactDOM.createPortal(
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" style={{ maxWidth: 420 }}>
+      <div className="modal" style={{ maxWidth: 640 }}>
         <div className="modal-head">
           <h3>Qur'an {surahNumber}:{ayahNumber}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
