@@ -1155,7 +1155,7 @@ const GEO = `<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><g
 const bgUrl = `data:image/svg+xml;base64,${btoa(GEO)}`;
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Scheherazade+New:wght@400;600;700&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Scheherazade+New:wght@400;600;700&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#071c2a;--s1:rgba(255,255,255,.05);--s2:rgba(255,255,255,.08);--s3:rgba(255,255,255,.12);
@@ -1561,9 +1561,9 @@ input[type="password"]::-ms-clear{display:none;}
 .modal-close:hover{color:var(--text);background:rgba(255,255,255,.1);}
 .modal-body{padding:22px 24px 26px;}
 .ayah-text-display{
-  font-family:'Scheherazade New',serif;font-size:32px;line-height:2;
-  color:var(--gold2);direction:rtl;text-align:center;
-  text-shadow:0 0 18px rgba(255,184,0,.25);
+  font-family:'Amiri Quran','Scheherazade New',serif;font-size:32px;line-height:2.1;
+  color:#ffd700;direction:rtl;text-align:center;
+  text-shadow:0 0 18px rgba(255,215,0,.3);
   word-spacing:.15em;
 }
 
