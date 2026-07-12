@@ -524,6 +524,16 @@ async function fetchAllWords() {
   return (data || []).map(mapWordRow);
 }
 
+// Safe to call for anyone, logged in or not — returns just a number via
+// get_total_word_count() (see deploy notes), never actual word rows. Used
+// so the "Total Words" stat shows the real total even for anon visitors,
+// who can only fetch Set 1's actual content via fetchAllWords() above.
+async function fetchTotalWordCount() {
+  const { data, error } = await supabase.rpc("get_total_word_count");
+  if (error) { console.error("fetchTotalWordCount error:", error.message); return null; }
+  return data;
+}
+
 // New custom words always append after the last existing word, filling out
 // a partial set before starting a new one — matches the old array-append behavior.
 async function insertWord(word) {
@@ -1993,6 +2003,7 @@ export default function App() {
     setAllWordsState(words);
     storageSet("qv_words_cache", words);
   };
+  const [totalWordCount, setTotalWordCount] = useState(null); // real total, visible even to anon (see fetchTotalWordCount)
   const [participants, setParticipants] = useState([]);
   const [quiz, setQuiz] = useState(null);
   const quizRef = React.useRef(null);
@@ -2024,6 +2035,15 @@ export default function App() {
 
   useEffect(() => {
     setMessages(getMessages());
+
+    // Runs for EVERY visitor, logged in or not — RLS scopes the actual
+    // result correctly either way (anon gets Set 1 only, thanks to the
+    // words_anon_preview policy; a logged-in user gets everything). Without
+    // this, a not-yet-logged-in visitor never even attempts a words fetch
+    // at all and is stuck on whatever's in the (often empty, e.g. a fresh
+    // Incognito tab) local cache until they log in.
+    fetchAllWords().then(words => { if (words) setAllWords(words); });
+    fetchTotalWordCount().then(count => { if (count !== null) setTotalWordCount(count); });
 
     // ── Supabase: load every participant's profile + scores + progress ──────
     // Two bulk queries (not one per participant) — RLS means a regular
@@ -3070,7 +3090,7 @@ export default function App() {
             : <FinanceGate onLogin={loginUser} />
         ) : (
           <>
-            {view === "home" && <HomePage user={user} allWords={allWords} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onInvite={() => setShowInvite(true)} onReview={reviewSession} toast_={toast_} />}
+            {view === "home" && <HomePage user={user} allWords={allWords} totalWordCount={totalWordCount} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onInvite={() => setShowInvite(true)} onReview={reviewSession} toast_={toast_} />}
             {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} setView={setView} onGoToResetCode={(email) => { setPendingResetEmail(email); setView("resetPassword"); }} />}
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
             {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} optsVisible={optsVisible} />}
@@ -3130,7 +3150,7 @@ export default function App() {
   );
 }
 
-function HomePage({ user, allWords, participants, onStart, setView, onDonate, onInvite, onReview, toast_ }) {
+function HomePage({ user, allWords, totalWordCount, participants, onStart, setView, onDonate, onInvite, onReview, toast_ }) {
   const [showAllSetsReady, setShowAllSetsReady] = useState(false);
   const [showMasteredList, setShowMasteredList] = useState(false);
   const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).length : 0;
@@ -3144,7 +3164,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
   const daysCompleted = user ? Object.keys(user.dayProgress || {}).filter(k => k !== "free").length : 0;
   const recentSessions = [...(user?.scores || [])].reverse().slice(0, 4);
   const wordsAddedLastWeek = countWordsAddedLastWeek(allWords);
-  const quranCoverage = estimateQuranCoverage(allWords.length);
+  const quranCoverage = estimateQuranCoverage(totalWordCount ?? allWords.length);
 
   // Item 7: best-ever All Sets Quiz attempt, for the homepage summary ribbon.
   // Same selection logic as the calendar page's version — most words correct,
@@ -3199,7 +3219,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
             ))}
           </div>
           <p style={{ textAlign: "center", fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
-            <span className="forgot-link" onClick={() => setView("enroll")}>Sign up free to unlock all {allWords.length > 10 ? allWords.length : "100+"} words →</span>
+            <span className="forgot-link" onClick={() => setView("enroll")}>Sign up free to unlock all {totalWordCount ?? "100+"} words →</span>
           </p>
         </div>
       )}
@@ -3236,7 +3256,7 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
       <div className="srow">
         <div className="sbox">
           <span style={{ position: "absolute", top: 6, right: 8, fontSize: 12, opacity: .6 }}>🔒</span>
-          <div className="sn">{allWords.length}</div>
+          <div className="sn">{totalWordCount ?? allWords.length}</div>
           <div className="sl">Total Words</div>
         </div>
         <div className="sbox"><div className="sn">+{wordsAddedLastWeek}</div><div className="sl">Added Last Week</div></div>
