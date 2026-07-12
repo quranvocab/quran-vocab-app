@@ -1560,6 +1560,12 @@ input[type="password"]::-ms-clear{display:none;}
 .modal-close{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:var(--muted);font-size:18px;cursor:pointer;line-height:1;padding:3px 8px;border-radius:6px;transition:all .15s;}
 .modal-close:hover{color:var(--text);background:rgba(255,255,255,.1);}
 .modal-body{padding:22px 24px 26px;}
+.ayah-text-display{
+  font-family:'Scheherazade New',serif;font-size:32px;line-height:2;
+  color:var(--gold2);direction:rtl;text-align:center;
+  text-shadow:0 0 18px rgba(255,184,0,.25);
+  word-spacing:.15em;
+}
 
 /* ── DONATE — FREQUENCY SELECTOR ── */
 .freq-row{display:flex;gap:8px;margin-bottom:16px;}
@@ -1821,6 +1827,7 @@ input[type="password"]::-ms-clear{display:none;}
   .modal{border-radius:10px;}
   .modal-head{padding:13px 15px 11px;}
   .modal-body{padding:14px 15px 18px;}
+  .ayah-text-display{font-size:26px;line-height:1.9;}
 
   /* DONATE */
   .donate-strip{flex-direction:column;text-align:center;gap:8px;}
@@ -4133,6 +4140,28 @@ async function fetchAyahAudioUrl(surahNumber, ayahNumber) {
   }
 }
 
+// The ayah *image* from the CDN is a small raster crop — stretching it with
+// CSS to be "bigger" just makes it blurrier, it doesn't add real resolution.
+// Fetching the actual Uthmani text instead lets us render crisp, infinitely
+// scalable Arabic using the app's own font, which is what's actually legible
+// on a small phone screen. Image stays as a secondary "see the real mushaf"
+// option below the text.
+const _ayahTextCache = {};
+async function fetchAyahText(surahNumber, ayahNumber) {
+  const key = `${surahNumber}:${ayahNumber}`;
+  if (_ayahTextCache[key]) return _ayahTextCache[key];
+  try {
+    const res = await fetch(`https://api.alquran.cloud/v1/ayah/${key}/quran-uthmani`);
+    const json = await res.json();
+    const text = json?.data?.text || null;
+    if (text) _ayahTextCache[key] = text;
+    return text;
+  } catch (e) {
+    console.error("fetchAyahText error:", e.message);
+    return null;
+  }
+}
+
 // Small reusable play/pause control. Owns its own <audio> element via ref so
 // it can be stopped mid-playback (tap again while playing = stop), instead
 // of only ever running to completion.
@@ -4174,11 +4203,26 @@ function PlayPauseButton({ resolveUrl, className, title, playingLabel = "⏸", i
   );
 }
 
-// ── Ayah reference popup — shows the actual mushaf-script image of the
-// ayah a word comes from, plus a play/stop control for the full ayah's
-// recitation, sourced from the Al Quran Cloud CDN. ──────────────────────────
+// ── Ayah reference popup — shows the ayah's actual Arabic text, large and
+// crisp (using the app's own font, so it scales cleanly on any screen size),
+// plus the mushaf-style image as a secondary option, and a play/stop control
+// for the full ayah's recitation. Text + audio via Al Quran Cloud; image via
+// the same CDN's image endpoint. ────────────────────────────────────────────
 function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
+  const [ayahText, setAyahText] = useState(null);
+  const [textLoading, setTextLoading] = useState(true);
+  const [showImage, setShowImage] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTextLoading(true);
+    fetchAyahText(surahNumber, ayahNumber).then((text) => {
+      if (!cancelled) { setAyahText(text); setTextLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [surahNumber, ayahNumber]);
+
   // Rendered via portal straight into document.body — this modal is normally
   // mounted inside a word-card, and word-card has a :hover transform, which
   // would otherwise turn this popup's position:fixed into "fixed relative to
@@ -4192,24 +4236,40 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body" style={{ textAlign: "center" }}>
-          {loadFailed ? (
-            <p style={{ color: "var(--muted)", fontSize: 13 }}>Couldn't load the ayah image right now — please try again later.</p>
+          {textLoading ? (
+            <p style={{ color: "var(--muted)", fontSize: 13 }}>Loading…</p>
+          ) : ayahText ? (
+            <div className="ayah-text-display">{ayahText}</div>
           ) : (
-            <img
-              src={getAyahImageUrl(surahNumber, ayahNumber)}
-              alt={`Qur'an ${surahNumber}:${ayahNumber}`}
-              onError={() => setLoadFailed(true)}
-              style={{ width: "100%", height: "auto", borderRadius: 8, background: "#fff", padding: 8 }}
-            />
+            <p style={{ color: "var(--muted)", fontSize: 13 }}>Couldn't load the ayah text right now — please try again later.</p>
           )}
-          <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <div style={{ marginTop: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
             <PlayPauseButton
               resolveUrl={() => fetchAyahAudioUrl(surahNumber, ayahNumber)}
               title="Play/stop this ayah's recitation"
             />
             <span style={{ fontSize: 12, color: "var(--muted)" }}>Play full ayah recitation</span>
           </div>
-          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 12 }}>Audio &amp; image courtesy of Al Quran Cloud (islamic.network)</p>
+          <button
+            className="word-toggle"
+            style={{ marginTop: 14 }}
+            onClick={() => setShowImage(s => !s)}
+          >
+            {showImage ? "Hide mushaf image ▲" : "View as mushaf image ▼"}
+          </button>
+          {showImage && (
+            loadFailed ? (
+              <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 10 }}>Couldn't load the ayah image right now — please try again later.</p>
+            ) : (
+              <img
+                src={getAyahImageUrl(surahNumber, ayahNumber)}
+                alt={`Qur'an ${surahNumber}:${ayahNumber}`}
+                onError={() => setLoadFailed(true)}
+                style={{ width: "100%", height: "auto", borderRadius: 8, background: "#fff", padding: 8, marginTop: 10 }}
+              />
+            )
+          )}
+          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 12 }}>Text, audio &amp; image courtesy of Al Quran Cloud (islamic.network)</p>
         </div>
       </div>
     </div>,
