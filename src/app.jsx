@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import ReactDOM from "react-dom";
 import { supabase } from "./supabase.js";
 
 const WORDS_PER_DAY = 10;
@@ -1367,6 +1368,7 @@ input[type="password"]::-ms-clear{display:none;}
 .set-mastery-banner strong{color:var(--cyan2);}
 .wlist{display:grid;gap:12px;}
 .word-card{
+  position:relative;
   background:rgba(255,255,255,.04);
   border:1px solid rgba(0,200,230,.2);
   border-radius:14px;padding:16px 20px;
@@ -1402,6 +1404,7 @@ input[type="password"]::-ms-clear{display:none;}
 }
 .word-toggle:hover{border-color:var(--cyan);color:var(--cyan2);background:rgba(0,200,230,.14);box-shadow:0 0 12px rgba(0,200,230,.2);}
 .word-card-detail{
+  position:relative;z-index:2;
   margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,200,230,.1);
   display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:14px;
   animation:tagIn .15s ease;
@@ -4176,7 +4179,12 @@ function PlayPauseButton({ resolveUrl, className, title, playingLabel = "⏸", i
 // recitation, sourced from the Al Quran Cloud CDN. ──────────────────────────
 function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
   const [loadFailed, setLoadFailed] = useState(false);
-  return (
+  // Rendered via portal straight into document.body — this modal is normally
+  // mounted inside a word-card, and word-card has a :hover transform, which
+  // would otherwise turn this popup's position:fixed into "fixed relative to
+  // that card" instead of the real viewport (a CSS containing-block quirk),
+  // making the popup collapse into a tiny sliver instead of covering the screen.
+  return ReactDOM.createPortal(
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" style={{ maxWidth: 420 }}>
         <div className="modal-head">
@@ -4204,7 +4212,8 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 12 }}>Audio &amp; image courtesy of Al Quran Cloud (islamic.network)</p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
