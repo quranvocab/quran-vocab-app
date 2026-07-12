@@ -3179,6 +3179,31 @@ function HomePage({ user, allWords, participants, onStart, setView, onDonate, on
         ) : <button className="btn bg" onClick={() => setView("enroll")}>Begin Your Journey →</button>}
       </div>
 
+      {/* Word preview for logged-out visitors — Set 1 only (RLS scopes anon
+          access to set_number=1 server-side too; this filter is just a
+          defensive belt-and-suspenders in case allWords ever contains more). */}
+      {!user && (
+        <div style={{ margin: "8px 0 24px" }}>
+          <p style={{ textAlign: "center", fontSize: 13, color: "var(--muted)", marginBottom: 14 }}>
+            A taste of what you'll learn — Set 1:
+          </p>
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 4px 12px", WebkitOverflowScrolling: "touch" }}>
+            {/* allWords is already sorted by set/order (see fetchAllWords), and
+                RLS itself restricts anon visitors to Set 1 rows only server-side
+                — slice(0,10) just caps it defensively at one set's worth. */}
+            {allWords.slice(0, 10).map((w, i) => (
+              <div key={i} style={{ flex: "0 0 auto", width: 130, textAlign: "center", background: "rgba(0,200,230,.05)", border: "1px solid rgba(0,200,230,.15)", borderRadius: 10, padding: "16px 10px" }}>
+                <div className="arabic" style={{ fontSize: 24, color: "var(--gold2)", marginBottom: 8 }}>{w.arabic}</div>
+                <div style={{ fontSize: 12.5, color: "var(--text)" }}>{w.english}</div>
+              </div>
+            ))}
+          </div>
+          <p style={{ textAlign: "center", fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
+            <span className="forgot-link" onClick={() => setView("enroll")}>Sign up free to unlock all {allWords.length > 10 ? allWords.length : "100+"} words →</span>
+          </p>
+        </div>
+      )}
+
       {/* All Sets Quiz Ready Modal */}
       {showAllSetsReady && (
         <div className="modal-overlay" onClick={() => setShowAllSetsReady(false)}>
