@@ -129,14 +129,13 @@ function buildWordStrengthBreakdown(scores, allWords = []) {
     for (const d of s.detail) {
       const key = d.arabic;
       if (!tally[key]) {
-        // Look up the full word entry (urdu, root, root meanings, ayah ref) so
-        // the breakdown can show the same level of detail as the Day Words page.
+        // Look up the full word entry (urdu, ayah ref) so the breakdown can
+        // show the same level of detail as the Day Words page.
         const full = allWords.find(w => w.arabic === d.arabic);
         tally[key] = {
           correct: 0, wrong: 0,
           arabic: d.arabic, english: d.english, translit: d.translit,
-          urdu: full?.urdu, root: full?.root,
-          rootEnglish: full?.rootEnglish, rootUrdu: full?.rootUrdu,
+          urdu: full?.urdu,
           ayahRef: full?.ayahRef,
         };
       }
@@ -510,9 +509,10 @@ async function upsertProgress(dbUserId, dayProgress) {
 function mapWordRow(row) {
   return {
     dbId: row.id, arabic: row.arabic, translit: row.translit, english: row.english,
-    urdu: row.urdu, root: row.root, rootEnglish: row.root_meaning, rootUrdu: row.root_urdu,
+    urdu: row.urdu,
     ayahRef: row.ayah_ref || "", isCustom: !!row.is_custom,
     surahNumber: row.surah_number ?? null, ayahNumber: row.ayah_number ?? null,
+    wordPosition: row.word_position ?? null,
   };
 }
 
@@ -555,9 +555,9 @@ async function insertWord(word) {
   }
   const { error } = await supabase.from("words").insert({
     arabic: word.arabic, translit: word.translit, english: word.english,
-    urdu: word.urdu, root: word.root, root_meaning: word.rootEnglish, root_urdu: word.rootUrdu,
+    urdu: word.urdu,
     ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
-    set_number: setNum, order_in_set: orderNum,
+    word_position: word.wordPosition || null, set_number: setNum, order_in_set: orderNum,
     is_custom: true, is_active: true, added_by: addedBy, added_at: new Date().toISOString(),
   });
   if (error) console.error("insertWord error:", error.message);
@@ -567,8 +567,9 @@ async function insertWord(word) {
 async function updateWord(dbId, fields) {
   const { error } = await supabase.from("words").update({
     arabic: fields.arabic, translit: fields.translit, english: fields.english,
-    urdu: fields.urdu, root: fields.root, root_meaning: fields.rootEnglish, root_urdu: fields.rootUrdu,
+    urdu: fields.urdu,
     ayah_ref: fields.ayahRef || null, surah_number: fields.surahNumber || null, ayah_number: fields.ayahNumber || null,
+    word_position: fields.wordPosition || null,
   }).eq("id", dbId);
   if (error) console.error("updateWord error:", error.message);
   return !error;
@@ -613,12 +614,10 @@ const CSV_HEADER_ALIASES = {
   translit: ["transliteration", "translit"],
   english: ["english", "english meaning", "meaning"],
   urdu: ["urdu", "urdu meaning"],
-  root: ["root", "root letters"],
-  rootEnglish: ["root meaning english", "rootenglish", "root english"],
-  rootUrdu: ["root meaning urdu", "rooturdu", "root urdu"],
   ayahRef: ["ayah reference", "ayahref", "quran reference", "reference"],
   surahNumber: ["surah number", "surah#", "surah no", "surah"],
   ayahNumber: ["ayah number", "ayah#", "ayah no", "ayah"],
+  wordPosition: ["word position", "word#", "word no", "word number in ayah"],
 };
 
 function mapCSVHeaders(headerRow) {
@@ -668,10 +667,10 @@ function parseWordsCSV(text, existingArabicSet = new Set()) {
     words.push({
       rowNum: i + 1, arabic, english,
       translit: get("translit"), urdu: get("urdu") || "—",
-      root: get("root") || "—", rootEnglish: get("rootEnglish") || "—", rootUrdu: get("rootUrdu") || "—",
       ayahRef: get("ayahRef"),
       surahNumber: get("surahNumber") ? parseInt(get("surahNumber"), 10) || null : null,
       ayahNumber: get("ayahNumber") ? parseInt(get("ayahNumber"), 10) || null : null,
+      wordPosition: get("wordPosition") ? parseInt(get("wordPosition"), 10) || null : null,
       errors, isDuplicate,
     });
   }
@@ -702,9 +701,9 @@ async function bulkInsertWords(words) {
   const rows = words.map(word => {
     const row = {
       arabic: word.arabic, translit: word.translit, english: word.english,
-      urdu: word.urdu, root: word.root, root_meaning: word.rootEnglish, root_urdu: word.rootUrdu,
+      urdu: word.urdu,
       ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
-      set_number: setNum, order_in_set: orderNum,
+      word_position: word.wordPosition || null, set_number: setNum, order_in_set: orderNum,
       is_custom: true, is_active: true, added_by: addedBy, added_at: nowIso,
     };
     orderNum += 1;
@@ -1384,16 +1383,17 @@ input[type="password"]::-ms-clear{display:none;}
 .word-card-main{display:grid;grid-template-columns:auto 1fr auto;align-items:stretch;gap:14px;}
 .war{font-family:'Scheherazade New',serif;font-size:34px;font-weight:600;color:var(--gold2);text-align:right;text-shadow:0 0 18px rgba(255,184,0,.3);display:flex;align-items:center;min-width:80px;}
 .war-wrap{display:flex;align-items:center;gap:8px;}
-.speaker-btn{background:rgba(0,200,230,.1);border:1px solid rgba(0,200,230,.3);border-radius:50%;
-  width:30px;height:30px;font-size:14px;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:all .15s;flex-shrink:0;color:var(--cyan2);}
-.speaker-btn:hover:not(:disabled){background:rgba(0,200,230,.2);box-shadow:0 0 10px rgba(0,200,230,.3);}
-.speaker-btn:disabled{cursor:default;}
-.speaker-btn.error{border-color:rgba(255,82,82,.5);color:var(--err);}
+.play-btn{background:rgba(0,200,230,.1);border:1px solid rgba(0,200,230,.3);border-radius:50%;
+  width:28px;height:28px;font-size:11px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:all .15s;flex-shrink:0;color:var(--cyan2);padding:0;}
+.play-btn:hover{background:rgba(0,200,230,.2);box-shadow:0 0 10px rgba(0,200,230,.3);}
+.play-btn.playing{background:rgba(0,200,230,.25);border-color:var(--cyan2);}
+.play-btn.error{border-color:rgba(255,82,82,.5);color:var(--err);}
 .ayah-ref-link{cursor:pointer;color:var(--cyan2);text-decoration:underline;text-underline-offset:2px;}
 .ayah-ref-link:hover{color:var(--cyan);}
 .wtr{font-size:13px;color:var(--muted);font-style:italic;text-align:center;display:none;}
-.wen{font-size:17px;font-weight:400;color:var(--text);display:flex;align-items:center;justify-content:center;text-align:center;flex:1;}
+.wen{font-size:17px;font-weight:400;color:var(--text);text-align:center;}
+.word-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1;min-width:0;}
 .word-urdu{font-family:'Scheherazade New',serif;font-size:22px;color:var(--teal2);direction:rtl;text-align:right;text-shadow:0 0 12px rgba(0,212,168,.25);}
 .word-toggle{
   background:rgba(0,200,230,.08);border:1px solid rgba(0,200,230,.28);
@@ -1796,7 +1796,7 @@ input[type="password"]::-ms-clear{display:none;}
   .war{font-size:26px;min-width:60px;}
   .wtr{display:none;}
   .wen{font-size:15px;}
-  .word-urdu{display:none;}
+  .word-urdu{font-size:17px;}
   .word-toggle{align-self:center;}
 
   /* QUIZ */
@@ -4100,15 +4100,20 @@ function VerifyEmailPage({ token, onVerify, setView }) {
   );
 }
 
-// ── Al Quran Cloud CDN (Islamic Network, islamic.network) ───────────────────
-// Free, no API key, no auth — used for per-word pronunciation audio (plays
-// the ayah containing the word) and the ayah reference popup image.
-// Docs: https://alquran.cloud/api and https://alquran.cloud/cdn
+// ── Quran audio/image CDNs — free, no API key, no auth ─────────────────────
+// Word-level pronunciation: official Quran.com/Quran Foundation word-by-word
+// CDN. The URL is a public static asset (surah_ayah_word, each zero-padded
+// to 3 digits) — no API call or OAuth needed, just the three numbers.
+// Ayah-level audio/image: Al Quran Cloud (islamic.network) — also free/no-key.
 const AYAH_RECITER = "ar.alafasy"; // Mishary Rashid Alafasy — Murattal style
+function pad3(n) { return String(n).padStart(3, "0"); }
+function getWordAudioUrl(surahNumber, ayahNumber, wordPosition) {
+  return `https://audio.qurancdn.com/wbw/${pad3(surahNumber)}_${pad3(ayahNumber)}_${pad3(wordPosition)}.mp3`;
+}
 function getAyahImageUrl(surahNumber, ayahNumber) {
   return `https://cdn.islamic.network/quran/images/high-resolution/${surahNumber}_${ayahNumber}.png`;
 }
-// In-memory cache so re-opening the same word's audio doesn't re-hit the API.
+// In-memory cache so re-opening the same ayah's audio doesn't re-hit the API.
 const _ayahAudioCache = {};
 async function fetchAyahAudioUrl(surahNumber, ayahNumber) {
   const key = `${surahNumber}:${ayahNumber}`;
@@ -4125,8 +4130,50 @@ async function fetchAyahAudioUrl(surahNumber, ayahNumber) {
   }
 }
 
+// Small reusable play/pause control. Owns its own <audio> element via ref so
+// it can be stopped mid-playback (tap again while playing = stop), instead
+// of only ever running to completion.
+function PlayPauseButton({ resolveUrl, className, title, playingLabel = "⏸", idleLabel = "▶" }) {
+  const [state, setState] = useState("idle"); // idle | loading | playing | error
+  const audioRef = React.useRef(null);
+
+  const stop = () => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+    setState("idle");
+  };
+
+  const toggle = async (e) => {
+    e.stopPropagation();
+    if (state === "playing" || state === "loading") { stop(); return; }
+    setState("loading");
+    const url = await resolveUrl();
+    if (!url) { setState("error"); setTimeout(() => setState("idle"), 1800); return; }
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    audio.onended = () => setState("idle");
+    audio.onerror = () => { setState("error"); setTimeout(() => setState("idle"), 1800); };
+    setState("playing");
+    audio.play().catch(() => { setState("error"); setTimeout(() => setState("idle"), 1800); });
+  };
+
+  // Stop playback if the component unmounts (e.g. popup closed) mid-play.
+  React.useEffect(() => () => { if (audioRef.current) audioRef.current.pause(); }, []);
+
+  return (
+    <button
+      className={`play-btn ${state} ${className || ""}`}
+      onClick={toggle}
+      aria-label={state === "playing" ? "Stop" : "Play"}
+      title={title}
+    >
+      {state === "loading" ? "…" : state === "playing" ? playingLabel : state === "error" ? "⚠" : idleLabel}
+    </button>
+  );
+}
+
 // ── Ayah reference popup — shows the actual mushaf-script image of the
-// ayah a word comes from, sourced from the Al Quran Cloud CDN. ──────────────
+// ayah a word comes from, plus a play/stop control for the full ayah's
+// recitation, sourced from the Al Quran Cloud CDN. ──────────────────────────
 function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
   const [loadFailed, setLoadFailed] = useState(false);
   return (
@@ -4147,7 +4194,14 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
               style={{ maxWidth: "100%", borderRadius: 8, background: "#fff", padding: 8 }}
             />
           )}
-          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 12 }}>Image courtesy of Al Quran Cloud (islamic.network)</p>
+          <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <PlayPauseButton
+              resolveUrl={() => fetchAyahAudioUrl(surahNumber, ayahNumber)}
+              title="Play/stop this ayah's recitation"
+            />
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>Play full ayah recitation</span>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 12 }}>Audio &amp; image courtesy of Al Quran Cloud (islamic.network)</p>
         </div>
       </div>
     </div>
@@ -4155,25 +4209,12 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
 }
 
 // ── Shared expandable word card — used on Day Words page and History's ──────
-// Strong/Weak word breakdown, so both show identical detail (Urdu, root,
-// root meanings, Qur'an reference).
+// Strong/Weak word breakdown, so both show identical detail (Urdu,
+// Qur'an reference).
 function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
-  const [audioState, setAudioState] = useState("idle"); // idle | loading | playing | error
   const [showAyahPopup, setShowAyahPopup] = useState(false);
   const hasAyahRef = !!(word.surahNumber && word.ayahNumber);
-
-  const playPronunciation = async (e) => {
-    e.stopPropagation();
-    if (!hasAyahRef || audioState === "loading" || audioState === "playing") return;
-    setAudioState("loading");
-    const url = await fetchAyahAudioUrl(word.surahNumber, word.ayahNumber);
-    if (!url) { setAudioState("error"); setTimeout(() => setAudioState("idle"), 1800); return; }
-    const audio = new Audio(url);
-    audio.onended = () => setAudioState("idle");
-    audio.onerror = () => { setAudioState("error"); setTimeout(() => setAudioState("idle"), 1800); };
-    setAudioState("playing");
-    audio.play().catch(() => { setAudioState("error"); setTimeout(() => setAudioState("idle"), 1800); });
-  };
+  const hasWordAudio = !!(word.surahNumber && word.ayahNumber && word.wordPosition);
 
   return (
     <div className={`word-card ${highlight ? "word-card-unmastered" : ""}`}>
@@ -4183,43 +4224,31 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
       <div className="word-card-main">
         <div className="war-wrap">
           <div className="war">{word.arabic}</div>
-          {hasAyahRef && (
-            <button
-              className={`speaker-btn ${audioState}`}
-              onClick={playPronunciation}
-              disabled={audioState === "loading" || audioState === "playing"}
-              aria-label="Play pronunciation"
-              title="Play pronunciation"
-            >
-              {audioState === "loading" ? "⏳" : audioState === "playing" ? "🔊" : audioState === "error" ? "⚠" : "🔈"}
-            </button>
+          {hasWordAudio && (
+            <PlayPauseButton
+              resolveUrl={() => Promise.resolve(getWordAudioUrl(word.surahNumber, word.ayahNumber, word.wordPosition))}
+              title="Play word pronunciation"
+            />
           )}
         </div>
-        <div className="wtr">{word.translit}</div>
-        <div className="wen">{word.english}</div>
-        <button className="word-toggle" onClick={onToggle}>
-          {isOpen ? "Hide ▲" : "Details ▼"}
-        </button>
+        <div className="word-mid">
+          <div className="wtr">{word.translit}</div>
+          <div className="wen">{word.english}</div>
+          <div className="word-urdu">{word.urdu || "—"}</div>
+        </div>
+        {word.ayahRef && (
+          <button className="word-toggle" onClick={onToggle}>
+            {isOpen ? "Hide ▲" : "Details ▼"}
+          </button>
+        )}
       </div>
-      {isOpen && (
+      {isOpen && word.ayahRef && (
         <div className="word-card-detail">
-          <span className="dlabel">Urdu</span>
-          <span className="dval urdu">{word.urdu || "—"}</span>
-          <span className="dlabel">Root</span>
-          <span className="dval arabic">{word.root && word.root !== "—" ? word.root : "— (no triliteral root)"}</span>
-          <span className="dlabel">Root Meaning (En)</span>
-          <span className="dval">{word.rootEnglish || "—"}</span>
-          <span className="dlabel">Root Meaning (Ur)</span>
-          <span className="dval urdu">{word.rootUrdu || "—"}</span>
-          {word.ayahRef && (
-            <>
-              <span className="dlabel">Qur'an Ref</span>
-              {hasAyahRef ? (
-                <span className="dval ayah-ref-link" onClick={(e) => { e.stopPropagation(); setShowAyahPopup(true); }}>{word.ayahRef} 🖼</span>
-              ) : (
-                <span className="dval">{word.ayahRef}</span>
-              )}
-            </>
+          <span className="dlabel">Qur'an Ref</span>
+          {hasAyahRef ? (
+            <span className="dval ayah-ref-link" onClick={(e) => { e.stopPropagation(); setShowAyahPopup(true); }}>{word.ayahRef} 🖼</span>
+          ) : (
+            <span className="dval">{word.ayahRef}</span>
           )}
         </div>
       )}
@@ -5734,7 +5763,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
   return (
     <div style={{ maxHeight: 500, overflowY: "auto" }}>
       <table className="tbl">
-        <thead><tr><th>Arabic</th><th>Translit</th><th>English</th><th>Urdu</th><th>Root</th><th>Surah:Ayah</th><th></th></tr></thead>
+        <thead><tr><th>Arabic</th><th>Translit</th><th>English</th><th>Urdu</th><th>Surah:Ayah</th><th></th></tr></thead>
         <tbody>
           {allWords.map((w, i) => {
             if (editIdx === i) {
@@ -5744,10 +5773,10 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                   <td><input value={editForm.translit || ""} onChange={e => setEditForm(f => ({ ...f, translit: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.english || ""} onChange={e => setEditForm(f => ({ ...f, english: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.urdu || ""} onChange={e => setEditForm(f => ({ ...f, urdu: e.target.value }))} style={{ direction: "rtl", fontFamily: "serif", width: 70, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
-                  <td><input value={editForm.root || ""} onChange={e => setEditForm(f => ({ ...f, root: e.target.value }))} style={{ direction: "rtl", fontFamily: "serif", width: 60, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td style={{ display: "flex", gap: 3 }}>
-                    <input type="number" min="1" max="114" value={editForm.surahNumber ?? ""} onChange={e => setEditForm(f => ({ ...f, surahNumber: e.target.value ? parseInt(e.target.value, 10) : null }))} placeholder="Surah" style={{ width: 48, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
-                    <input type="number" min="1" value={editForm.ayahNumber ?? ""} onChange={e => setEditForm(f => ({ ...f, ayahNumber: e.target.value ? parseInt(e.target.value, 10) : null }))} placeholder="Ayah" style={{ width: 48, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
+                    <input type="number" min="1" max="114" value={editForm.surahNumber ?? ""} onChange={e => setEditForm(f => ({ ...f, surahNumber: e.target.value ? parseInt(e.target.value, 10) : null }))} placeholder="Surah" style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
+                    <input type="number" min="1" value={editForm.ayahNumber ?? ""} onChange={e => setEditForm(f => ({ ...f, ayahNumber: e.target.value ? parseInt(e.target.value, 10) : null }))} placeholder="Ayah" style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
+                    <input type="number" min="1" value={editForm.wordPosition ?? ""} onChange={e => setEditForm(f => ({ ...f, wordPosition: e.target.value ? parseInt(e.target.value, 10) : null }))} placeholder="Word#" title="Word position within the ayah" style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
                   </td>
                   <td style={{ display: "flex", gap: 4 }}>
                     <button className="btn bg bsm" onClick={saveEdit} disabled={saving}>{saving ? "…" : "✓"}</button>
@@ -5762,8 +5791,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                 <td style={{ color: "var(--muted)", fontStyle: "italic" }}>{w.translit}</td>
                 <td>{w.english}</td>
                 <td><span className="arabic" style={{ fontSize: 14, color: "var(--teal2)" }}>{w.urdu || "—"}</span></td>
-                <td><span className="arabic" style={{ fontSize: 13, color: "var(--teal2)" }}>{w.root}</span></td>
-                <td style={{ fontSize: 12, color: "var(--muted)" }}>{w.surahNumber && w.ayahNumber ? `${w.surahNumber}:${w.ayahNumber}` : "—"}</td>
+                <td style={{ fontSize: 12, color: "var(--muted)" }}>{w.surahNumber && w.ayahNumber ? `${w.surahNumber}:${w.ayahNumber}${w.wordPosition ? ` (w${w.wordPosition})` : ""}` : "—"}</td>
                 <td style={{ display: "flex", gap: 4 }}>
                   <button className="btn bh bsm" style={{ fontSize: 10 }} onClick={() => openEdit(w, i)}>✏</button>
                   {w.isCustom ? <button className="del" onClick={() => remove(w)}>✕</button> : <span style={{ fontSize: 10, color: "var(--muted)" }}>built-in</span>}
@@ -5825,11 +5853,11 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   // re-uploading — the upload step itself skips anything matching an
   // existing Arabic word, so re-uploading the existing rows is harmless.
   const downloadExistingWords = () => {
-    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Root Letters,Root Meaning English,Root Meaning Urdu,Ayah Reference,Surah Number,Ayah Number";
+    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Ayah Reference,Surah Number,Ayah Number,Word Position";
     const lines = allWords.map(w => [
       csvField(w.arabic), csvField(w.translit), csvField(w.english), csvField(w.urdu),
-      csvField(w.root), csvField(w.rootEnglish), csvField(w.rootUrdu), csvField(w.ayahRef),
-      csvField(w.surahNumber ?? ""), csvField(w.ayahNumber ?? ""),
+      csvField(w.ayahRef),
+      csvField(w.surahNumber ?? ""), csvField(w.ayahNumber ?? ""), csvField(w.wordPosition ?? ""),
     ].join(","));
     const csv = UTF8_BOM + [header, ...lines].join("\n") + "\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -5840,8 +5868,8 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   };
 
   const downloadBlankTemplate = () => {
-    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Root Letters,Root Meaning English,Root Meaning Urdu,Ayah Reference\n'
-      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,سجد,to prostrate,سجدہ کرنا,"Surah Al-Baqarah 2:144"\n';
+    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Ayah Reference,Surah Number,Ayah Number,Word Position\n'
+      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,"Surah Al-Baqarah 2:144",2,144,13\n';
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -6060,9 +6088,10 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
   const [tab, setTab] = useState("words");
   const [arabic, setArabic] = useState(""), [translit, setTranslit] = useState(""), [english, setEnglish] = useState("");
-  const [urdu, setUrdu] = useState(""), [root, setRootField] = useState(""), [rootEnglish, setRootEnglish] = useState(""), [rootUrdu, setRootUrdu] = useState("");
+  const [urdu, setUrdu] = useState("");
   const [ayahRef, setAyahRef] = useState("");
   const [surahNumber, setSurahNumber] = useState(""), [ayahNumber, setAyahNumber] = useState("");
+  const [wordPosition, setWordPosition] = useState("");
   const [adding, setAdding] = useState(false);
 
   const submitReset = async () => {
@@ -6127,14 +6156,14 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
     const ok = await onAddWord({
       arabic: arabic.trim(), translit: translit.trim(), english: english.trim(),
       urdu: urdu.trim() || "—",
-      root: root.trim() || "—", rootEnglish: rootEnglish.trim() || "—", rootUrdu: rootUrdu.trim() || "—",
       ayahRef: ayahRef.trim() || "",
       surahNumber: surahNumber ? parseInt(surahNumber, 10) || null : null,
       ayahNumber: ayahNumber ? parseInt(ayahNumber, 10) || null : null,
+      wordPosition: wordPosition ? parseInt(wordPosition, 10) || null : null,
     });
     setAdding(false);
     if (ok) {
-      setArabic(""); setTranslit(""); setEnglish(""); setUrdu(""); setRootField(""); setRootEnglish(""); setRootUrdu(""); setAyahRef(""); setSurahNumber(""); setAyahNumber("");
+      setArabic(""); setTranslit(""); setEnglish(""); setUrdu(""); setAyahRef(""); setSurahNumber(""); setAyahNumber(""); setWordPosition("");
       toast_("Word added!");
     } else {
       toast_("⚠ Couldn't add the word — please try again.");
@@ -6163,14 +6192,13 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
           <div className="field"><label>Transliteration</label><input value={translit} onChange={e => setTranslit(e.target.value)} placeholder="e.g. Masjid" /></div>
           <div className="field"><label>English Meaning *</label><input value={english} onChange={e => setEnglish(e.target.value)} placeholder="e.g. Mosque" /></div>
           <div className="field"><label>Urdu Meaning</label><input value={urdu} onChange={e => setUrdu(e.target.value)} placeholder="e.g. مسجد" style={{ direction: "rtl", fontFamily: "'Scheherazade New',serif", fontSize: 17 }} /></div>
-          <div className="field"><label>Root Letters</label><input value={root} onChange={e => setRootField(e.target.value)} placeholder="e.g. سجد" style={{ direction: "rtl", fontFamily: "'Scheherazade New',serif" }} /></div>
-          <div className="field"><label>Root Meaning (English)</label><input value={rootEnglish} onChange={e => setRootEnglish(e.target.value)} placeholder="e.g. to prostrate" /></div>
-          <div className="field"><label>Root Meaning (Urdu)</label><input value={rootUrdu} onChange={e => setRootUrdu(e.target.value)} placeholder="e.g. سجدہ کرنا" style={{ direction: "rtl", fontFamily: "'Scheherazade New',serif", fontSize: 15 }} /></div>
           <div className="field"><label>Qur'an Reference (optional)</label><input value={ayahRef} onChange={e => setAyahRef(e.target.value)} placeholder="e.g. Surah Al-Baqarah 2:144" /></div>
           <div style={{ display: "flex", gap: 10 }}>
             <div className="field" style={{ flex: 1 }}><label>Surah # (for audio/image)</label><input type="number" min="1" max="114" value={surahNumber} onChange={e => setSurahNumber(e.target.value)} placeholder="e.g. 2" /></div>
             <div className="field" style={{ flex: 1 }}><label>Ayah #</label><input type="number" min="1" value={ayahNumber} onChange={e => setAyahNumber(e.target.value)} placeholder="e.g. 144" /></div>
+            <div className="field" style={{ flex: 1 }}><label>Word # in Ayah</label><input type="number" min="1" value={wordPosition} onChange={e => setWordPosition(e.target.value)} placeholder="e.g. 3" /></div>
           </div>
+          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: -4, marginBottom: 11 }}>Word # is this word's position (1st, 2nd, 3rd…) within the ayah text — needed for the single-word pronunciation button. Leave blank if unsure; the ayah-level audio and image will still work with just Surah/Ayah #.</p>
           <button className="btn bg" onClick={add} disabled={adding}>{adding ? "Adding…" : "Add Word"}</button>
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 11 }}>Custom words unlock day-by-day after the built-in words.</p>
         </div>
