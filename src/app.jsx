@@ -4199,7 +4199,7 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
               src={getAyahImageUrl(surahNumber, ayahNumber)}
               alt={`Qur'an ${surahNumber}:${ayahNumber}`}
               onError={() => setLoadFailed(true)}
-              style={{ maxWidth: "100%", borderRadius: 8, background: "#fff", padding: 8 }}
+              style={{ width: "100%", height: "auto", borderRadius: 8, background: "#fff", padding: 8 }}
             />
           )}
           <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
