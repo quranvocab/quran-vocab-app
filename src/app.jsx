@@ -1192,9 +1192,13 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
   background:
     linear-gradient(180deg,rgba(7,28,42,.38) 0%,rgba(7,28,42,.45) 60%,var(--bg) 100%),
     url("/images/masjid-bg.jpg");
-  background-size:135% auto;background-position:center 62%;background-repeat:no-repeat;
+  background-size:115% auto;background-position:center 58%;background-repeat:no-repeat;
 }
 .page-enroll h2,.page-enroll .sub,.page-enroll .lbl{text-shadow:0 2px 10px rgba(0,0,0,.6);}
+.tagline-prominent{
+  color:var(--text)!important;font-size:19px!important;font-weight:500!important;
+  text-shadow:0 2px 12px rgba(0,0,0,.7),0 0 20px rgba(0,200,230,.15);
+}
 .nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:13px 28px;
   background:rgba(11,26,20,.82);backdrop-filter:blur(28px) saturate(1.6);
   border-bottom:1px solid rgba(0,200,230,.22);
@@ -1417,7 +1421,7 @@ input[type="password"]::-ms-clear{display:none;}
 .ayah-ref-link{cursor:pointer;color:var(--cyan2);text-decoration:underline;text-underline-offset:2px;}
 .ayah-ref-link:hover{color:var(--cyan);}
 .ayah-img-frame{
-  height:50vh;overflow:auto;border-radius:8px;background:#fff;padding:10px;
+  max-height:60vh;overflow:auto;border-radius:8px;background:#fff;padding:10px;
 }
 .wtr{font-size:15px;color:var(--muted);font-style:italic;text-align:center;display:none;}
 .wen{font-size:20px;font-weight:400;color:var(--text);text-align:center;}
@@ -1722,7 +1726,8 @@ input[type="password"]::-ms-clear{display:none;}
 /* ── HISTORY — SIDE-BY-SIDE CHARTS (Set vs All Sets Quiz) ── */
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;align-items:stretch;}
 .chart-col{padding:16px 14px;display:flex;flex-direction:column;height:340px;}
-.chart-col-head{min-height:28px;display:flex;align-items:flex-start;flex-shrink:0;padding-bottom:8px;}
+.chart-col-head{min-height:28px;display:flex;align-items:flex-start;flex-shrink:0;padding-bottom:14px;}
+.chart-col-head .lbl{font-size:13px;letter-spacing:0;line-height:1.3;}
 .chart-col-inner{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;}
 .chart-empty{text-align:center;color:var(--muted);font-size:14px;padding:36px 10px;}
 @media(max-width:640px){.chart-row{grid-template-columns:1fr;}}
@@ -3237,7 +3242,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
       <div className="hero">
         <div className="bism">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
         <h2>Master the <em>Language of the Quran</em></h2>
-        <p className="sub">Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>
+        <p className="sub tagline-prominent">Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>
         {user ? (
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <button className="btn bg" onClick={() => setView("learn")}>Continue — Set {dayN}</button>
@@ -3616,6 +3621,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
 
   return (
     <div className="page psm page-enroll">
+      <p className="sub tagline-prominent" style={{ marginBottom: 20 }}>Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>
       <div className="lbl">{mode === "login" ? "Login" : "Create Account"}</div>
       <h2>{mode === "login" ? "Welcome Back" : "Join the Series"}</h2>
       <p className="sub" style={{ marginBottom: 22 }}>
