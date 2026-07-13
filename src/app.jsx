@@ -1174,6 +1174,18 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
   radial-gradient(ellipse 60% 60% at 88% 100%,rgba(0,180,210,.14),transparent),
   radial-gradient(ellipse 80% 50% at 50% 50%,rgba(0,0,0,.3),transparent),
   var(--bg);}
+/* Masjid photo background — scoped to Home + Login/Signup only, not the whole
+   app (quiz/admin/etc. keep the plain gradient background for readability).
+   Heavy dark scrim over the photo so it reads as atmosphere behind the glass
+   cards, not a competing visual — same gradient language as .app above. */
+.page-home,.page-enroll{
+  background:
+    radial-gradient(ellipse 70% 45% at 15% -5%,rgba(0,180,220,.16),transparent),
+    linear-gradient(180deg,rgba(7,28,42,.88) 0%,rgba(7,28,42,.94) 55%,rgba(7,28,42,.98) 100%),
+    url("/images/masjid-bg.jpg");
+  background-size:cover;background-position:center 30%;background-repeat:no-repeat;
+  margin:-44px -22px;padding:44px 22px;
+}
 .nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:13px 28px;
   background:rgba(11,26,20,.82);backdrop-filter:blur(28px) saturate(1.6);
   border-bottom:1px solid rgba(0,200,230,.22);
@@ -1755,6 +1767,7 @@ input[type="password"]::-ms-clear{display:none;}
   .ntext h1{font-size:16px;}
   h2{font-size:28px;}
   .page{padding:28px 16px;}
+  .page-home,.page-enroll{margin:-28px -16px;padding:28px 16px;}
   .hero{padding:36px 14px 26px;}
   .bism{font-size:44px;}
   .hero h2{font-size:30px;}
@@ -1778,6 +1791,7 @@ input[type="password"]::-ms-clear{display:none;}
 
   /* PAGE & HERO */
   .page{padding:18px 12px;}
+  .page-home,.page-enroll{margin:-18px -12px;padding:18px 12px;}
   .hero{padding:24px 12px 18px;}
   .bism{font-size:39px;}
   .hero h2{font-size:25px;}
@@ -3207,7 +3221,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
     : null;
 
   return (
-    <div className="page">
+    <div className="page page-home">
       <div className="hero">
         <div className="bism">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
         <h2>Master the <em>Language of the Quran</em></h2>
@@ -3589,7 +3603,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
   }
 
   return (
-    <div className="page psm">
+    <div className="page psm page-enroll">
       <div className="lbl">{mode === "login" ? "Login" : "Create Account"}</div>
       <h2>{mode === "login" ? "Welcome Back" : "Join the Series"}</h2>
       <p className="sub" style={{ marginBottom: 22 }}>
@@ -4192,6 +4206,46 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
   const zoomIn = () => setZoom(z => Math.min(z + 0.5, 3));
   const zoomOut = () => setZoom(z => Math.max(z - 0.5, 1));
 
+  // Native pinch-to-zoom is disabled app-wide (index.html sets
+  // maximum-scale=1 on the viewport, deliberately, so normal taps never
+  // trigger accidental zoom elsewhere in the PWA) — so pinch here has to be
+  // done manually with our own touch tracking, independent of the browser's
+  // native gesture. React's onTouchMove is passive by default and can't
+  // preventDefault, so this listener is attached directly and non-passive.
+  const imgWrapRef = React.useRef(null);
+  const pinch = React.useRef({ startDist: 0, startZoom: 1 });
+
+  React.useEffect(() => {
+    const el = imgWrapRef.current;
+    if (!el) return;
+    const dist = (touches) => Math.hypot(
+      touches[0].clientX - touches[1].clientX,
+      touches[0].clientY - touches[1].clientY
+    );
+    const onStart = (e) => {
+      if (e.touches.length === 2) {
+        pinch.current.startDist = dist(e.touches);
+        pinch.current.startZoom = zoom;
+      }
+    };
+    const onMove = (e) => {
+      if (e.touches.length === 2 && pinch.current.startDist > 0) {
+        e.preventDefault();
+        const ratio = dist(e.touches) / pinch.current.startDist;
+        setZoom(Math.min(3, Math.max(1, pinch.current.startZoom * ratio)));
+      }
+    };
+    const onEnd = () => { pinch.current.startDist = 0; };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+    };
+  }, [zoom]);
+
   // Rendered via portal straight into document.body — this modal is normally
   // mounted inside a word-card, and word-card has a :hover transform, which
   // would otherwise turn this popup's position:fixed into "fixed relative to
@@ -4213,7 +4267,7 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
           {loadFailed ? (
             <p style={{ color: "var(--muted)", fontSize: 13 }}>Couldn't load the ayah image right now — please try again later.</p>
           ) : (
-            <div style={{ overflow: "auto", maxHeight: "55vh", borderRadius: 8, background: "#fff", touchAction: "pinch-zoom" }}>
+            <div ref={imgWrapRef} style={{ overflow: "auto", maxHeight: "55vh", borderRadius: 8, background: "#fff" }}>
               <img
                 src={getAyahImageUrl(surahNumber, ayahNumber)}
                 alt={`Qur'an ${surahNumber}:${ayahNumber}`}
@@ -4221,7 +4275,7 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
                 style={{
                   width: "100%", height: "auto", padding: 8,
                   transform: `scale(${zoom})`, transformOrigin: "center top",
-                  transition: "transform .15s ease",
+                  transition: "transform .1s ease",
                 }}
               />
             </div>
