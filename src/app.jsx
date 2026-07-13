@@ -126,18 +126,25 @@ function buildWordStrengthBreakdown(scores, allWords = []) {
   // Tally every individual word attempt across all sessions that have detail.
   // A word is "strong" if it's been answered correctly more often than not,
   // "weak" if wrong more often than right, "even" if tied (no clear pattern yet).
-  const tally = {}; // key: arabic word -> { correct, wrong, english, translit, ...fullWordData }
+  // Keyed by english (not arabic) — arabic display text has been deliberately
+  // changed for some words this session (to match audio pronunciation), so a
+  // user's older session.detail rows may carry the OLD arabic text. Keying by
+  // arabic would silently fail to find the current word (losing the play
+  // button/ayah link) and would also fragment one word's history into two
+  // separate tally entries. english has stayed stable throughout, so it's
+  // the reliable join key.
+  const tally = {}; // key: english meaning -> { correct, wrong, ...fullWordData }
   for (const s of scores) {
     if (!s.detail) continue;
     for (const d of s.detail) {
-      const key = d.arabic;
+      const key = d.english;
       if (!tally[key]) {
-        // Look up the full word entry (urdu, ayah ref) so the breakdown can
-        // show the same level of detail as the Day Words page.
-        const full = allWords.find(w => w.arabic === d.arabic);
+        // Look up the full word entry (current arabic/urdu/ayah ref/audio
+        // data) so the breakdown always reflects the word's current state.
+        const full = allWords.find(w => w.english === d.english);
         tally[key] = {
           correct: 0, wrong: 0,
-          arabic: d.arabic, english: d.english, translit: d.translit,
+          arabic: full?.arabic ?? d.arabic, english: d.english, translit: full?.translit ?? d.translit,
           urdu: full?.urdu,
           ayahRef: full?.ayahRef,
           surahNumber: full?.surahNumber, ayahNumber: full?.ayahNumber, wordPosition: full?.wordPosition,
@@ -5157,8 +5164,8 @@ function ReviewPage({ rec, setView, allWords }) {
           <div className="wlist">
             {detail.map((d, i) => {
               const isOpen = expandedReviewWord === i;
-              const full = (allWords || []).find(w => w.arabic === d.arabic) || {};
-              const word = { ...full, arabic: d.arabic, english: d.english, translit: d.translit };
+              const full = (allWords || []).find(w => w.english === d.english) || {};
+              const word = { ...full, arabic: full.arabic ?? d.arabic, english: d.english, translit: full.translit ?? d.translit };
               const badge = (
                 <span style={{
                   fontSize: 10, padding: "2px 7px", borderRadius: 8, whiteSpace: "nowrap",
