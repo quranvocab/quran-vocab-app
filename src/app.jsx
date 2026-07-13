@@ -140,6 +140,7 @@ function buildWordStrengthBreakdown(scores, allWords = []) {
           arabic: d.arabic, english: d.english, translit: d.translit,
           urdu: full?.urdu,
           ayahRef: full?.ayahRef,
+          surahNumber: full?.surahNumber, ayahNumber: full?.ayahNumber, wordPosition: full?.wordPosition,
         };
       }
       if (d.isCorrect) tally[key].correct++; else tally[key].wrong++;
@@ -1176,16 +1177,22 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
   var(--bg);}
 /* Masjid photo background — scoped to Home + Login/Signup only, not the whole
    app (quiz/admin/etc. keep the plain gradient background for readability).
+   Applied via ::before bounded to a fixed viewport-relative height, NOT as a
+   direct background on the page container — that container's height grows
+   with all its scrollable content, so background-size:cover was computing
+   against that full (very tall) height instead of just the visible screen,
+   stretching the photo far beyond need and pushing the interesting part
+   (doors, water reflection) down past where anyone would actually see it.
    Light scrim only — the photo itself should read clearly (like a WhatsApp
    chat wallpaper); text readability comes from the existing glass/card
    components' own semi-opaque backgrounds, not from darkening the whole page. */
-.page-home,.page-enroll{
+.page-home,.page-enroll{position:relative;margin:-44px -22px;padding:44px 22px;isolation:isolate;}
+.page-home::before,.page-enroll::before{
+  content:"";position:absolute;top:0;left:0;right:0;height:min(640px,72vh);z-index:-1;
   background:
-    radial-gradient(ellipse 70% 45% at 15% -5%,rgba(0,180,220,.1),transparent),
-    linear-gradient(180deg,rgba(7,28,42,.38) 0%,rgba(7,28,42,.48) 55%,rgba(7,28,42,.6) 100%),
+    linear-gradient(180deg,rgba(7,28,42,.38) 0%,rgba(7,28,42,.45) 60%,var(--bg) 100%),
     url("/images/masjid-bg.jpg");
-  background-size:cover;background-position:center 30%;background-repeat:no-repeat;
-  margin:-44px -22px;padding:44px 22px;
+  background-size:135% auto;background-position:center 62%;background-repeat:no-repeat;
 }
 .page-enroll h2,.page-enroll .sub,.page-enroll .lbl{text-shadow:0 2px 10px rgba(0,0,0,.6);}
 .nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:13px 28px;
@@ -1410,8 +1417,7 @@ input[type="password"]::-ms-clear{display:none;}
 .ayah-ref-link{cursor:pointer;color:var(--cyan2);text-decoration:underline;text-underline-offset:2px;}
 .ayah-ref-link:hover{color:var(--cyan);}
 .ayah-img-frame{
-  height:50vh;overflow:auto;border-radius:8px;background:#fff;
-  display:flex;align-items:center;justify-content:center;padding:10px;
+  height:50vh;overflow:auto;border-radius:8px;background:#fff;padding:10px;
 }
 .wtr{font-size:15px;color:var(--muted);font-style:italic;text-align:center;display:none;}
 .wen{font-size:20px;font-weight:400;color:var(--text);text-align:center;}
@@ -1468,7 +1474,7 @@ input[type="password"]::-ms-clear{display:none;}
   min-height:82px;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;text-align:center;
 }
 .opt-en{font-size:20px;}
-.opt-ur{font-family:'Scheherazade New',serif;font-size:18px;color:var(--teal2);direction:rtl;}
+.opt-ur{font-family:'Scheherazade New',serif;font-size:22px;color:var(--teal2);direction:rtl;}
 .opt:hover:not(:disabled){
   border-color:rgba(0,200,230,.5);border-bottom-color:rgba(0,200,230,.5);
   color:var(--cyan2);
@@ -1716,7 +1722,7 @@ input[type="password"]::-ms-clear{display:none;}
 /* ── HISTORY — SIDE-BY-SIDE CHARTS (Set vs All Sets Quiz) ── */
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;align-items:stretch;}
 .chart-col{padding:16px 14px;display:flex;flex-direction:column;height:340px;}
-.chart-col-head{height:28px;display:flex;align-items:flex-start;flex-shrink:0;}
+.chart-col-head{min-height:28px;display:flex;align-items:flex-start;flex-shrink:0;padding-bottom:8px;}
 .chart-col-inner{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;}
 .chart-empty{text-align:center;color:var(--muted);font-size:14px;padding:36px 10px;}
 @media(max-width:640px){.chart-row{grid-template-columns:1fr;}}
@@ -3259,7 +3265,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
                 RLS itself restricts anon visitors to Set 1 rows only server-side
                 — slice(0,10) just caps it defensively at one set's worth. */}
             {allWords.slice(0, 10).map((w, i) => (
-              <div key={i} style={{ flex: "0 0 auto", width: 130, textAlign: "center", background: "rgba(0,200,230,.05)", border: "1px solid rgba(0,200,230,.15)", borderRadius: 10, padding: "16px 10px" }}>
+              <div key={i} style={{ flex: "0 0 auto", width: 130, textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "16px 10px", backdropFilter: "blur(6px)" }}>
                 <div className="arabic" style={{ fontSize: 24, color: "var(--gold2)", marginBottom: 8 }}>{w.arabic}</div>
                 <div style={{ fontSize: 12.5, color: "var(--text)" }}>{w.english}</div>
               </div>
@@ -4208,49 +4214,10 @@ function PlayPauseButton({ resolveUrl, className, title, playingLabel = "⏸", i
 // the full ayah's recitation. Image + audio via Al Quran Cloud. ────────────
 function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
   const [loadFailed, setLoadFailed] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const zoomIn = () => setZoom(z => Math.min(z + 0.5, 3));
-  const zoomOut = () => setZoom(z => Math.max(z - 0.5, 1));
-
-  // Native pinch-to-zoom is disabled app-wide (index.html sets
-  // maximum-scale=1 on the viewport, deliberately, so normal taps never
-  // trigger accidental zoom elsewhere in the PWA) — so pinch here has to be
-  // done manually with our own touch tracking, independent of the browser's
-  // native gesture. React's onTouchMove is passive by default and can't
-  // preventDefault, so this listener is attached directly and non-passive.
-  const imgWrapRef = React.useRef(null);
-  const pinch = React.useRef({ startDist: 0, startZoom: 1 });
-
-  React.useEffect(() => {
-    const el = imgWrapRef.current;
-    if (!el) return;
-    const dist = (touches) => Math.hypot(
-      touches[0].clientX - touches[1].clientX,
-      touches[0].clientY - touches[1].clientY
-    );
-    const onStart = (e) => {
-      if (e.touches.length === 2) {
-        pinch.current.startDist = dist(e.touches);
-        pinch.current.startZoom = zoom;
-      }
-    };
-    const onMove = (e) => {
-      if (e.touches.length === 2 && pinch.current.startDist > 0) {
-        e.preventDefault();
-        const ratio = dist(e.touches) / pinch.current.startDist;
-        setZoom(Math.min(3, Math.max(1, pinch.current.startZoom * ratio)));
-      }
-    };
-    const onEnd = () => { pinch.current.startDist = 0; };
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchmove", onMove, { passive: false });
-    el.addEventListener("touchend", onEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove", onMove);
-      el.removeEventListener("touchend", onEnd);
-    };
-  }, [zoom]);
+  // Fixed at a comfortable reading size (~275%, the sweet spot for legibility
+  // on this image) rather than manual zoom controls — panning around the
+  // enlarged image is just a normal scroll/drag inside the frame below.
+  const READING_SCALE = 2.75;
 
   // Rendered via portal straight into document.body — this modal is normally
   // mounted inside a word-card, and word-card has a :hover transform, which
@@ -4265,24 +4232,16 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body" style={{ textAlign: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 }}>
-            <button className="play-btn" onClick={zoomOut} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out">−</button>
-            <span style={{ fontSize: 12, color: "var(--muted)", minWidth: 40 }}>{Math.round(zoom * 100)}%</span>
-            <button className="play-btn" onClick={zoomIn} disabled={zoom >= 3} aria-label="Zoom in" title="Zoom in">+</button>
-          </div>
           {loadFailed ? (
             <p style={{ color: "var(--muted)", fontSize: 13 }}>Couldn't load the ayah image right now — please try again later.</p>
           ) : (
-            <div ref={imgWrapRef} className="ayah-img-frame">
+            <div className="ayah-img-frame">
               <img
                 src={getAyahImageUrl(surahNumber, ayahNumber)}
                 alt={`Qur'an ${surahNumber}:${ayahNumber}`}
                 onError={() => setLoadFailed(true)}
                 style={{
-                  maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto",
-                  objectFit: "contain",
-                  transform: `scale(${zoom})`, transformOrigin: "center center",
-                  transition: "transform .1s ease",
+                  maxWidth: "100%", height: "auto", width: `${READING_SCALE * 100}%`,
                 }}
               />
             </div>
