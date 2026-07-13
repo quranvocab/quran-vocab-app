@@ -1300,12 +1300,13 @@ input[type="password"]::-ms-clear{display:none;}
 .auth-mode-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
 .auth-mode-tab{
   flex:1;min-width:90px;padding:9px 10px;border-radius:8px;
-  background:rgba(255,255,255,.06);border:1px solid rgba(0,200,230,.14);
+  background:rgba(7,28,42,.65);border:1px solid rgba(0,200,230,.22);
   color:var(--muted);font-family:'Poppins',sans-serif;font-size:13px;
   letter-spacing:.01em;cursor:pointer;transition:all .18s;
+  backdrop-filter:blur(6px);
 }
-.auth-mode-tab:hover{border-color:rgba(0,200,230,.25);color:var(--gold3);}
-.auth-mode-tab.on{background:rgba(0,200,230,.1);border-color:var(--cyan2);color:var(--cyan2);}
+.auth-mode-tab:hover{border-color:rgba(0,200,230,.35);color:var(--gold3);}
+.auth-mode-tab.on{background:rgba(0,150,190,.35);border-color:var(--cyan2);color:var(--cyan2);}
 @keyframes tagIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 
 /* ── ENROLLMENT — TYPO WARNING ── */
@@ -1498,7 +1499,7 @@ input[type="password"]::-ms-clear{display:none;}
   background:radial-gradient(circle,rgba(0,200,230,.1),transparent);
   box-shadow:0 0 0 10px rgba(0,200,230,.05),0 0 50px rgba(0,200,230,.25),0 8px 40px rgba(0,0,0,.5);
 }
-.rpct{font-family:'Poppins',sans-serif;font-size:55px;font-weight:500;color:var(--cyan2);line-height:1;text-shadow:0 0 20px rgba(0,220,255,.5);}
+.rpct{font-family:'Poppins',sans-serif;font-size:42px;font-weight:500;color:var(--cyan2);line-height:1;text-shadow:0 0 20px rgba(0,220,255,.5);}
 .rfrac{font-size:14px;color:var(--muted);letter-spacing:.07em;}
 .miss{padding:11px 15px;border-radius:7px;background:rgba(192,80,74,.06);border:1px solid rgba(192,80,74,.18);display:grid;grid-template-columns:auto 1fr auto;gap:11px;align-items:center;margin-bottom:7px;font-size:15px;}
 .lbrow{display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:7px;transition:background .14s;}
@@ -1845,7 +1846,7 @@ input[type="password"]::-ms-clear{display:none;}
 
   /* QUIZ RESULTS */
   .rring{width:108px;height:108px;}
-  .rpct{font-size:41px;}
+  .rpct{font-size:32px;}
   .miss{grid-template-columns:auto 1fr;gap:8px;font-size:14px;}
 
   /* MODAL — edge-to-edge */
@@ -3115,6 +3116,7 @@ export default function App() {
               <button className={`nbtn ${view === "leaderboard" ? "on" : ""}`} onClick={() => setView("leaderboard")}>Ranks</button>
               <button className="ndonate" onClick={() => setShowDonate(true)}>🤲 Donate</button>
               <button className={`ncta ${view === "learn" ? "on" : ""}`} onClick={() => setView("learn")}>📚 Learn</button>
+              {user && <button className="ncta" onClick={() => setShowInvite(true)}>✉ Invite</button>}
               {!user && <button className="ncta" onClick={() => setView("enroll")}>Login / Join Now</button>}
               {user && (
                 <div className="nuser-wrap">
