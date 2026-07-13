@@ -1014,7 +1014,7 @@ async function sendInviteEmail({ toEmail, friendName, inviterName }) {
   <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(0,200,230,.25);">
 
     <!-- Header -->
-    <div style="background:linear-gradient(135deg,#071c2a,#0d2d40);padding:32px 24px;text-align:center;border-bottom:1px solid rgba(0,200,230,.2);">
+    <div style="background-color:#0d2d40;padding:32px 24px;text-align:center;border-bottom:1px solid rgba(0,200,230,.2);">
       <div style="font-size:36px;margin-bottom:8px">📖</div>
       <div style="font-size:20px;color:#ffd96b;margin-bottom:8px;line-height:1.6">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
       <div style="font-size:21px;font-weight:700;color:#f0f8ff">You're Invited to Learn Qur'anic Vocabulary</div>
@@ -1031,7 +1031,7 @@ async function sendInviteEmail({ toEmail, friendName, inviterName }) {
       <p style="font-size:13px;color:#7ab8d4;line-height:1.7;margin:0 0 26px;font-style:italic">
         "Whoever follows a path in pursuit of knowledge, Allah will make easy for him a path to Paradise." — Sahih Muslim
       </p>
-      <a href="${appUrl}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#00c8e6,#00a8c2);color:#071c2a;font-weight:700;font-size:14px;text-decoration:none;border-radius:10px;box-shadow:0 4px 16px rgba(0,200,230,.3)">
+      <a href="${appUrl}" style="display:inline-block;padding:14px 34px;background-color:#00c8e6;color:#071c2a;font-weight:700;font-size:14px;text-decoration:none;border-radius:10px">
         Begin Your Journey →
       </a>
     </div>
