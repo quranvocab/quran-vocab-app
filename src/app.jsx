@@ -1176,16 +1176,18 @@ body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans
   var(--bg);}
 /* Masjid photo background — scoped to Home + Login/Signup only, not the whole
    app (quiz/admin/etc. keep the plain gradient background for readability).
-   Heavy dark scrim over the photo so it reads as atmosphere behind the glass
-   cards, not a competing visual — same gradient language as .app above. */
+   Light scrim only — the photo itself should read clearly (like a WhatsApp
+   chat wallpaper); text readability comes from the existing glass/card
+   components' own semi-opaque backgrounds, not from darkening the whole page. */
 .page-home,.page-enroll{
   background:
-    radial-gradient(ellipse 70% 45% at 15% -5%,rgba(0,180,220,.16),transparent),
-    linear-gradient(180deg,rgba(7,28,42,.88) 0%,rgba(7,28,42,.94) 55%,rgba(7,28,42,.98) 100%),
+    radial-gradient(ellipse 70% 45% at 15% -5%,rgba(0,180,220,.1),transparent),
+    linear-gradient(180deg,rgba(7,28,42,.38) 0%,rgba(7,28,42,.48) 55%,rgba(7,28,42,.6) 100%),
     url("/images/masjid-bg.jpg");
   background-size:cover;background-position:center 30%;background-repeat:no-repeat;
   margin:-44px -22px;padding:44px 22px;
 }
+.page-enroll h2,.page-enroll .sub,.page-enroll .lbl{text-shadow:0 2px 10px rgba(0,0,0,.6);}
 .nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:13px 28px;
   background:rgba(11,26,20,.82);backdrop-filter:blur(28px) saturate(1.6);
   border-bottom:1px solid rgba(0,200,230,.22);
@@ -1407,6 +1409,10 @@ input[type="password"]::-ms-clear{display:none;}
 .play-btn.error{border-color:rgba(255,82,82,.5);color:var(--err);}
 .ayah-ref-link{cursor:pointer;color:var(--cyan2);text-decoration:underline;text-underline-offset:2px;}
 .ayah-ref-link:hover{color:var(--cyan);}
+.ayah-img-frame{
+  height:50vh;overflow:auto;border-radius:8px;background:#fff;
+  display:flex;align-items:center;justify-content:center;padding:10px;
+}
 .wtr{font-size:15px;color:var(--muted);font-style:italic;text-align:center;display:none;}
 .wen{font-size:20px;font-weight:400;color:var(--text);text-align:center;}
 .word-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1;min-width:0;}
@@ -1524,8 +1530,8 @@ input[type="password"]::-ms-clear{display:none;}
 .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;}.del:hover{color:var(--err);}
 .hero{text-align:center;padding:54px 18px 38px;}
 .bism{font-family:'Scheherazade New',serif;font-size:71px;font-weight:700;color:var(--gold2);direction:rtl;margin-bottom:20px;line-height:1.45;text-shadow:0 0 40px rgba(255,184,0,.5),0 2px 8px rgba(0,0,0,.5);}
-.hero h2{font-size:44px;font-weight:500;color:var(--text);}.hero h2 em{color:var(--cyan2);font-style:normal;text-shadow:0 0 20px rgba(0,220,255,.35);}
-.hero .sub{max-width:500px;margin:0 auto 30px;font-size:21px;}
+.hero h2{font-size:44px;font-weight:500;color:var(--text);text-shadow:0 2px 10px rgba(0,0,0,.6);}.hero h2 em{color:var(--cyan2);font-style:normal;text-shadow:0 0 20px rgba(0,220,255,.35),0 2px 10px rgba(0,0,0,.6);}
+.hero .sub{max-width:500px;margin:0 auto 30px;font-size:21px;text-shadow:0 1px 8px rgba(0,0,0,.6);}
 .streak{display:inline-flex;align-items:center;gap:6px;
   background:rgba(0,200,230,.1);
   border:1px solid rgba(0,200,230,.35);border-radius:14px;padding:6px 14px;
@@ -4267,14 +4273,15 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
           {loadFailed ? (
             <p style={{ color: "var(--muted)", fontSize: 13 }}>Couldn't load the ayah image right now — please try again later.</p>
           ) : (
-            <div ref={imgWrapRef} style={{ overflow: "auto", maxHeight: "55vh", borderRadius: 8, background: "#fff" }}>
+            <div ref={imgWrapRef} className="ayah-img-frame">
               <img
                 src={getAyahImageUrl(surahNumber, ayahNumber)}
                 alt={`Qur'an ${surahNumber}:${ayahNumber}`}
                 onError={() => setLoadFailed(true)}
                 style={{
-                  width: "100%", height: "auto", padding: 8,
-                  transform: `scale(${zoom})`, transformOrigin: "center top",
+                  maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto",
+                  objectFit: "contain",
+                  transform: `scale(${zoom})`, transformOrigin: "center center",
                   transition: "transform .1s ease",
                 }}
               />
