@@ -1164,6 +1164,68 @@ async function isEmailDomainValid(email) {
 const GEO = `<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><g fill='none' stroke='rgba(0,200,230,0.08)' stroke-width='.7'><polygon points='90,8 108,62 164,62 118,96 136,150 90,116 44,150 62,96 16,62 72,62'/><circle cx='90' cy='90' r='65'/><line x1='90' y1='0' x2='90' y2='180'/><line x1='0' y1='90' x2='180' y2='90'/></g></svg>`;
 const bgUrl = `data:image/svg+xml;base64,${btoa(GEO)}`;
 
+// ── Cloudflare Turnstile (bot check on Sign Up) ─────────────────────────────
+// Site key is public by design — safe to embed in client code. The secret
+// key is never in this file; it lives only as a Supabase Edge Function
+// secret, used server-side by verify-turnstile to actually validate tokens.
+const TURNSTILE_SITE_KEY = "0x4AAAAAAD1RXCGKqZ8-xS5F";
+
+async function verifyTurnstileToken(token) {
+  if (!token) return false;
+  try {
+    const { data, error } = await supabase.functions.invoke("verify-turnstile", { body: { token } });
+    if (error) { console.error("verify-turnstile error:", error.message); return false; }
+    return !!data?.success;
+  } catch (e) {
+    console.error("verify-turnstile exception:", e.message);
+    return false;
+  }
+}
+
+// Renders a Turnstile widget via the explicit render API (more reliable in
+// React than Turnstile's automatic DOM-scan, which can conflict with React's
+// own re-renders). Waits for the script (loaded in index.html) if it hasn't
+// finished loading yet by the time this mounts.
+function TurnstileWidget({ onVerify, onExpire }) {
+  const containerRef = React.useRef(null);
+  const widgetIdRef = React.useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let pollId = null;
+
+    const renderWidget = () => {
+      if (cancelled || !containerRef.current || !window.turnstile) return;
+      widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        theme: "dark",
+        callback: onVerify,
+        "expired-callback": () => onExpire?.(),
+        "error-callback": () => onExpire?.(),
+      });
+    };
+
+    if (window.turnstile) {
+      renderWidget();
+    } else {
+      // Script tag has async/defer — poll briefly until it's ready.
+      pollId = setInterval(() => {
+        if (window.turnstile) { clearInterval(pollId); renderWidget(); }
+      }, 150);
+    }
+
+    return () => {
+      cancelled = true;
+      if (pollId) clearInterval(pollId);
+      if (window.turnstile && widgetIdRef.current != null) {
+        try { window.turnstile.remove(widgetIdRef.current); } catch (e) { /* already gone */ }
+      }
+    };
+  }, []);
+
+  return <div ref={containerRef} style={{ margin: "6px 0 4px" }} />;
+}
+
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Scheherazade+New:wght@400;600;700&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -2332,9 +2394,16 @@ export default function App() {
   };
 
   // ── SUPABASE AUTH: Register new account ───────────────────────────────────
-  const registerUser = async (userId, password, name, email) => {
+  const registerUser = async (userId, password, name, email, turnstileToken) => {
     const idLower    = userId.trim().toLowerCase();
     const emailLower = email.trim().toLowerCase();
+
+    // Bot check first, before any DB queries — fail fast and cheaply.
+    const humanVerified = await verifyTurnstileToken(turnstileToken);
+    if (!humanVerified) {
+      toast_("Bot check failed — please complete the verification and try again.");
+      return { ok: false, reason: "turnstile-failed" };
+    }
 
     // Check duplicate EMAIL first — if the email is already registered,
     // that's the error the person needs to see (not a user-id clash)
@@ -3492,6 +3561,8 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
   const [suEmail, setSuEmail] = useState("");
   const [typoWarning, setTypoWarning] = useState(null);
   const [ignoreTypo, setIgnoreTypo] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState(null);
+  const [turnstileKey, setTurnstileKey] = useState(0); // bump to force widget remount/reset
 
   // Inline availability hints — checked onBlur, cleared when user edits the field
   const [userIdHint, setUserIdHint] = useState(""); // "taken" | "ok" | ""
@@ -3567,8 +3638,10 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
     }
     // alias-warning (hotmail/outlook/yahoo) — shown inline below the field already, don't block signup
 
+    if (!turnstileToken) { setError("Please complete the verification check below."); return; }
+
     setChecking(true);
-    const regResult = await onRegister(userId, suPw, name, email);
+    const regResult = await onRegister(userId, suPw, name, email, turnstileToken);
     setChecking(false);
     if (regResult.ok) {
       setPendingVerify({ userId: regResult.userId, email: regResult.email });
@@ -3577,10 +3650,13 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
       }
     } else if (regResult.reason === "id-taken") {
       setError("That User ID is already taken. Please choose a different one.");
+      setTurnstileToken(null); setTurnstileKey(k => k + 1);
     } else if (regResult.reason === "email-taken") {
       setError("That email address is already registered. Please log in instead, or use a different email.");
+      setTurnstileToken(null); setTurnstileKey(k => k + 1);
     } else {
       setError("Could not create account. Please try again.");
+      setTurnstileToken(null); setTurnstileKey(k => k + 1);
     }
   };
 
@@ -3744,7 +3820,12 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
               })()}
             </div>
             {error && <div className="enroll-error">⚠ {error}</div>}
-            <button className="btn bg bfw" onClick={submitSignup} disabled={checking}>
+            <TurnstileWidget
+              key={turnstileKey}
+              onVerify={(token) => setTurnstileToken(token)}
+              onExpire={() => setTurnstileToken(null)}
+            />
+            <button className="btn bg bfw" onClick={submitSignup} disabled={checking || !turnstileToken}>
               {checking ? "Checking…" : "Create Account →"}
             </button>
           </>
