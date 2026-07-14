@@ -21,7 +21,7 @@ const TOTAL_DAYS = 1;
 const PASSING_SCORE_PCT = 90;
 // TEMPORARY for testing — real threshold is 100. Change back to 100 once
 // the certificate email flow is confirmed working end-to-end.
-const CERTIFICATE_MASTERY_THRESHOLD = 5;
+const CERTIFICATE_MASTERY_THRESHOLD = 100;
 const MASTERY_GATE_PCT = 70;
 
 function shuffle(arr) {
@@ -2979,6 +2979,8 @@ export default function App() {
     if (ok) { const words = await fetchAllWords(); if (words) setAllWords(words); }
     return ok;
   };
+  // Uploads the file to Storage, then saves the resulting URL on the word
+  // in one step — Admin just picks a file, doesn't juggle two actions.
   const removeWord = async (dbId) => {
     const ok = await deleteWordRow(dbId);
     if (ok) { const words = await fetchAllWords(); if (words) setAllWords(words); }
@@ -4245,6 +4247,47 @@ function getWordAudioUrl(surahNumber, ayahNumber, wordPosition) {
 function getAyahImageUrl(surahNumber, ayahNumber) {
   return `https://cdn.islamic.network/quran/images/high-resolution/${surahNumber}_${ayahNumber}.png`;
 }
+
+// ── Admin-uploaded ayah images (Supabase Storage) ───────────────────────────
+// Per-ayah, not per-word — several words can share the same ayah, so one
+// upload benefits every word that references it. Falls back automatically
+// to the external CDN (getAyahImageUrl above) for any ayah nobody's
+// uploaded a custom image for yet — see AyahImagePopup's onError handling.
+const AYAH_IMAGE_BUCKET = "ayah-images";
+function getCustomAyahImageUrl(surahNumber, ayahNumber) {
+  const { data } = supabase.storage.from(AYAH_IMAGE_BUCKET).getPublicUrl(`${surahNumber}_${ayahNumber}.png`);
+  // Cache-bust so a re-uploaded replacement for the same ayah shows
+  // immediately instead of a stale browser-cached version.
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
+
+// Normalizes whatever image format Admin uploads (jpg/png/webp/etc.) to a
+// consistent PNG via canvas, so the lookup above can always assume a fixed
+// `.png` extension without needing to track what was actually uploaded.
+async function uploadAyahImage(file, surahNumber, ayahNumber) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = async () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext("2d").drawImage(img, 0, 0);
+      canvas.toBlob(async (blob) => {
+        if (!blob) { resolve({ ok: false, reason: "conversion-failed" }); return; }
+        const { error } = await supabase.storage
+          .from(AYAH_IMAGE_BUCKET)
+          .upload(`${surahNumber}_${ayahNumber}.png`, blob, { upsert: true, contentType: "image/png" });
+        if (error) { console.error("uploadAyahImage error:", error.message); resolve({ ok: false, reason: "upload-failed" }); return; }
+        resolve({ ok: true });
+      }, "image/png");
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve({ ok: false, reason: "invalid-image" }); };
+    img.src = objectUrl;
+  });
+}
+
 // In-memory cache so re-opening the same ayah's audio doesn't re-hit the API.
 const _ayahAudioCache = {};
 async function fetchAyahAudioUrl(surahNumber, ayahNumber) {
@@ -4329,11 +4372,22 @@ function GateWarningModal({ message, onClose }) {
 }
 
 function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
-  const [loadFailed, setLoadFailed] = useState(false);
-  // Fixed at a comfortable reading size (~275%, the sweet spot for legibility
-  // on this image) rather than manual zoom controls — panning around the
-  // enlarged image is just a normal scroll/drag inside the frame below.
+  const [stage, setStage] = useState("custom"); // "custom" -> "cdn" -> "failed"
+  // Fixed at a comfortable reading size (~400%, the sweet spot for legibility
+  // on the low-res CDN fallback) rather than manual zoom controls — panning
+  // around the enlarged image is just a normal scroll/drag inside the frame
+  // below. Only applied to the CDN fallback — a custom-uploaded image is
+  // presumably already a reasonably-sized, clear crop, so it's shown at its
+  // own natural fit instead of forcing the same aggressive zoom onto it.
   const READING_SCALE = 4;
+  const imageSrc = stage === "custom" ? getCustomAyahImageUrl(surahNumber, ayahNumber) : getAyahImageUrl(surahNumber, ayahNumber);
+
+  const handleImgError = () => {
+    // No custom upload exists for this ayah yet (404) — silently fall back
+    // to the CDN, no error shown to the learner for this expected case.
+    if (stage === "custom") setStage("cdn");
+    else setStage("failed");
+  };
 
   // Rendered via portal straight into document.body — this modal is normally
   // mounted inside a word-card, and word-card has a :hover transform, which
@@ -4348,17 +4402,19 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body" style={{ textAlign: "center" }}>
-          {loadFailed ? (
+          {stage === "failed" ? (
             <p style={{ color: "var(--muted)", fontSize: 13 }}>Couldn't load the ayah image right now — please try again later.</p>
           ) : (
             <div className="ayah-img-frame">
               <img
-                src={getAyahImageUrl(surahNumber, ayahNumber)}
+                src={imageSrc}
                 alt={`Qur'an ${surahNumber}:${ayahNumber}`}
-                onError={() => setLoadFailed(true)}
-                style={{
-                  maxWidth: "100%", height: "auto", width: `${READING_SCALE * 100}%`,
-                }}
+                onError={handleImgError}
+                style={
+                  stage === "custom"
+                    ? { maxWidth: "100%", width: "100%", height: "auto" }
+                    : { maxWidth: "100%", height: "auto", width: `${READING_SCALE * 100}%` }
+                }
               />
             </div>
           )}
@@ -4887,7 +4943,13 @@ function ScoreBarChart({ data, compact = false, mode = "score" }) {
           </g>
         );
       })}
-      {data.map((d, i) => {
+      {(() => {
+        // At high bar counts in compact mode, shrinking font alone wasn't
+        // reliably preventing overlap (depends on exact glyph widths) — show
+        // at most ~6 evenly-spaced labels instead, which guarantees no
+        // overlap regardless of font metrics.
+        const labelStep = compact && data.length > 6 ? Math.ceil(data.length / 6) : 1;
+        return data.map((d, i) => {
         const x = startX + i * (barW + barGap);
         let barFraction, topLabel, color;
         if (mode === "time") {
@@ -4906,10 +4968,11 @@ function ScoreBarChart({ data, compact = false, mode = "score" }) {
           <g key={i}>
             <rect x={x} y={y} width={barW} height={barH} rx="3" fill={color} opacity="0.85" />
             {(!compact || data.length <= 8) && <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif">{topLabel}</text>}
-            <text x={x + barW / 2} y={H - 10} fontSize={compact ? (data.length > 6 ? 8.5 : 10) : 12} fill="var(--muted)" textAnchor="middle" fontFamily="Poppins, sans-serif">{d.label}</text>
+            {i % labelStep === 0 && <text x={x + barW / 2} y={H - 10} fontSize={compact ? 10 : 12} fill="var(--muted)" textAnchor="middle" fontFamily="Poppins, sans-serif">{d.label}</text>}
           </g>
         );
-      })}
+        });
+      })()}
     </svg>
   );
 }
@@ -5953,6 +6016,38 @@ function FinancePage({ receipts, receiptRequests, onIssueReceipt, onDismissReque
 }
 
 // ─── Words Table with inline editing ─────────────────────────────────────────
+// Small file-picker + upload button, used inline in the words admin table.
+// Shows the current image thumbnail (if any) as a visual confirmation, and
+// a compact status while uploading.
+function AyahImageUploadButton({ surahNumber, ayahNumber }) {
+  const [status, setStatus] = useState("idle"); // idle | uploading | done | error
+  const inputRef = React.useRef(null);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStatus("uploading");
+    const result = await uploadAyahImage(file, surahNumber, ayahNumber);
+    setStatus(result?.ok ? "done" : "error");
+    setTimeout(() => setStatus("idle"), 2000);
+    e.target.value = ""; // allow re-selecting the same file later if needed
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
+      <button
+        className="btn bh bsm" style={{ fontSize: 10, padding: "3px 8px" }}
+        onClick={() => inputRef.current?.click()}
+        disabled={status === "uploading"}
+        title="Upload a custom image for this ayah — used by every word that references it"
+      >
+        {status === "uploading" ? "…" : status === "error" ? "⚠ retry" : status === "done" ? "✓ saved" : "🖼 Ayah Img"}
+      </button>
+    </div>
+  );
+}
+
 function WordsTable({ allWords, onEditWord, onDeleteWord }) {
   const [editIdx, setEditIdx] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -5977,7 +6072,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
   return (
     <div style={{ maxHeight: 500, overflowY: "auto" }}>
       <table className="tbl">
-        <thead><tr><th>Arabic</th><th>Translit</th><th>English</th><th>Urdu</th><th>Surah:Ayah</th><th></th></tr></thead>
+        <thead><tr><th>Arabic</th><th>Translit</th><th>English</th><th>Urdu</th><th>Surah:Ayah</th><th>Image</th><th></th></tr></thead>
         <tbody>
           {allWords.map((w, i) => {
             if (editIdx === i) {
@@ -6001,6 +6096,11 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                       <input type="number" min="1" value={editForm.wordPosition ?? ""} onChange={e => setEditForm(f => ({ ...f, wordPosition: e.target.value ? parseInt(e.target.value, 10) : null }))} title="Word position within the ayah" style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
                     </div>
                   </td>
+                  <td>
+                    {editForm.surahNumber && editForm.ayahNumber
+                      ? <AyahImageUploadButton surahNumber={editForm.surahNumber} ayahNumber={editForm.ayahNumber} />
+                      : <span style={{ fontSize: 10, color: "var(--muted)" }}>Set Surah/Ayah first</span>}
+                  </td>
                   <td style={{ display: "flex", gap: 4 }}>
                     <button className="btn bg bsm" onClick={saveEdit} disabled={saving}>{saving ? "…" : "✓"}</button>
                     <button className="btn bh bsm" onClick={cancelEdit} disabled={saving}>✕</button>
@@ -6015,6 +6115,11 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                 <td>{w.english}</td>
                 <td><span className="arabic" style={{ fontSize: 14, color: "var(--teal2)" }}>{w.urdu || "—"}</span></td>
                 <td style={{ fontSize: 12, color: "var(--muted)" }}>{w.surahNumber && w.ayahNumber ? `${w.surahNumber}:${w.ayahNumber}${w.wordPosition ? ` (w${w.wordPosition})` : ""}` : "—"}</td>
+                <td>
+                  {w.surahNumber && w.ayahNumber
+                    ? <AyahImageUploadButton surahNumber={w.surahNumber} ayahNumber={w.ayahNumber} />
+                    : <span style={{ fontSize: 10, color: "var(--muted)" }}>—</span>}
+                </td>
                 <td style={{ display: "flex", gap: 4 }}>
                   <button className="btn bh bsm" style={{ fontSize: 10 }} onClick={() => openEdit(w, i)}>✏</button>
                   {w.isCustom ? <button className="del" onClick={() => remove(w)}>✕</button> : <span style={{ fontSize: 10, color: "var(--muted)" }}>built-in</span>}
@@ -6323,7 +6428,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
     setResetSending(false);
     if (result.ok) {
       setResetSent(true);
-      toast_(`Reset link emailed to ${resetTarget}.`);
+      toast_(`Reset code emailed to ${resetTarget}.`);
     } else if (result.reason === "no-email") {
       setResetError("This learner has no registered email on file — can't send a link.");
     } else if (result.reason === "send-failed") {
@@ -6478,25 +6583,34 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeReset(); }}>
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-head">
-              <h3>Send Reset Link — {resetTarget}</h3>
+              <h3>Send Reset Code — {resetTarget}</h3>
               <button className="modal-close" onClick={closeReset}>✕</button>
             </div>
             <div className="modal-body">
               {!resetSent ? (
                 <>
                   <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
-                    This emails a one-time link to <strong style={{ color: "var(--gold3)" }}>{resetTarget}</strong>'s registered email address. The link lets them set a new password themselves — no password is sent or typed by you. The link expires in 24 hours.
+                    This emails a 6-digit code to <strong style={{ color: "var(--gold3)" }}>{resetTarget}</strong>'s registered email address. The code lets them set a new password themselves — no password is sent or typed by you. The code expires in 1 hour.
                   </p>
                   {resetError && <div className="enroll-error">⚠ {resetError}</div>}
                   <button className="btn bg bfw" onClick={submitReset} disabled={resetSending}>
-                    {resetSending ? "Sending…" : "Send Reset Link →"}
+                    {resetSending ? "Sending…" : "Send Reset Code →"}
                   </button>
                 </>
               ) : (
                 <div style={{ textAlign: "center", padding: "10px 0" }}>
                   <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
-                  <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Reset link sent!</p>
-                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 18 }}>{resetTarget} will receive an email with a link to set their own new password.</p>
+                  <p style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Reset code sent!</p>
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14 }}>{resetTarget} will receive an email with a 6-digit code (expires in 1 hour).</p>
+                  <div style={{ textAlign: "left", background: "rgba(0,200,230,.06)", border: "1px solid rgba(0,200,230,.2)", borderRadius: 8, padding: "12px 14px", marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, color: "var(--cyan2)", fontWeight: 600, marginBottom: 6, letterSpacing: ".03em" }}>TELL THEM TO:</div>
+                    <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--muted)", lineHeight: 1.8 }}>
+                      <li>Go to the Login screen</li>
+                      <li>Tap "Forgot Password?"</li>
+                      <li>Enter their User ID + email</li>
+                      <li>Enter the 6-digit code from the email + set a new password</li>
+                    </ol>
+                  </div>
                   <button className="btn bh" onClick={closeReset}>Close</button>
                 </div>
               )}
@@ -6971,6 +7085,7 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
   const [donorEmail, setDonorEmail] = useState(user?.email || "");
   const [amount, setAmount] = useState("");
   const [donationDate, setDonationDate] = useState("");
+  const [upiId, setUpiId] = useState("");
   const [utrReference, setUtrReference] = useState("");
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
@@ -6983,16 +7098,19 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
     setError("");
     if (!donorName.trim()) { setError("Please enter your name."); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(donorEmail.trim())) { setError("Please enter a valid email address."); return; }
-    if (!utrReference.trim()) { setError("UPI Reference (UTR) Number is required — check your UPI app's transaction history."); return; }
+    if (donationDate && donationDate > new Date().toISOString().slice(0, 10)) { setError("Date paid can't be in the future."); return; }
+    if (!upiId.trim()) { setError("UPI ID is required — check your UPI app's transaction history."); return; }
+    if (!/^[a-zA-Z0-9]+$/.test(upiId.trim())) { setError("UPI ID should only contain letters and numbers."); return; }
+    if (!/^[0-9]{12}$/.test(utrReference.trim())) { setError("UTR must be exactly 12 digits — check your UPI app's transaction history."); return; }
     setSending(true);
     const ok = await onSubmit({
       donorName: donorName.trim(), donorEmail: donorEmail.trim(),
       amount: amount ? Number(amount) : null, donationDate: donationDate || null,
-      note: note.trim(), utrReference: utrReference.trim(),
+      note: note.trim(), utrReference: `UPI: ${upiId.trim()} | UTR: ${utrReference.trim()}`,
     });
     setSending(false);
     if (ok) setSent(true);
-    else setError("Couldn't submit your request right now — please check your UTR Number and try again.");
+    else setError("Couldn't submit your request right now — please check your UPI ID and UTR Number and try again.");
   };
 
   return (
@@ -7012,9 +7130,12 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
               <div className="field"><label>Your Email</label><input type="email" value={donorEmail} onChange={e => setDonorEmail(e.target.value)} placeholder="you@email.com" /></div>
               <div style={{ display: "flex", gap: 12 }}>
                 <div className="field" style={{ flex: 1 }}><label>Amount Paid (₹, optional)</label><input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="1000" /></div>
-                <div className="field" style={{ flex: 1 }}><label>Date Paid (optional)</label><input type="date" value={donationDate} onChange={e => setDonationDate(e.target.value)} /></div>
+                <div className="field" style={{ flex: 1 }}><label>Date Paid (optional)</label><input type="date" value={donationDate} max={new Date().toISOString().slice(0, 10)} onChange={e => setDonationDate(e.target.value)} /></div>
               </div>
-              <div className="field"><label>UPI Reference / UTR Number</label><input value={utrReference} onChange={e => setUtrReference(e.target.value)} placeholder="e.g. 402812345678" /></div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <div className="field" style={{ flex: 1 }}><label>UPI ID</label><input value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="username@bank" /></div>
+                <div className="field" style={{ flex: 1 }}><label>UTR Number (12 digits)</label><input value={utrReference} onChange={e => setUtrReference(e.target.value)} placeholder="123456789012" maxLength={12} /></div>
+              </div>
               <p style={{ fontSize: 11, color: "var(--muted)", marginTop: -8, marginBottom: 12, lineHeight: 1.5 }}>Found in your UPI app's transaction/payment history — this is how we match your payment to your receipt.</p>
               <div className="field"><label>Note (optional)</label><input value={note} onChange={e => setNote(e.target.value)} placeholder="Anything else that helps us identify your payment" /></div>
               {error && <div className="enroll-error">⚠ {error}</div>}
