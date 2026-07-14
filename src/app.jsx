@@ -62,7 +62,7 @@ function getUnlockedWords(enrolledAt, dayProgress = {}, allWords = []) {
 // word across every set, summed.
 function getMasteredWords(scores, allWords = []) {
   const { masteredSet } = buildStrictMastery(scores || []);
-  const wordBankKeys = new Set(allWords.map(w => w.arabic));
+  const wordBankKeys = new Set(allWords.map(w => w.english));
   return new Set([...masteredSet].filter(k => wordBankKeys.has(k)));
 }
 
@@ -172,14 +172,18 @@ function buildWordStrengthBreakdown(scores, allWords = []) {
 const MASTERY_STREAK_REQUIRED = 3;
 
 function buildStrictMastery(scores) {
-  const streaks = {}; // key: arabic word -> current consecutive-correct streak
+  const streaks = {}; // key: english meaning -> current consecutive-correct streak.
+  // Keyed by english, not arabic — arabic display text has been deliberately
+  // changed for some words (pronunciation-accuracy work), so keying by arabic
+  // would fragment one word's streak into two whenever its display text changes.
+  // english has stayed stable throughout, so it's the reliable key.
   const attempted = new Set();
   // scores is chronological (oldest first, since it's built by appending each
   // new attempt) — process in that order so the streak reflects recency.
   for (const s of scores) {
     if (!s.detail) continue;
     for (const d of s.detail) {
-      const key = d.arabic;
+      const key = d.english;
       attempted.add(key);
       if (d.isCorrect) {
         streaks[key] = (streaks[key] || 0) + 1;
@@ -206,9 +210,9 @@ function buildStrictMastery(scores) {
 function hasMetMasteryGate(setDay, allScores, allWords) {
   const setWords = getWordsForDay(setDay, allWords);
   if (setWords.length === 0) return false;
-  const setWordArabics = new Set(setWords.map(w => w.arabic));
+  const setWordKeys = new Set(setWords.map(w => w.english));
   const { masteredSet } = buildStrictMastery(allScores);
-  const masteredInSet = [...masteredSet].filter(arabic => setWordArabics.has(arabic)).length;
+  const masteredInSet = [...masteredSet].filter(key => setWordKeys.has(key)).length;
   return (masteredInSet / setWords.length) * 100 >= MASTERY_GATE_PCT;
 }
 
@@ -1199,6 +1203,7 @@ function TurnstileWidget({ onVerify, onExpire }) {
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: TURNSTILE_SITE_KEY,
         theme: "dark",
+        size: "flexible",
         callback: onVerify,
         "expired-callback": () => onExpire?.(),
         "error-callback": () => onExpire?.(),
@@ -1223,7 +1228,7 @@ function TurnstileWidget({ onVerify, onExpire }) {
     };
   }, []);
 
-  return <div ref={containerRef} style={{ margin: "6px 0 4px" }} />;
+  return <div ref={containerRef} style={{ margin: "4px 0 2px" }} />;
 }
 
 const CSS = `
@@ -3393,9 +3398,9 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
         <div className="sbox">
           <span style={{ position: "absolute", top: 6, right: 8, fontSize: 12, opacity: .6 }}>🔒</span>
           <div className="sn">{totalWordCount ?? allWords.length}</div>
-          <div className="sl">Total words to learn</div>
+          <div className="sl">Total Words to learn</div>
         </div>
-        <div className="sbox"><div className="sn">+{wordsAddedLastWeek}</div><div className="sl">Recently Added Words</div></div>
+        <div className="sbox"><div className="sn">+{wordsAddedLastWeek}</div><div className="sl">Recently added words</div></div>
         <div className="sbox"><div className="sn">{quranCoverage}%</div><div className="sl">Qur'an Coverage</div></div>
         {user ? (
           <div className="sbox">
@@ -4439,12 +4444,12 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
   let setMastery = null;
   let setMasteredKeys = null;
   if (selectedDay) {
-    const setWordArabics = new Set((words || []).map(w => w.arabic));
+    const setWordKeys = new Set((words || []).map(w => w.english));
     const { masteredSet } = buildStrictMastery(user.scores || []);
     // Only count mastery for words that actually belong to this set — an
     // All Sets Quiz attempt covers many sets' words at once, so we filter
     // its contribution down to just the words shown on this page.
-    setMasteredKeys = new Set([...masteredSet].filter(arabic => setWordArabics.has(arabic)));
+    setMasteredKeys = new Set([...masteredSet].filter(key => setWordKeys.has(key)));
     setMastery = { mastered: setMasteredKeys.size, totalInSet: words ? words.length : WORDS_PER_DAY };
   }
 
@@ -4532,7 +4537,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
           <div className="wlist" style={{ marginTop: 16 }}>
             {words.map((w, i) => {
               const isOpen = expandedWord === `${selectedDay}-${i}`;
-              const isMastered = setMasteredKeys ? setMasteredKeys.has(w.arabic) : false;
+              const isMastered = setMasteredKeys ? setMasteredKeys.has(w.english) : false;
               return (
                 <WordDetailCard
                   key={i}
@@ -4571,7 +4576,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
           {/* Show all unlocked words — same layout as individual set words, with mastery highlight */}
           {(() => {
             const { masteredSet: allMastered } = buildStrictMastery(user.scores || []);
-            const allMasteredCount = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).filter(w => allMastered.has(w.arabic)).length;
+            const allMasteredCount = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).filter(w => allMastered.has(w.english)).length;
             const allUnlocked = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords);
             return (
               <>
@@ -4584,7 +4589,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
                 <div className="wlist" style={{ marginTop: 12 }}>
                   {allUnlocked.map((w, i) => {
                     const isOpen = expandedWord === `allsets-${i}`;
-                    const isMastered = allMastered.has(w.arabic);
+                    const isMastered = allMastered.has(w.english);
                     return (
                       <WordDetailCard
                         key={i}
@@ -5169,7 +5174,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
                 <div className="wlist" style={{ marginBottom: 16 }}>
                   {combinedWeak.map((w, i) => {
                     const isOpen = expandedWeakWord === `weak-${i}`;
-                    const isMastered = masteredSet.has(w.arabic);
+                    const isMastered = masteredSet.has(w.english);
                     const badge = (
                       <span style={{ fontSize: 11, color: "var(--err)", fontWeight: 600, border: "1px solid var(--err)", borderRadius: 10, padding: "2px 10px", whiteSpace: "nowrap", display: "inline-block", minWidth: 80, textAlign: "center" }}>
                         {w.correct}✓ / {w.wrong}✗
