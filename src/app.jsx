@@ -19,6 +19,9 @@ const TOTAL_DAYS = 1;
 // Doesn't apply to the All Sets Quiz, which is a review/practice mode and
 // never gates a specific set's unlock.
 const PASSING_SCORE_PCT = 90;
+// TEMPORARY for testing — real threshold is 100. Change back to 100 once
+// the certificate email flow is confirmed working end-to-end.
+const CERTIFICATE_MASTERY_THRESHOLD = 5;
 const MASTERY_GATE_PCT = 70;
 
 function shuffle(arr) {
@@ -1496,7 +1499,7 @@ input[type="password"]::-ms-clear{display:none;}
 .ayah-ref-link{cursor:pointer;color:var(--cyan2);text-decoration:underline;text-underline-offset:2px;}
 .ayah-ref-link:hover{color:var(--cyan);}
 .ayah-img-frame{
-  max-height:60vh;overflow:auto;border-radius:8px;background:#fff;padding:10px;
+  max-height:70vh;overflow:auto;border-radius:8px;background:#fff;padding:10px;
 }
 .wtr{font-size:15px;color:var(--muted);font-style:italic;text-align:center;display:none;}
 .wen{font-size:20px;font-weight:400;color:var(--text);text-align:center;}
@@ -1553,7 +1556,7 @@ input[type="password"]::-ms-clear{display:none;}
   min-height:82px;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;text-align:center;
 }
 .opt-en{font-size:20px;}
-.opt-ur{font-family:'Scheherazade New',serif;font-size:22px;color:var(--teal2);direction:rtl;}
+.opt-ur{font-family:'Scheherazade New',serif;font-size:27px;color:var(--teal2);direction:rtl;}
 .opt:hover:not(:disabled){
   border-color:rgba(0,200,230,.5);border-bottom-color:rgba(0,200,230,.5);
   color:var(--cyan2);
@@ -1800,7 +1803,7 @@ input[type="password"]::-ms-clear{display:none;}
 /* ── HISTORY LIST ── */
 /* ── HISTORY — SIDE-BY-SIDE CHARTS (Set vs All Sets Quiz) ── */
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;align-items:stretch;}
-.chart-col{padding:16px 14px;display:flex;flex-direction:column;height:340px;}
+.chart-col{padding:16px 14px;display:flex;flex-direction:column;height:365px;}
 .chart-col-head{min-height:28px;display:flex;align-items:flex-start;flex-shrink:0;padding-bottom:14px;}
 .chart-col-head .lbl{font-size:13px;letter-spacing:0;line-height:1.3;}
 .chart-col-inner{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;}
@@ -2140,6 +2143,7 @@ export default function App() {
   const [selectedDay, setSelectedDay] = useState(null);
   const [showDonate, setShowDonate] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
+  const [gateWarning, setGateWarning] = useState(null);
   const [pendingResetEmail, setPendingResetEmail] = useState(""); // carries email into the "Enter Reset Code" screen
   const [reviewing, setReviewing] = useState(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -2557,30 +2561,20 @@ export default function App() {
     return { ok: true };
   };
 
-  // Admin-only: correct a learner's name or email (e.g. fixing a typo'd
-  // domain like gmail.cm that slipped through signup). Email changes are
-  // re-validated through the same domain check used at signup, so admin
-  // can't accidentally introduce another bad address.
-  const updateParticipantDetails = async (userId, newName, newEmail) => {
+  // Admin-only: correct a learner's display name (e.g. a typo). Email is
+  // deliberately NOT editable here — this only ever touched the profile
+  // table, never the learner's actual Supabase Auth login email, so it
+  // silently desynced the two. Email corrections now go through the
+  // learner's own Change Email flow (OTP-verified), which keeps both in
+  // sync properly. Admin can still trigger a password reset on a learner's
+  // behalf via the separate "Send Reset Link" action.
+  const updateParticipantDetails = async (userId, newName) => {
     const target = participants.find(p => (p.userId || "").toLowerCase() === userId.toLowerCase());
     if (!target) return { ok: false, reason: "not-found" };
 
-    const trimmedEmail = newEmail.trim();
-    if (trimmedEmail !== target.email) {
-      const result = await isEmailDomainValid(trimmedEmail);
-      if (!result.valid) {
-        if (result.reason === "disposable") return { ok: false, reason: "disposable" };
-        if (result.reason === "no-mx") return { ok: false, reason: "no-mx" };
-        return { ok: false, reason: "format" };
-      }
-      // Note: a "likely-typo" warning is informational here — admin can still
-      // save if they're confident it's correct (e.g. a real but unusual domain).
-    }
-
-    const updated = { ...target, name: newName.trim(), email: trimmedEmail };
-    // Update in Supabase users table
+    const updated = { ...target, name: newName.trim() };
     await supabase.from("users")
-      .update({ name: newName.trim(), email: trimmedEmail })
+      .update({ name: newName.trim() })
       .eq("user_id", userId.toLowerCase());
     setParticipants(prev => prev.map(p => (p.userId || "").toLowerCase() === userId.toLowerCase() ? updated : p));
     if (user && (user.userId || "").toLowerCase() === userId.toLowerCase()) {
@@ -2828,7 +2822,7 @@ export default function App() {
       // words from the set currently in progress (that set's own dedicated
       // quiz is the only way to first encounter and complete it).
       src = getCompletedWords(user.dayProgress, allWords);
-      if (src.length < 4) { toast_("Complete at least one set first to unlock All Sets Quiz"); return; }
+      if (src.length < 4) { setGateWarning("Complete at least one set first to unlock the All Sets Quiz."); return; }
     } else {
       src = customPool ? customPool : getWordsForDay(day, allWords);
     }
@@ -3231,7 +3225,7 @@ export default function App() {
             : <FinanceGate onLogin={loginUser} />
         ) : (
           <>
-            {view === "home" && <HomePage user={user} allWords={allWords} totalWordCount={totalWordCount} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onInvite={() => setShowInvite(true)} onReview={reviewSession} toast_={toast_} />}
+            {view === "home" && <HomePage user={user} allWords={allWords} totalWordCount={totalWordCount} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onInvite={() => setShowInvite(true)} onReview={reviewSession} toast_={toast_} setGateWarning={setGateWarning} />}
             {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} setView={setView} onGoToResetCode={(email) => { setPendingResetEmail(email); setView("resetPassword"); }} />}
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
             {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} optsVisible={optsVisible} />}
@@ -3248,6 +3242,7 @@ export default function App() {
 
         {!isAdminRoute && !isFinanceRoute && showDonate && <DonateModal onClose={() => setShowDonate(false)} toast_={toast_} user={user} onRequestReceipt={() => { setShowDonate(false); setShowRequestReceipt(true); }} />}
         {!isAdminRoute && !isFinanceRoute && showInvite && <InviteModal onClose={() => setShowInvite(false)} toast_={toast_} user={user} />}
+        {gateWarning && <GateWarningModal message={gateWarning} onClose={() => setGateWarning(null)} />}
         {!isAdminRoute && !isFinanceRoute && showRequestReceipt && <RequestReceiptModal onClose={() => setShowRequestReceipt(false)} toast_={toast_} user={user} onSubmit={submitRequestReceipt} />}
         {/* Mobile bottom navigation bar — visible only on small screens (CSS-controlled) */}
         {!isAdminRoute && !isFinanceRoute && (
@@ -3291,7 +3286,7 @@ export default function App() {
   );
 }
 
-function HomePage({ user, allWords, totalWordCount, participants, onStart, setView, onDonate, onInvite, onReview, toast_ }) {
+function HomePage({ user, allWords, totalWordCount, participants, onStart, setView, onDonate, onInvite, onReview, toast_, setGateWarning }) {
   const [showAllSetsReady, setShowAllSetsReady] = useState(false);
   const [showMasteredList, setShowMasteredList] = useState(false);
   const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).length : 0;
@@ -3331,7 +3326,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
             <button className="btn bg" onClick={() => setView("learn")}>Continue — Set {dayN}</button>
             <button className="btn bh" onClick={() => {
               if (completedWordsCount < 4) {
-                toast_("⚠ Complete at least Set 1 first to unlock All Sets Quiz!");
+                setGateWarning("Complete at least Set 1 first to unlock the All Sets Quiz.");
                 return;
               }
               setShowAllSetsReady(true);
@@ -4027,7 +4022,7 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
       {/* Action cards */}
       {[
         { key: "userid", label: "Change User ID", icon: "🪪", desc: "Update your login username" },
-        { key: "email", label: "Change Email Address", icon: "📧", desc: "A verification link will be sent to the new email" },
+        { key: "email", label: "Change Email Address", icon: "📧", desc: "A 6-digit code will be sent to the new email" },
         { key: "password", label: "Change Password", icon: "🔑", desc: "Must be 10+ chars with a number and special character" },
       ].map(item => (
         <div key={item.key} className="card" style={{ marginBottom: 12 }}>
@@ -4037,7 +4032,7 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
               <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{item.desc}</div>
             </div>
             <button className="btn bh bsm" onClick={() => section === item.key ? open(null) : open(item.key)}>
-              {section === item.key ? "Cancel" : "Change"}
+              {section === item.key ? (success ? "Done" : "Cancel") : "Change"}
             </button>
           </div>
 
@@ -4313,12 +4308,32 @@ function PlayPauseButton({ resolveUrl, className, title, playingLabel = "⏸", i
 // it via CSS just blurs it, but letting the user zoom in on demand keeps it
 // sharp at whatever size they actually need), plus a play/stop control for
 // the full ayah's recitation. Image + audio via Al Quran Cloud. ────────────
+// Small centered warning modal (yellow exclamation icon) — used for gate
+// messages like "complete a set first" that deserve a clear pause, not a
+// toast that can be missed or auto-dismisses too fast.
+function GateWarningModal({ message, onClose }) {
+  return ReactDOM.createPortal(
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 320, textAlign: "center", padding: "32px 24px" }}>
+        <div style={{
+          width: 52, height: 52, borderRadius: "50%", background: "rgba(255,184,0,.12)",
+          border: "1px solid rgba(255,184,0,.4)", display: "flex", alignItems: "center", justifyContent: "center",
+          margin: "0 auto 16px", fontSize: 26, color: "#ffd96b",
+        }}>⚠</div>
+        <p style={{ margin: "0 0 20px", fontSize: 15, lineHeight: 1.6, color: "var(--text)" }}>{message}</p>
+        <button className="btn bg" onClick={onClose} style={{ width: "100%" }}>Got it</button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
   const [loadFailed, setLoadFailed] = useState(false);
   // Fixed at a comfortable reading size (~275%, the sweet spot for legibility
   // on this image) rather than manual zoom controls — panning around the
   // enlarged image is just a normal scroll/drag inside the frame below.
-  const READING_SCALE = 2.75;
+  const READING_SCALE = 4;
 
   // Rendered via portal straight into document.body — this modal is normally
   // mounted inside a word-card, and word-card has a :hover transform, which
@@ -4891,7 +4906,7 @@ function ScoreBarChart({ data, compact = false, mode = "score" }) {
           <g key={i}>
             <rect x={x} y={y} width={barW} height={barH} rx="3" fill={color} opacity="0.85" />
             {(!compact || data.length <= 8) && <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif">{topLabel}</text>}
-            <text x={x + barW / 2} y={H - 10} fontSize={compact ? 10 : 12} fill="var(--muted)" textAnchor="middle" fontFamily="Poppins, sans-serif">{d.label}</text>
+            <text x={x + barW / 2} y={H - 10} fontSize={compact ? (data.length > 6 ? 8.5 : 10) : 12} fill="var(--muted)" textAnchor="middle" fontFamily="Poppins, sans-serif">{d.label}</text>
           </g>
         );
       })}
@@ -4940,7 +4955,7 @@ function WordStrengthPieChart({ strong, weak, even, compact = false }) {
         <text x={cx} y={cy - 4} textAnchor="middle" fontSize={compact ? 24 : 28} fontFamily="Poppins, sans-serif" fill="var(--gold3)">{total}</text>
         <text x={cx} y={cy + 18} textAnchor="middle" fontSize={compact ? 10 : 11} fontFamily="Poppins, sans-serif" fill="var(--muted)">words</text>
       </svg>
-      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: compact ? "6px 16px" : "8px 20px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: compact ? "6px 16px" : "8px 20px", paddingBottom: 6 }}>
         {paths.map((p, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: compact ? 13 : 14 }}>
             <span style={{ width: compact ? 11 : 12, height: compact ? 11 : 12, borderRadius: 3, background: p.color, display: "inline-block" }} />
@@ -5578,7 +5593,17 @@ function RequestPasswordChangeModal({ onClose, toast_, onSetPassword }) {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     if (authUser?.email) setEmail(authUser.email);
     const latest = await fetchMyLatestPasswordChangeRequest();
-    setPhase(latest ? latest.status : "none");
+    if (!latest) { setPhase("none"); return; }
+    // An "approved" status older than ~1 hour means the actual emailed code
+    // has long since expired (Supabase OTP codes expire around then) — don't
+    // let a stale old approval keep skipping straight to code-entry forever;
+    // treat it as needing a fresh request instead.
+    if (latest.status === "approved") {
+      const approvedAt = latest.resolvedAt ? new Date(latest.resolvedAt).getTime() : new Date(latest.requestedAt).getTime();
+      const staleAfterMs = 60 * 60 * 1000;
+      if (Date.now() - approvedAt > staleAfterMs) { setPhase("none"); return; }
+    }
+    setPhase(latest.status);
   };
 
   useEffect(() => { loadStatus(); }, []);
@@ -5684,6 +5709,7 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
   const [rcptDate, setRcptDate] = useState(new Date().toISOString().slice(0, 10));
   const [rcptPurpose, setRcptPurpose] = useState("Donation");
   const [rcptNote, setRcptNote] = useState("");
+  const [rcptUpiId, setRcptUpiId] = useState("");
   const [rcptUtr, setRcptUtr] = useState("");
   const [rcptError, setRcptError] = useState("");
   const [rcptSending, setRcptSending] = useState(false);
@@ -5744,6 +5770,22 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
       setRcptError("Enter a valid amount.");
       return;
     }
+    if (rcptDate > new Date().toISOString().slice(0, 10)) {
+      setRcptError("Date received can't be in the future.");
+      return;
+    }
+    if (!rcptUpiId.trim()) {
+      setRcptError("UPI ID is required.");
+      return;
+    }
+    if (!/^[a-zA-Z0-9]+$/.test(rcptUpiId.trim())) {
+      setRcptError("UPI ID should only contain letters and numbers.");
+      return;
+    }
+    if (!/^[0-9]{12}$/.test(rcptUtr.trim())) {
+      setRcptError("UTR must be exactly 12 digits.");
+      return;
+    }
     setRcptSending(true);
     const result = await onIssueReceipt({
       donorName: rcptName.trim(),
@@ -5752,13 +5794,13 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
       donationDate: rcptDate,
       purpose: rcptPurpose.trim() || "Donation",
       note: rcptNote.trim(),
-      utrReference: rcptUtr.trim() || null,
+      utrReference: `UPI: ${rcptUpiId.trim()} | UTR: ${rcptUtr.trim()}`,
       requestId: activeRequestId,
     });
     setRcptSending(false);
     if (result.ok) {
       setRcptSuccess({ receiptNo: result.receiptNo, emailFailed: result.emailFailed });
-      setRcptName(""); setRcptEmail(""); setRcptAmount(""); setRcptNote(""); setRcptUtr("");
+      setRcptName(""); setRcptEmail(""); setRcptAmount(""); setRcptNote(""); setRcptUpiId(""); setRcptUtr("");
       setRcptDate(new Date().toISOString().slice(0, 10));
       setRcptPurpose("Donation");
       setActiveRequestId(null);
@@ -5850,10 +5892,13 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
         <div className="field"><label>Donor Email</label><input type="email" value={rcptEmail} onChange={e => { setRcptEmail(e.target.value); setRcptError(""); }} placeholder="donor@email.com" /></div>
         <div style={{ display: "flex", gap: 12 }}>
           <div className="field" style={{ flex: 1 }}><label>Amount (₹)</label><input type="number" value={rcptAmount} onChange={e => { setRcptAmount(e.target.value); setRcptError(""); }} placeholder="1000" /></div>
-          <div className="field" style={{ flex: 1 }}><label>Date Received</label><input type="date" value={rcptDate} onChange={e => setRcptDate(e.target.value)} /></div>
+          <div className="field" style={{ flex: 1 }}><label>Date Received</label><input type="date" value={rcptDate} max={new Date().toISOString().slice(0, 10)} onChange={e => setRcptDate(e.target.value)} /></div>
         </div>
         <div className="field"><label>Purpose</label><input value={rcptPurpose} onChange={e => setRcptPurpose(e.target.value)} placeholder="Donation" /></div>
-        <div className="field"><label>UPI Reference / UTR (optional)</label><input value={rcptUtr} onChange={e => setRcptUtr(e.target.value)} placeholder="For reconciliation against bank statement" /></div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <div className="field" style={{ flex: 1 }}><label>UPI ID</label><input value={rcptUpiId} onChange={e => { setRcptUpiId(e.target.value); setRcptError(""); }} placeholder="username@bank" /></div>
+          <div className="field" style={{ flex: 1 }}><label>UTR Number (12 digits)</label><input value={rcptUtr} onChange={e => { setRcptUtr(e.target.value); setRcptError(""); }} placeholder="123456789012" maxLength={12} /></div>
+        </div>
         <div className="field"><label>Note (optional)</label><input value={rcptNote} onChange={e => setRcptNote(e.target.value)} placeholder="Any additional note for the donor" /></div>
         {rcptError && <div className="enroll-error">⚠ {rcptError}</div>}
         <button className="btn bg bfw" onClick={submitReceipt} disabled={rcptSending}>
@@ -5942,10 +5987,19 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                   <td><input value={editForm.translit || ""} onChange={e => setEditForm(f => ({ ...f, translit: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.english || ""} onChange={e => setEditForm(f => ({ ...f, english: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.urdu || ""} onChange={e => setEditForm(f => ({ ...f, urdu: e.target.value }))} style={{ direction: "rtl", fontFamily: "serif", width: 70, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
-                  <td style={{ display: "flex", gap: 3 }}>
-                    <input type="number" min="1" max="114" value={editForm.surahNumber ?? ""} onChange={e => setEditForm(f => ({ ...f, surahNumber: e.target.value ? parseInt(e.target.value, 10) : null }))} placeholder="Surah" style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
-                    <input type="number" min="1" value={editForm.ayahNumber ?? ""} onChange={e => setEditForm(f => ({ ...f, ayahNumber: e.target.value ? parseInt(e.target.value, 10) : null }))} placeholder="Ayah" style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
-                    <input type="number" min="1" value={editForm.wordPosition ?? ""} onChange={e => setEditForm(f => ({ ...f, wordPosition: e.target.value ? parseInt(e.target.value, 10) : null }))} placeholder="Word#" title="Word position within the ayah" style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
+                  <td style={{ display: "flex", gap: 3, alignItems: "flex-end" }}>
+                    <div>
+                      <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 2 }}>Surah #</div>
+                      <input type="number" min="1" max="114" value={editForm.surahNumber ?? ""} onChange={e => setEditForm(f => ({ ...f, surahNumber: e.target.value ? parseInt(e.target.value, 10) : null }))} style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 2 }}>Ayah #</div>
+                      <input type="number" min="1" value={editForm.ayahNumber ?? ""} onChange={e => setEditForm(f => ({ ...f, ayahNumber: e.target.value ? parseInt(e.target.value, 10) : null }))} style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 2 }}>Word #</div>
+                      <input type="number" min="1" value={editForm.wordPosition ?? ""} onChange={e => setEditForm(f => ({ ...f, wordPosition: e.target.value ? parseInt(e.target.value, 10) : null }))} title="Word position within the ayah" style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
+                    </div>
                   </td>
                   <td style={{ display: "flex", gap: 4 }}>
                     <button className="btn bg bsm" onClick={saveEdit} disabled={saving}>{saving ? "…" : "✓"}</button>
@@ -6210,7 +6264,7 @@ function RewardsTab({ participants, toast_, allWords }) {
     <div className="card">
       <div className="lbl" style={{ marginBottom: 8 }}>🏆 Mastery Certificates</div>
       <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
-        Send a personalised certificate to learners who have mastered <strong style={{ color: "var(--gold2)" }}>100+</strong> words. Each certificate is emailed directly to the learner.
+        Send a personalised certificate to learners who have mastered <strong style={{ color: "var(--gold2)" }}>{CERTIFICATE_MASTERY_THRESHOLD}+</strong> words. Each certificate is emailed directly to the learner.
       </p>
       {eligible.length === 0 ? (
         <div style={{ textAlign: "center", color: "var(--muted)", padding: 40 }}>No participants with quiz history yet.</div>
@@ -6218,7 +6272,7 @@ function RewardsTab({ participants, toast_, allWords }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {eligible.map(p => {
             const mastered = getMastered(p);
-            const isEligible = mastered >= 100;
+            const isEligible = mastered >= CERTIFICATE_MASTERY_THRESHOLD;
             const alreadySent = sent[p.userId];
             return (
               <div key={p.userId} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "rgba(255,255,255,.03)", borderRadius: 8, border: `1px solid ${isEligible ? "rgba(255,210,80,.2)" : "rgba(255,255,255,.06)"}` }}>
@@ -6251,7 +6305,6 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
   const [resetSent, setResetSent] = useState(false);
   const [editTarget, setEditTarget] = useState(null); // userId being edited, or null
   const [editName, setEditName] = useState("");
-  const [editEmail, setEditEmail] = useState("");
   const [editError, setEditError] = useState("");
   const [editChecking, setEditChecking] = useState(false);
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
@@ -6285,16 +6338,15 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
   const openEdit = (p) => {
     setEditTarget(p.userId);
     setEditName(p.name);
-    setEditEmail(p.email);
     setEditError("");
   };
   const closeEdit = () => { setEditTarget(null); setEditError(""); };
 
   const submitEdit = async () => {
     setEditError("");
-    if (!editName.trim() || !editEmail.trim()) { setEditError("Name and email are required."); return; }
+    if (!editName.trim()) { setEditError("Name is required."); return; }
     setEditChecking(true);
-    const result = await onUpdateParticipant(editTarget, editName, editEmail);
+    const result = await onUpdateParticipant(editTarget, editName);
     setEditChecking(false);
     if (result.ok) {
       toast_(`Account updated for ${editTarget}.`);
@@ -6462,10 +6514,9 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
-                Use this to correct a learner's name or fix a typo'd email (e.g. a wrong domain entered at signup). Only change the email to what the learner has told you directly — the new address is re-validated before saving.
+                Use this to correct a learner's name. Email can't be changed here — a wrong email needs to be corrected by the learner themselves via Profile → Change Email (or ask them to, if you're doing this on their behalf), so it stays verified and in sync with their actual login.
               </p>
               <div className="field"><label>Full Name</label><input value={editName} onChange={e => { setEditName(e.target.value); setEditError(""); }} placeholder="Learner's name" /></div>
-              <div className="field"><label>Email Address</label><input type="email" value={editEmail} onChange={e => { setEditEmail(e.target.value); setEditError(""); }} placeholder="learner@email.com" /></div>
               {editError && <div className="enroll-error">⚠ {editError}</div>}
               <button className="btn bg bfw" onClick={submitEdit} disabled={editChecking}>
                 {editChecking ? "Saving…" : "Save Changes"}
