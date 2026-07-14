@@ -3395,9 +3395,9 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
         <div className="sbox">
           <span style={{ position: "absolute", top: 6, right: 8, fontSize: 12, opacity: .6 }}>🔒</span>
           <div className="sn">{totalWordCount ?? allWords.length}</div>
-          <div className="sl">Total Words to learn</div>
+          <div className="sl">Words to learn</div>
         </div>
-        <div className="sbox"><div className="sn">+{wordsAddedLastWeek}</div><div className="sl">Recently added words</div></div>
+        <div className="sbox"><div className="sn">+{wordsAddedLastWeek}</div><div className="sl">Newly added words</div></div>
         <div className="sbox"><div className="sn">{quranCoverage}%</div><div className="sl">Qur'an Coverage</div></div>
         {user ? (
           <div className="sbox">
