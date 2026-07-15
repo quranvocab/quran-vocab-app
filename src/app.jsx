@@ -1174,6 +1174,12 @@ async function isEmailDomainValid(email) {
 const GEO = `<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><g fill='none' stroke='rgba(0,200,230,0.08)' stroke-width='.7'><polygon points='90,8 108,62 164,62 118,96 136,150 90,116 44,150 62,96 16,62 72,62'/><circle cx='90' cy='90' r='65'/><line x1='90' y1='0' x2='90' y2='180'/><line x1='0' y1='90' x2='180' y2='90'/></g></svg>`;
 const bgUrl = `data:image/svg+xml;base64,${btoa(GEO)}`;
 
+// Brighter variant used only inside the Home stat boxes — the app-wide GEO
+// above is deliberately near-invisible (8% strokes), far too faint to read
+// as an intentional design accent inside a small card.
+const GEO_STAT = `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><g fill='none' stroke-width='1'><polygon stroke='rgba(0,200,230,0.30)' points='60,6 72,41 109,41 79,64 91,100 60,77 29,100 41,64 11,41 48,41'/><circle stroke='rgba(255,217,107,0.22)' cx='60' cy='60' r='44'/><circle stroke='rgba(0,200,230,0.18)' cx='60' cy='60' r='56'/></g></svg>`;
+const statBgUrl = `data:image/svg+xml;base64,${btoa(GEO_STAT)}`;
+
 // ── Cloudflare Turnstile (bot check on Sign Up) ─────────────────────────────
 // Site key is public by design — safe to embed in client code. The secret
 // key is never in this file; it lives only as a Supabase Edge Function
@@ -1447,8 +1453,8 @@ input[type="password"]::-ms-clear{display:none;}
    the number itself stays the visually dominant element. */
 .sbox::before{
   content:"";position:absolute;inset:0;border-radius:14px;
-  background-image:url("${bgUrl}");background-size:90px;background-position:center;
-  opacity:.55;pointer-events:none;
+  background-image:url("${statBgUrl}");background-size:contain;background-position:center;background-repeat:no-repeat;
+  opacity:1;pointer-events:none;
 }
 .sbox .sn,.sbox .sl{position:relative;z-index:1;}
 .sn{font-family:'Poppins',sans-serif;font-size:clamp(18px,4.2vw,32px);font-weight:700;color:var(--gold2);text-shadow:0 0 16px rgba(255,184,0,.35),0 2px 6px rgba(0,0,0,.5);}
