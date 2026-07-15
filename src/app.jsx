@@ -204,6 +204,37 @@ function buildStrictMastery(scores) {
   return { masteredSet, attemptedSet: attempted };
 }
 
+// ── Monthly mastery counts (for the monthly-target feature) ─────────────────
+// Walks scores chronologically (same order as buildStrictMastery) and records
+// the FIRST time each word's streak reaches MASTERY_STREAK_REQUIRED, bucketed
+// by calendar month of that attempt's date. A word is only ever attributed to
+// one month — the month it was first mastered — even if a later wrong answer
+// resets its streak and it's re-mastered afterward. This matches how mastery
+// is counted everywhere else in the app (a word "mastered" stays counted).
+function buildMonthlyMasteryCounts(scores) {
+  const streaks = {};
+  const firstMasteredMonth = {}; // key -> "YYYY-MM"
+  for (const s of scores) {
+    if (!s.detail || !s.date) continue;
+    for (const d of s.detail) {
+      const key = d.english;
+      if (d.isCorrect) {
+        streaks[key] = (streaks[key] || 0) + 1;
+        if (streaks[key] === MASTERY_STREAK_REQUIRED && !firstMasteredMonth[key]) {
+          firstMasteredMonth[key] = new Date(s.date).toISOString().slice(0, 7);
+        }
+      } else {
+        streaks[key] = 0;
+      }
+    }
+  }
+  const counts = {};
+  for (const month of Object.values(firstMasteredMonth)) {
+    counts[month] = (counts[month] || 0) + 1;
+  }
+  return counts; // e.g. { "2026-07": 12, "2026-06": 34 }
+}
+
 // Checks whether a specific set has reached MASTERY_GATE_PCT (70%) of its
 // words individually mastered — the alternative unlock path alongside a
 // single 90%+ quiz pass. Uses every score, not just this set's own quiz,
@@ -1455,6 +1486,81 @@ input[type="password"]::-ms-clear{display:none;}
 .sbox .sn,.sbox .sl{position:relative;z-index:1;}
 .sn{font-family:'Poppins',sans-serif;font-size:clamp(18px,4.2vw,32px);font-weight:700;color:var(--gold2);text-shadow:0 0 16px rgba(255,184,0,.35),0 2px 6px rgba(0,0,0,.5);}
 .sl{font-size:clamp(10px,1.8vw,13px);color:var(--muted);letter-spacing:.04em;margin-top:4px;text-transform:uppercase;text-align:center;line-height:1.3;}
+.phub-header{display:flex;align-items:center;gap:16px;margin-bottom:18px;}
+.phub-logout-btn{
+  flex:0 0 auto;background:rgba(255,82,82,.1);border:1px solid rgba(255,82,82,.3);
+  color:#ff8a80;font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:20px;
+  cursor:pointer;transition:background .15s,box-shadow .15s;white-space:nowrap;
+}
+.phub-logout-btn:hover{background:rgba(255,82,82,.18);box-shadow:0 0 14px rgba(255,82,82,.15);}
+.phub-avatar{
+  width:64px;height:64px;border-radius:50%;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Poppins',sans-serif;font-size:26px;font-weight:700;color:var(--gold3);
+  background:linear-gradient(135deg,rgba(0,200,230,.25),rgba(255,217,107,.2));
+  border:1px solid rgba(0,200,230,.35);
+  box-shadow:0 0 20px rgba(0,200,230,.15);
+}
+.phub-tabs{display:flex;gap:22px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:20px;}
+.phub-tab{background:none;border:none;padding:10px 2px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;}
+.phub-tab.on{color:var(--cyan2);border-bottom-color:var(--cyan2);}
+.phub-section-label{font-family:'Poppins',sans-serif;font-size:15px;font-weight:600;color:var(--text);margin:20px 0 12px;}
+.phub-stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
+.phub-stat-card{
+  border-radius:14px;padding:16px;display:flex;align-items:center;gap:12px;
+  border:1px solid rgba(255,255,255,.1);
+}
+.phub-stat-card.streak{background:rgba(255,138,128,.12);border-color:rgba(255,138,128,.25);}
+.phub-stat-card.mastered{background:rgba(0,200,230,.12);border-color:rgba(0,200,230,.28);}
+.phub-stat-card.month{background:rgba(0,224,160,.12);border-color:rgba(0,224,160,.28);}
+.phub-stat-card.best{background:rgba(255,217,107,.14);border-color:rgba(255,217,107,.3);}
+.phub-stat-icon{font-size:22px;flex:0 0 auto;}
+.phub-stat-num{font-family:'Poppins',sans-serif;font-size:clamp(16px,3.6vw,22px);font-weight:700;color:var(--text);line-height:1.2;}
+.phub-stat-label{font-size:11px;color:var(--muted);margin-top:2px;}
+.phub-challenge-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.phub-badge-card{
+  border-radius:14px;padding:16px 10px;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
+}
+.phub-badge-card.current{background:rgba(0,200,230,.1);border-color:rgba(0,200,230,.35);box-shadow:0 0 18px rgba(0,200,230,.12);}
+.phub-badge-card.locked{opacity:.5;}
+.phub-badge-shape{
+  width:46px;height:46px;border-radius:14px 14px 22px 22px;
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+}
+.phub-badge-shape.met{background:rgba(0,224,160,.14);border-color:rgba(0,224,160,.4);}
+.phub-badge-shape.missed{background:rgba(255,82,82,.1);border-color:rgba(255,82,82,.3);}
+.phub-badge-shape.active{background:rgba(0,200,230,.18);border-color:var(--cyan2);box-shadow:0 0 14px rgba(0,200,230,.3);}
+.phub-badge-month{font-weight:600;font-size:13px;color:var(--text);margin-top:4px;}
+.phub-badge-sub{font-size:11px;color:var(--muted);}
+.phub-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:20px;}
+.phub-box{
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.15);
+  border-top:1px solid rgba(255,255,255,.25);
+  border-radius:14px;
+  padding:18px;
+  min-height:150px;
+  display:flex;flex-direction:column;
+  backdrop-filter:blur(20px) saturate(1.5);
+  -webkit-backdrop-filter:blur(20px) saturate(1.5);
+  box-shadow:0 8px 32px rgba(0,0,0,.3),0 0 0 1px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.15),inset 0 -1px 0 rgba(0,0,0,.1);
+  transition:transform .15s,box-shadow .15s;
+  position:relative;
+}
+.phub-box-action{cursor:pointer;align-items:center;justify-content:center;text-align:center;}
+.phub-box-action:hover{transform:translateY(-2px);box-shadow:0 12px 36px rgba(0,200,230,.15),0 0 0 1px rgba(0,200,230,.2);}
+.phub-box-action.logout:hover{box-shadow:0 12px 36px rgba(255,82,82,.12),0 0 0 1px rgba(255,82,82,.2);}
+.phub-icon{font-size:26px;margin-bottom:8px;}
+.phub-label{font-weight:600;font-size:14px;color:var(--text);}
+.phub-desc{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4;}
+.phub-target-btn{background:none;border:1px solid rgba(0,200,230,.3);color:var(--cyan2);font-size:11px;padding:4px 10px;border-radius:20px;margin-top:6px;cursor:pointer;}
+.phub-target-edit{display:flex;gap:6px;margin-top:6px;align-items:center;}
+.phub-target-edit input{width:60px;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.2);color:var(--text);font-size:13px;}
+@media(max-width:480px){.phub-logout-btn{padding:7px 10px;font-size:11px;}.phub-avatar{width:52px;height:52px;font-size:21px;}}
+@media(max-width:640px){.phub-stat-grid{grid-template-columns:repeat(2,1fr);}.phub-grid{grid-template-columns:repeat(2,1fr);}.phub-challenge-row{gap:8px;}.phub-badge-card{padding:12px 6px;}}
 .cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:5px;}
 .cal-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:rgba(0,200,230,.3) transparent;}
 .cal-scroll::-webkit-scrollbar{height:4px;}
@@ -2174,7 +2280,6 @@ export default function App() {
   const [gateWarning, setGateWarning] = useState(null);
   const [pendingResetEmail, setPendingResetEmail] = useState(""); // carries email into the "Enter Reset Code" screen
   const [reviewing, setReviewing] = useState(null);
-  const [showUserMenu, setShowUserMenu] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showFinanceMenu, setShowFinanceMenu] = useState(false);
   const [adminProfileOpen, setAdminProfileOpen] = useState(false);
@@ -2392,6 +2497,7 @@ export default function App() {
       scores: (scoreRows || []).map(mapScoreRow),
       dayProgress: progressRow?.day_progress || {},
       emailVerified: true, supabaseId: authId,
+      monthlyTarget: profile.monthly_word_target || 30,
     };
     setUser(u);
     storageSet("qv_user", u);
@@ -3051,7 +3157,6 @@ export default function App() {
   // ── End browser back button ──────────────────────────────────────────────
   React.useEffect(() => {
     const close = () => {
-      setShowUserMenu(false);
       setShowAdminMenu(false);
       if (typeof setShowFinanceMenu === 'function') setShowFinanceMenu(false);
     };
@@ -3234,18 +3339,7 @@ export default function App() {
               {!user && <button className="ncta" onClick={() => setView("enroll")}>Login / Join Now</button>}
               {user && (
                 <div className="nuser-wrap">
-                  <button className="nuser" onClick={e => { e.stopPropagation(); setShowUserMenu(s => !s); }}>﷽ {user.name} <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
-                  {showUserMenu && (
-                    <div className="nuser-menu" onMouseLeave={() => setShowUserMenu(false)}>
-                      {user.userId && <div className="nuser-menu-email" style={{ color: "var(--gold3)", fontWeight: 500 }}>ID: {user.userId}</div>}
-                      <div className="nuser-menu-email">{user.email}</div>
-                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("profile"); }}>👤 Profile Settings</button>
-                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("history"); }}>📋 My History</button>
-                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setShowRequestReceipt(true); }}>🧾 Request Receipt</button>
-                      <button className="nuser-menu-item" onClick={() => { setShowUserMenu(false); setView("downloadReceipt"); }}>🧾 My Receipts</button>
-                      <button className="nuser-menu-item logout" onClick={() => { setShowUserMenu(false); logout(); }}>↪ Log Out</button>
-                    </div>
-                  )}
+                  <button className="nuser" onClick={e => { e.stopPropagation(); setView("profileHub"); }}>﷽ {user.name}</button>
                 </div>
               )}
             </div>
@@ -3274,6 +3368,7 @@ export default function App() {
             {view === "leaderboard" && <LBPage participants={participants} user={user} allWords={allWords} />}
             {view === "resetPassword" && <ResetPasswordPage onSetPassword={verifyResetCodeAndSetPassword} initialEmail={pendingResetEmail} setView={setView} />}
             {view === "profile" && user && <ProfilePage user={user} saveUser={saveUser} setView={setView} toast_={toast_} />}
+            {view === "profileHub" && user && <ProfileHub user={user} saveUser={saveUser} setView={setView} toast_={toast_} onRequestReceipt={() => setShowRequestReceipt(true)} onLogout={logout} allWords={allWords} />}
             {view === "downloadReceipt" && <DownloadReceiptPage prefillReceiptNo="" toast_={toast_} user={user} />}
             {/* Email verification handled automatically by Supabase via onAuthStateChange */}
           </>
@@ -3920,6 +4015,139 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
 
 // ─── Reset Password Page (Supabase handles token via URL hash automatically) ──
 // ─── Profile Settings Page ────────────────────────────────────────────────────
+// ── Profile Hub — full-page replacement for the old nav dropdown ────────────
+// Redesigned as: avatar header, tabbed "Progress" / "Account" page.
+// Progress tab: colorful summary stat grid + Monthly Challenge badge row
+// (last month / current month / next month locked).
+// Account tab: the same 5 actions the old dropdown held, as box-cards.
+function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogout, allWords }) {
+  const [tab, setTab] = useState("progress"); // "progress" | "account"
+  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetVal, setTargetVal] = useState(user.monthlyTarget || 30);
+  const [savingTarget, setSavingTarget] = useState(false);
+
+  const monthlyCounts = React.useMemo(() => buildMonthlyMasteryCounts(user.scores || []), [user.scores]);
+  const target = user.monthlyTarget || 30;
+
+  const now = new Date();
+  const monthInfo = (offset) => {
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const key = d.toISOString().slice(0, 7);
+    return { key, label: d.toLocaleDateString("en-GB", { month: "short" }), count: monthlyCounts[key] || 0 };
+  };
+  const lastMonth = monthInfo(-1);
+  const thisMonth = monthInfo(0);
+  const nextMonth = monthInfo(1);
+
+  const streak = calcStreak(user.scores || []);
+  const masteredCount = getMasteredWords(user.scores || [], allWords || []).size;
+  const masteredPct = allWords?.length ? Math.round((masteredCount / allWords.length) * 100) : 0;
+  const bestScore = user.scores?.length ? Math.max(...user.scores.map(s => s.pct)) : 0;
+
+  const saveTarget = async () => {
+    const n = parseInt(targetVal, 10);
+    if (!n || n < 1 || n > 500) { toast_("Enter a valid target between 1 and 500."); return; }
+    setSavingTarget(true);
+    const { error } = await supabase.from("users").update({ monthly_word_target: n }).eq("auth_id", user.supabaseId);
+    setSavingTarget(false);
+    if (error) { toast_("Failed to save target — please try again."); return; }
+    saveUser({ ...user, monthlyTarget: n });
+    setEditingTarget(false);
+    toast_(`✅ Monthly target set to ${n} words`);
+  };
+
+  const actionBoxes = [
+    { key: "profile", icon: "👤", label: "Profile Settings", desc: "User ID, email, password", onClick: () => setView("profile") },
+    { key: "history", icon: "📋", label: "My History", desc: "Past quizzes & results", onClick: () => setView("history") },
+    { key: "receipt-req", icon: "🧾", label: "Request Receipt", desc: "For a donation you made", onClick: onRequestReceipt },
+    { key: "receipts", icon: "🧾", label: "My Receipts", desc: "Download past receipts", onClick: () => setView("downloadReceipt") },
+  ];
+
+  return (
+    <div className="page pmd">
+      {/* Header */}
+      <div className="phub-header">
+        <div className="phub-avatar">{(user.name || "?").trim().charAt(0).toUpperCase()}</div>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ margin: 0 }}>{user.name}</h2>
+          <p className="sub" style={{ margin: "2px 0 0" }}>{user.userId ? `@${user.userId}` : user.email}</p>
+        </div>
+        <button className="phub-logout-btn" onClick={onLogout}>↪ Log Out</button>
+      </div>
+
+      {/* Tabs */}
+      <div className="phub-tabs">
+        <button className={`phub-tab ${tab === "progress" ? "on" : ""}`} onClick={() => setTab("progress")}>Progress</button>
+        <button className={`phub-tab ${tab === "account" ? "on" : ""}`} onClick={() => setTab("account")}>Account</button>
+      </div>
+
+      {tab === "progress" ? (
+        <>
+          <div className="phub-section-label">Summary</div>
+          <div className="phub-stat-grid">
+            <div className="phub-stat-card streak">
+              <span className="phub-stat-icon">🔥</span>
+              <div><div className="phub-stat-num">{streak}</div><div className="phub-stat-label">Day Streak</div></div>
+            </div>
+            <div className="phub-stat-card mastered">
+              <span className="phub-stat-icon">📖</span>
+              <div><div className="phub-stat-num">{masteredPct}%</div><div className="phub-stat-label">Words Mastered</div></div>
+            </div>
+            <div className="phub-stat-card month">
+              <span className="phub-stat-icon">🎯</span>
+              <div><div className="phub-stat-num">{thisMonth.count}/{target}</div><div className="phub-stat-label">This Month</div></div>
+            </div>
+            <div className="phub-stat-card best">
+              <span className="phub-stat-icon">🏆</span>
+              <div><div className="phub-stat-num">{bestScore}%</div><div className="phub-stat-label">Personal Best</div></div>
+            </div>
+          </div>
+
+          <div className="phub-section-label">Monthly Challenge</div>
+          <div className="phub-challenge-row">
+            <div className="phub-badge-card past">
+              <div className={`phub-badge-shape ${lastMonth.count >= target ? "met" : "missed"}`}>
+                {lastMonth.count >= target ? "🏅" : "📕"}
+              </div>
+              <div className="phub-badge-month">{lastMonth.label}</div>
+              <div className="phub-badge-sub">{lastMonth.count}/{target}</div>
+            </div>
+            <div className="phub-badge-card current">
+              <div className="phub-badge-shape active">🎯</div>
+              <div className="phub-badge-month">{thisMonth.label}</div>
+              <div className="phub-badge-sub">{thisMonth.count}/{target}</div>
+              {editingTarget ? (
+                <div className="phub-target-edit">
+                  <input type="number" min="1" max="500" value={targetVal} onChange={e => setTargetVal(e.target.value)} />
+                  <button className="btn bh bsm" disabled={savingTarget} onClick={saveTarget}>{savingTarget ? "…" : "Save"}</button>
+                  <button className="btn bh bsm" onClick={() => { setEditingTarget(false); setTargetVal(user.monthlyTarget || 30); }}>✕</button>
+                </div>
+              ) : (
+                <button className="phub-target-btn" onClick={() => setEditingTarget(true)}>🎯 Edit Target</button>
+              )}
+            </div>
+            <div className="phub-badge-card locked">
+              <div className="phub-badge-shape">🔒</div>
+              <div className="phub-badge-month">{nextMonth.label}</div>
+              <div className="phub-badge-sub">Locked</div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="phub-grid" style={{ marginTop: 16 }}>
+          {actionBoxes.map(b => (
+            <div key={b.key} className="phub-box phub-box-action" onClick={b.onClick}>
+              <div className="phub-icon">{b.icon}</div>
+              <div className="phub-label">{b.label}</div>
+              {b.desc && <div className="phub-desc">{b.desc}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProfilePage({ user, saveUser, setView, toast_ }) {
   const [section, setSection] = useState(null); // "userid" | "email" | "password"
   const [val1, setVal1] = useState("");
