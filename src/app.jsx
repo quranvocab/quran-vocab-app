@@ -116,7 +116,10 @@ function buildAttemptScoreSeries(scores, maxBars = 10) {
   // by attempt order (A1, A2...) which is always unique and stays short.
   const recent = [...scores].slice(-maxBars);
   return recent.map((s, i) => ({
-    label: s.day ? `S${s.day}` : `A${i + 1}`,
+    // "weak-practice" is a sentinel day value, not a set number — label those
+    // W1, W2… (attempt order). Without this special-case they'd render as
+    // "Sweak-practice", a huge string that overlaps every neighboring label.
+    label: s.day === "weak-practice" ? `W${i + 1}` : s.day ? `S${s.day}` : `A${i + 1}`,
     pct: s.pct,
     score: s.score,
     total: s.total,
@@ -1439,7 +1442,16 @@ input[type="password"]::-ms-clear{display:none;}
   transition:transform .2s,box-shadow .2s;cursor:default;
   position:relative;
 }
-.sn{font-family:'Poppins',sans-serif;font-size:clamp(18px,4.2vw,32px);font-weight:700;color:var(--gold2);}
+/* Islamic geometric accent inside each stat box — the same 8-point-star
+   pattern used app-wide (bgUrl), sized small and kept faint via ::before so
+   the number itself stays the visually dominant element. */
+.sbox::before{
+  content:"";position:absolute;inset:0;border-radius:14px;
+  background-image:url("${bgUrl}");background-size:90px;background-position:center;
+  opacity:.55;pointer-events:none;
+}
+.sbox .sn,.sbox .sl{position:relative;z-index:1;}
+.sn{font-family:'Poppins',sans-serif;font-size:clamp(18px,4.2vw,32px);font-weight:700;color:var(--gold2);text-shadow:0 0 16px rgba(255,184,0,.35),0 2px 6px rgba(0,0,0,.5);}
 .sl{font-size:clamp(10px,1.8vw,13px);color:var(--muted);letter-spacing:.04em;margin-top:4px;text-transform:uppercase;text-align:center;line-height:1.3;}
 .cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:5px;}
 .cal-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:rgba(0,200,230,.3) transparent;}
@@ -1501,6 +1513,20 @@ input[type="password"]::-ms-clear{display:none;}
 .ayah-img-frame{
   max-height:70vh;overflow:auto;border-radius:8px;background:#fff;padding:10px;
 }
+/* Set 1 preview strip — scrollbar hidden; desktop gets ‹ › arrow buttons
+   instead (hidden on mobile, where swipe is the natural gesture). */
+.preview-scroll{scrollbar-width:none;-ms-overflow-style:none;}
+.preview-scroll::-webkit-scrollbar{display:none;}
+.preview-arrow{
+  position:absolute;top:50%;transform:translateY(-50%);z-index:5;
+  width:36px;height:36px;border-radius:50%;
+  background:rgba(7,28,42,.85);border:1px solid rgba(0,200,230,.35);
+  color:var(--cyan2);font-size:22px;line-height:1;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;backdrop-filter:blur(6px);
+}
+.preview-arrow:hover{background:rgba(0,200,230,.15);border-color:var(--cyan);}
+@media(max-width:640px){.preview-arrow{display:none;}}
 .wtr{font-size:15px;color:var(--muted);font-style:italic;text-align:center;display:none;}
 .wen{font-size:20px;font-weight:400;color:var(--text);text-align:center;}
 .word-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1;min-width:0;}
@@ -2572,10 +2598,19 @@ export default function App() {
     const target = participants.find(p => (p.userId || "").toLowerCase() === userId.toLowerCase());
     if (!target) return { ok: false, reason: "not-found" };
 
-    const updated = { ...target, name: newName.trim() };
-    await supabase.from("users")
+    // .select() makes Supabase return the updated rows — an empty array means
+    // the UPDATE matched nothing (e.g. a missing RLS policy), which this
+    // project has repeatedly seen fail SILENTLY. Never claim success on it.
+    const { data: updatedRows, error } = await supabase.from("users")
       .update({ name: newName.trim() })
-      .eq("user_id", userId.toLowerCase());
+      .eq("user_id", userId.toLowerCase())
+      .select("id");
+    if (error || !updatedRows || updatedRows.length === 0) {
+      console.error("updateParticipantDetails: update touched 0 rows", error?.message || "(no error — likely RLS)");
+      return { ok: false, reason: "db-update-failed" };
+    }
+
+    const updated = { ...target, name: newName.trim() };
     setParticipants(prev => prev.map(p => (p.userId || "").toLowerCase() === userId.toLowerCase() ? updated : p));
     if (user && (user.userId || "").toLowerCase() === userId.toLowerCase()) {
       setUser(updated);
@@ -3345,16 +3380,22 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
           <p style={{ textAlign: "center", fontSize: 13, color: "var(--muted)", marginBottom: 14 }}>
             A taste of what you'll learn — Set 1:
           </p>
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 4px 12px", WebkitOverflowScrolling: "touch" }}>
-            {/* allWords is already sorted by set/order (see fetchAllWords), and
-                RLS itself restricts anon visitors to Set 1 rows only server-side
-                — slice(0,10) just caps it defensively at one set's worth. */}
-            {allWords.slice(0, 10).map((w, i) => (
-              <div key={i} style={{ flex: "0 0 auto", width: 130, textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "16px 10px", backdropFilter: "blur(6px)" }}>
-                <div className="arabic" style={{ fontSize: 24, color: "var(--gold2)", marginBottom: 8 }}>{w.arabic}</div>
-                <div style={{ fontSize: 12.5, color: "var(--text)" }}>{w.english}</div>
-              </div>
-            ))}
+          <div style={{ position: "relative" }}>
+            <button className="preview-arrow" style={{ left: -14 }} aria-label="Scroll left"
+              onClick={() => { const el = document.getElementById("set1-preview-strip"); if (el) el.scrollBy({ left: -300, behavior: "smooth" }); }}>‹</button>
+            <div id="set1-preview-strip" className="preview-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 4px 12px", WebkitOverflowScrolling: "touch" }}>
+              {/* allWords is already sorted by set/order (see fetchAllWords), and
+                  RLS itself restricts anon visitors to Set 1 rows only server-side
+                  — slice(0,10) just caps it defensively at one set's worth. */}
+              {allWords.slice(0, 10).map((w, i) => (
+                <div key={i} style={{ flex: "0 0 auto", width: 130, textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "16px 10px", backdropFilter: "blur(6px)" }}>
+                  <div className="arabic" style={{ fontSize: 24, color: "var(--gold2)", marginBottom: 8 }}>{w.arabic}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--text)" }}>{w.english}</div>
+                </div>
+              ))}
+            </div>
+            <button className="preview-arrow" style={{ right: -14 }} aria-label="Scroll right"
+              onClick={() => { const el = document.getElementById("set1-preview-strip"); if (el) el.scrollBy({ left: 300, behavior: "smooth" }); }}>›</button>
           </div>
           <p style={{ textAlign: "center", fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
             <span className="forgot-link" onClick={() => setView("enroll")}>Sign up free to unlock all {totalWordCount ?? "100+"} words →</span>
@@ -3395,7 +3436,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
         <div className="sbox">
           <span style={{ position: "absolute", top: 6, right: 8, fontSize: 12, opacity: .6 }}>🔒</span>
           <div className="sn">{totalWordCount ?? allWords.length}</div>
-          <div className="sl">Words to learn</div>
+          <div className="sl">Words to Learn</div>
         </div>
         <div className="sbox"><div className="sn">+{wordsAddedLastWeek}</div><div className="sl">Newly added words</div></div>
         <div className="sbox"><div className="sn">{quranCoverage}%</div><div className="sl">Qur'an Coverage</div></div>
@@ -6299,6 +6340,57 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
           <div style={{ fontSize: 13, color: "var(--ok)" }}>✅ {result.count} word{result.count === 1 ? "" : "s"} added successfully.</div>
         </div>
       )}
+
+      <BulkAyahImageUploader toast_={toast_} />
+    </div>
+  );
+}
+
+// ─── Bulk ayah-image uploader — sits under the CSV panel. Filenames encode
+// the target: "2_255.jpg" → Surah 2, Ayah 255. Any image format; each is
+// canvas-normalized to PNG by uploadAyahImage. ────────────────────────────────
+function BulkAyahImageUploader({ toast_ }) {
+  const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState(null); // { ok: [], failed: [] } | null
+  const inputRef = React.useRef(null);
+
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setBusy(true);
+    const ok = [], failed = [];
+    for (const file of files) {
+      // Accept "2_255.png", "002_255.jpg", "2-255.webp" etc.
+      const m = file.name.match(/^(\d{1,3})[_-](\d{1,3})\./);
+      if (!m) { failed.push(`${file.name} — name must be Surah_Ayah (e.g. 2_255.jpg)`); continue; }
+      const surah = parseInt(m[1], 10), ayah = parseInt(m[2], 10);
+      if (surah < 1 || surah > 114 || ayah < 1) { failed.push(`${file.name} — invalid surah/ayah number`); continue; }
+      const result = await uploadAyahImage(file, surah, ayah);
+      if (result?.ok) ok.push(`${surah}:${ayah}`);
+      else failed.push(`${file.name} — upload failed`);
+    }
+    setBusy(false);
+    setReport({ ok, failed });
+    if (ok.length > 0) toast_(`${ok.length} ayah image${ok.length === 1 ? "" : "s"} uploaded.`);
+    e.target.value = "";
+  };
+
+  return (
+    <div style={{ marginTop: 26, paddingTop: 20, borderTop: "1px solid rgba(0,200,230,.15)" }}>
+      <div className="lbl" style={{ marginBottom: 8 }}>Bulk Ayah Images</div>
+      <p style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.7, marginBottom: 12 }}>
+        Upload multiple ayah images at once. Name each file <strong style={{ color: "var(--gold3)" }}>Surah_Ayah</strong> (e.g. <code style={{ color: "var(--cyan2)" }}>2_255.jpg</code> for Ayat al-Kursi). Each image is shared automatically by every word referencing that ayah. Re-uploading the same name replaces the previous image.
+      </p>
+      <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleFiles} />
+      <button className="btn bh" onClick={() => inputRef.current?.click()} disabled={busy}>
+        {busy ? "Uploading…" : "🖼 Select Images"}
+      </button>
+      {report && (
+        <div style={{ marginTop: 12, fontSize: 12.5 }}>
+          {report.ok.length > 0 && <div style={{ color: "var(--ok)", marginBottom: 4 }}>✅ Uploaded: {report.ok.join(", ")}</div>}
+          {report.failed.length > 0 && report.failed.map((f, i) => <div key={i} style={{ color: "var(--err)" }}>⚠ {f}</div>)}
+        </div>
+      )}
     </div>
   );
 }
@@ -6456,10 +6548,8 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
     if (result.ok) {
       toast_(`Account updated for ${editTarget}.`);
       closeEdit();
-    } else if (result.reason === "disposable") {
-      setEditError("That email looks like a disposable/temporary address — please use a real one.");
-    } else if (result.reason === "no-mx") {
-      setEditError("That email domain doesn't appear to exist. Double-check for a typo.");
+    } else if (result.reason === "db-update-failed") {
+      setEditError("The save didn't reach the database — if this persists, the users_admin_update policy may be missing (see fix_users_admin_update.sql).");
     } else {
       setEditError("Couldn't save — please check the details and try again.");
     }
@@ -6525,6 +6615,15 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
             <div className="field" style={{ flex: 1 }}><label>Word # in Ayah</label><input type="number" min="1" value={wordPosition} onChange={e => setWordPosition(e.target.value)} placeholder="e.g. 3" /></div>
           </div>
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: -4, marginBottom: 11 }}>Word # is this word's position (1st, 2nd, 3rd…) within the ayah text — needed for the single-word pronunciation button. Leave blank if unsure; the ayah-level audio and image will still work with just Surah/Ayah #.</p>
+          <div className="field" style={{ marginBottom: 14 }}>
+            <label>Ayah Image (optional)</label>
+            {surahNumber && ayahNumber
+              ? <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <AyahImageUploadButton surahNumber={parseInt(surahNumber, 10)} ayahNumber={parseInt(ayahNumber, 10)} />
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>Uploads for {surahNumber}:{ayahNumber} — shared by every word referencing this ayah</span>
+                </div>
+              : <span style={{ fontSize: 11, color: "var(--muted)" }}>Enter Surah # and Ayah # above first to enable image upload.</span>}
+          </div>
           <button className="btn bg" onClick={add} disabled={adding}>{adding ? "Adding…" : "Add Word"}</button>
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 11 }}>Custom words unlock day-by-day after the built-in words.</p>
         </div>
