@@ -565,6 +565,7 @@ function mapWordRow(row) {
     ayahRef: row.ayah_ref || "", isCustom: !!row.is_custom,
     surahNumber: row.surah_number ?? null, ayahNumber: row.ayah_number ?? null,
     wordPosition: row.word_position ?? null,
+    partialAyahText: row.partial_ayah_text || "",
   };
 }
 
@@ -609,7 +610,7 @@ async function insertWord(word) {
     arabic: word.arabic, translit: word.translit, english: word.english,
     urdu: word.urdu,
     ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
-    word_position: word.wordPosition || null, set_number: setNum, order_in_set: orderNum,
+    word_position: word.wordPosition || null, partial_ayah_text: word.partialAyahText || null, set_number: setNum, order_in_set: orderNum,
     is_custom: true, is_active: true, added_by: addedBy, added_at: new Date().toISOString(),
   });
   if (error) console.error("insertWord error:", error.message);
@@ -621,7 +622,7 @@ async function updateWord(dbId, fields) {
     arabic: fields.arabic, translit: fields.translit, english: fields.english,
     urdu: fields.urdu,
     ayah_ref: fields.ayahRef || null, surah_number: fields.surahNumber || null, ayah_number: fields.ayahNumber || null,
-    word_position: fields.wordPosition || null,
+    word_position: fields.wordPosition || null, partial_ayah_text: fields.partialAyahText || null,
   }).eq("id", dbId);
   if (error) console.error("updateWord error:", error.message);
   return !error;
@@ -670,6 +671,7 @@ const CSV_HEADER_ALIASES = {
   surahNumber: ["surah number", "surah#", "surah no", "surah"],
   ayahNumber: ["ayah number", "ayah#", "ayah no", "ayah"],
   wordPosition: ["word position", "word#", "word no", "word number in ayah"],
+  partialAyahText: ["partial ayah text", "partial ayah", "partial text", "play up to"],
 };
 
 function mapCSVHeaders(headerRow) {
@@ -723,6 +725,7 @@ function parseWordsCSV(text, existingArabicSet = new Set()) {
       surahNumber: get("surahNumber") ? parseInt(get("surahNumber"), 10) || null : null,
       ayahNumber: get("ayahNumber") ? parseInt(get("ayahNumber"), 10) || null : null,
       wordPosition: get("wordPosition") ? parseInt(get("wordPosition"), 10) || null : null,
+      partialAyahText: get("partialAyahText"),
       errors, isDuplicate,
     });
   }
@@ -755,7 +758,7 @@ async function bulkInsertWords(words) {
       arabic: word.arabic, translit: word.translit, english: word.english,
       urdu: word.urdu,
       ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
-      word_position: word.wordPosition || null, set_number: setNum, order_in_set: orderNum,
+      word_position: word.wordPosition || null, partial_ayah_text: word.partialAyahText || null, set_number: setNum, order_in_set: orderNum,
       is_custom: true, is_active: true, added_by: addedBy, added_at: nowIso,
     };
     orderNum += 1;
@@ -1309,6 +1312,7 @@ html{overflow-x:hidden;}
   background-size:115% auto;background-position:center 58%;background-repeat:no-repeat;
 }
 .page-enroll h2,.page-enroll .sub,.page-enroll .lbl{text-shadow:0 2px 10px rgba(0,0,0,.6);}
+.page-enroll > .tagline-prominent,.page-enroll > .lbl,.page-enroll > h2,.page-enroll > p.sub{text-align:center;justify-content:center;}
 .tagline-prominent{
   color:var(--text)!important;font-size:19px!important;font-weight:500!important;
   text-shadow:0 2px 12px rgba(0,0,0,.7),0 0 20px rgba(0,200,230,.15);
@@ -1382,6 +1386,7 @@ h2{font-family:'Poppins',sans-serif;font-size:34px;font-weight:700;margin-bottom
   border-radius:16px;padding:28px;
   backdrop-filter:blur(12px);
   box-shadow:0 8px 40px rgba(0,0,0,.45),0 0 0 1px rgba(0,200,230,.06),inset 0 1px 0 rgba(255,255,255,.07);
+  animation:fu .4s ease;
 }
 .card+.card{margin-top:16px;}
 .field{margin-bottom:16px;min-width:0;}
@@ -1450,6 +1455,7 @@ input[type="password"]::-ms-clear{display:none;}
   max-width:420px;margin:0 auto;
 }
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:11px 26px;border-radius:9px;font-family:'Poppins',sans-serif;font-size:17px;cursor:pointer;transition:all .18s;border:none;font-weight:500;}
+.btn:active{transform:scale(.96);}
 .bg{
   background:linear-gradient(145deg,#1ae6ff,#0090b8);color:#fff;
   box-shadow:0 5px 22px rgba(0,200,230,.5),0 2px 6px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.25);
@@ -1459,7 +1465,7 @@ input[type="password"]::-ms-clear{display:none;}
 .bt{background:linear-gradient(145deg,#00c8e6,#0078a8);color:#fff;box-shadow:0 4px 16px rgba(0,200,230,.4),inset 0 1px 0 rgba(255,255,255,.2);}
 .bt:hover{background:linear-gradient(145deg,#1ae6ff,#00c8e6);}
 .bh{background:rgba(255,255,255,.06);border:1px solid rgba(0,200,230,.25);color:var(--muted);backdrop-filter:blur(8px);}
-.bh:hover{border-color:var(--cyan);color:var(--cyan2);background:rgba(0,200,230,.08);}
+.bh:hover{border-color:var(--cyan);color:var(--cyan2);background:rgba(0,200,230,.08);transform:translateY(-1px);}
 .bsm{padding:7px 16px;font-size:15px;}.bfw{width:100%;}
 .btn:disabled{opacity:.35;cursor:not-allowed;transform:none!important;box-shadow:none!important;}
 .srow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px;}
@@ -1484,10 +1490,11 @@ input[type="password"]::-ms-clear{display:none;}
    each stat box's backdrop — dimmed via opacity so the number stays dominant. */
 .sbox::before{
   content:"";position:absolute;inset:0;border-radius:14px;
-  background-image:url("/images/stat-bg.jpg");background-size:contain;background-repeat:no-repeat;background-position:center;
+  background-image:url("/images/stat-bg.jpg");background-size:100% 100%;background-repeat:no-repeat;background-position:center;
   opacity:.5;pointer-events:none;
 }
 .sbox .sn,.sbox .sl{position:relative;z-index:1;}
+.sbox:hover{transform:translateY(-4px);box-shadow:0 14px 44px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.08),0 0 24px rgba(0,200,230,.18),inset 0 1px 0 rgba(255,255,255,.18);}
 .sn{font-family:'Poppins',sans-serif;font-size:clamp(18px,4.2vw,32px);font-weight:700;color:var(--gold2);text-shadow:0 0 16px rgba(255,184,0,.35),0 2px 6px rgba(0,0,0,.5);}
 .sl{font-size:clamp(10px,1.8vw,13px);color:var(--muted);letter-spacing:.04em;margin-top:4px;text-transform:uppercase;text-align:center;line-height:1.3;}
 .phub-header{display:flex;align-items:center;gap:16px;margin-bottom:18px;}
@@ -1507,6 +1514,7 @@ input[type="password"]::-ms-clear{display:none;}
 }
 .phub-tabs{display:flex;gap:22px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:20px;}
 .phub-tab{background:none;border:none;padding:10px 2px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;}
+.phub-tab:hover:not(.on){color:var(--text);}
 .phub-tab.on{color:var(--cyan2);border-bottom-color:var(--cyan2);}
 .phub-section-label{font-family:'Poppins',sans-serif;font-size:15px;font-weight:600;color:var(--text);margin:20px 0 12px;}
 .phub-stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
@@ -1556,6 +1564,9 @@ input[type="password"]::-ms-clear{display:none;}
 }
 .phub-box-action{cursor:pointer;align-items:center;justify-content:center;text-align:center;}
 .phub-box-action:hover{transform:translateY(-2px);box-shadow:0 12px 36px rgba(0,200,230,.15),0 0 0 1px rgba(0,200,230,.2);}
+.phub-box-disabled{opacity:.45;cursor:not-allowed;}
+.phub-box-disabled:hover{transform:none;box-shadow:0 8px 32px rgba(0,0,0,.3),0 0 0 1px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.15),inset 0 -1px 0 rgba(0,0,0,.1);}
+.phub-box-disabled .phub-desc{color:var(--gold2);}
 .phub-box-action.logout:hover{box-shadow:0 12px 36px rgba(255,82,82,.12),0 0 0 1px rgba(255,82,82,.2);}
 .phub-icon{font-size:26px;margin-bottom:8px;}
 .phub-label{font-weight:600;font-size:14px;color:var(--text);}
@@ -1632,6 +1643,7 @@ input[type="password"]::-ms-clear{display:none;}
 .word-card-main{display:grid;grid-template-columns:auto 1fr auto;align-items:stretch;gap:14px;}
 .war{font-family:'Scheherazade New',serif;font-size:39px;font-weight:600;color:var(--gold2);text-align:right;text-shadow:0 0 18px rgba(255,184,0,.3);display:flex;align-items:center;min-width:80px;}
 .war-wrap{display:flex;align-items:center;gap:8px;}
+.word-actions-col{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;}
 .play-btn{background:rgba(0,200,230,.1);border:1px solid rgba(0,200,230,.3);border-radius:50%;
   width:28px;height:28px;font-size:13px;display:flex;align-items:center;justify-content:center;
   cursor:pointer;transition:all .15s;flex-shrink:0;color:var(--cyan2);padding:0;}
@@ -1660,7 +1672,7 @@ input[type="password"]::-ms-clear{display:none;}
 .wtr{font-size:15px;color:var(--muted);font-style:italic;text-align:center;display:none;}
 .wen{font-size:20px;font-weight:400;color:var(--text);text-align:center;}
 .word-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1;min-width:0;}
-.word-urdu{font-family:'Noto Nastaliq Urdu',serif;font-size:25px;line-height:1.9;color:var(--teal2);direction:rtl;text-align:right;text-shadow:0 0 12px rgba(0,212,168,.25);}
+.word-urdu{font-family:'Noto Nastaliq Urdu',serif;font-size:22px;line-height:1.9;color:var(--teal2);direction:rtl;text-align:right;text-shadow:0 0 12px rgba(0,212,168,.25);}
 .word-toggle{
   background:rgba(0,200,230,.08);border:1px solid rgba(0,200,230,.28);
   color:var(--muted);font-size:13px;padding:5px 10px;border-radius:8px;
@@ -1673,10 +1685,12 @@ input[type="password"]::-ms-clear{display:none;}
   display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:16px;
   animation:tagIn .15s ease;
 }
+.word-card-detail-compact{margin-top:8px;padding-top:8px;font-size:13px;gap:4px 10px;}
+.word-card-detail-compact .dlabel{font-size:11px;}
 .word-card-detail .dlabel{color:var(--muted);font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.07em;text-transform:uppercase;}
 .word-card-detail .dval{color:var(--text);}
 .word-card-detail .dval.arabic{font-family:'Scheherazade New',serif;font-size:32px;font-weight:600;color:var(--gold2);direction:rtl;text-align:left;text-shadow:0 0 14px rgba(255,184,0,.25);}
-.word-card-detail .dval.urdu{font-family:'Noto Nastaliq Urdu',serif;font-size:29px;line-height:1.9;font-weight:600;color:var(--teal2);direction:rtl;text-align:left;}
+.word-card-detail .dval.urdu{font-family:'Noto Nastaliq Urdu',serif;font-size:26px;line-height:1.9;font-weight:600;color:var(--teal2);direction:rtl;text-align:left;}
 .qwrap{max-width:620px;margin:0 auto;}
 .qprog{display:flex;gap:3px;margin-bottom:22px;}
 .qd{height:5px;flex:1;border-radius:3px;background:rgba(255,255,255,.08);transition:background .28s;}
@@ -1712,7 +1726,7 @@ input[type="password"]::-ms-clear{display:none;}
   min-height:82px;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;text-align:center;
 }
 .opt-en{font-size:20px;}
-.opt-ur{font-family:'Noto Nastaliq Urdu',serif;font-size:27px;line-height:1.9;color:var(--teal2);direction:rtl;}
+.opt-ur{font-family:'Noto Nastaliq Urdu',serif;font-size:24px;line-height:1.9;color:var(--teal2);direction:rtl;}
 .opt:hover:not(:disabled){
   border-color:rgba(0,200,230,.5);border-bottom-color:rgba(0,200,230,.5);
   color:var(--cyan2);
@@ -1746,6 +1760,8 @@ input[type="password"]::-ms-clear{display:none;}
 .lbbadge{font-size:12px;background:rgba(0,200,230,.08);color:var(--cyan2);padding:2px 7px;border-radius:9px;border:1px solid rgba(0,180,220,.18);}
 .tabs{display:flex;gap:3px;background:rgba(255,255,255,.06);border-radius:9px;padding:3px;margin-bottom:20px;}
 .tab{flex:1;padding:7px 10px;border-radius:7px;border:none;background:transparent;color:var(--muted);font-family:'Poppins',sans-serif;font-size:14px;cursor:pointer;transition:all .18s;}
+.tab:hover:not(.on){color:var(--cyan2);background:rgba(0,200,230,.05);}
+.tab:active{transform:scale(.96);}
 .tab.on{background:var(--s1);color:var(--cyan2);border:1px solid rgba(0,180,220,.18);}
 .tab-badge{display:inline-block;background:var(--err);color:#fff;font-size:12px;border-radius:9px;padding:1px 6px;margin-left:4px;}
 
@@ -1959,7 +1975,12 @@ input[type="password"]::-ms-clear{display:none;}
 /* ── HISTORY LIST ── */
 /* ── HISTORY — SIDE-BY-SIDE CHARTS (Set vs All Sets Quiz) ── */
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;align-items:stretch;}
-.chart-col{padding:16px 14px;display:flex;flex-direction:column;height:365px;}
+.chart-col{padding:16px 14px;display:flex;flex-direction:column;height:365px;transition:transform .25s ease,box-shadow .25s ease;}
+.chart-col:hover{transform:translateY(-3px);box-shadow:0 14px 44px rgba(0,0,0,.4),0 0 0 1px rgba(0,200,230,.1);}
+.chart-col-teal{background:rgba(0,224,160,.07);border-color:rgba(0,224,160,.25);}
+.chart-col-cyan{background:rgba(0,200,230,.08);border-color:rgba(0,200,230,.28);}
+.chart-col-gold{background:rgba(255,217,107,.08);border-color:rgba(255,217,107,.28);}
+.chart-col-rose{background:rgba(255,138,128,.07);border-color:rgba(255,138,128,.25);}
 .chart-col-head{min-height:28px;display:flex;align-items:flex-start;flex-shrink:0;padding-bottom:14px;}
 .chart-col-head .lbl{font-size:13px;letter-spacing:0;line-height:1.3;}
 .chart-col-inner{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;}
@@ -2001,11 +2022,11 @@ input[type="password"]::-ms-clear{display:none;}
     display:flex;flex-direction:column;align-items:center;gap:2px;
     background:none;border:none;color:var(--muted);
     font-family:'Poppins',sans-serif;font-size:12px;cursor:pointer;
-    padding:4px 10px;border-radius:8px;transition:color .18s;
+    padding:4px 10px;border-radius:8px;transition:color .18s,transform .15s;
     -webkit-tap-highlight-color:transparent;
   }
   .mnav-btn.on{color:var(--cyan2);}
-  .mnav-btn:active{color:var(--teal2);}
+  .mnav-btn:active{color:var(--teal2);transform:scale(.92);}
   .mnav-icon{font-size:21px;line-height:1;}
   /* Push page content above bottom nav */
   .app{padding-bottom:60px;}
@@ -2336,20 +2357,45 @@ export default function App() {
     // learner's queries only ever return their own scores/progress rows,
     // while admin/finance see everyone's (see scores_select/progress_select
     // policies). Either way this fetch pattern is correct as-is.
+    //
+    // IMPORTANT: after the users_read_all -> users_own_or_staff_read RLS
+    // fix (closing the public-email-exposure gap), a direct `.from("users")`
+    // query only returns the CALLER'S OWN row for non-staff — which would
+    // silently break the Leaderboard for every non-admin viewer (each
+    // learner would only ever see themselves). get_leaderboard_data() is a
+    // narrow SECURITY DEFINER RPC that returns every learner's name/userId/
+    // progress (deliberately NOT email) so the Leaderboard keeps working for
+    // everyone, anon included, while the email-privacy fix stays intact.
     const loadParticipants = async () => {
       // Admin/Finance are real accounts in this same table now, but they're
       // staff, not learners — excluded here at the source so they can never
       // appear in member counts, Leaderboard, or (importantly) the "Delete
       // Participant" list, where someone could otherwise remove them by mistake.
       const { data: parts } = await supabase.from("users").select("*").neq("role", "admin").neq("role", "finance");
+      const { data: publicParts } = await supabase.rpc("get_leaderboard_data");
       const { data: allScores } = await supabase.from("scores").select("*").order("quiz_date", { ascending: true });
       const { data: allProgress } = await supabase.from("progress").select("*");
-      if (parts) setParticipants(parts.map(p => ({
+
+      // Merge: the direct query (full row, may include email) wins when
+      // present; the public RPC fills in every other learner the direct
+      // query couldn't see (email intentionally absent from that source).
+      const byId = new Map();
+      (publicParts || []).forEach(p => byId.set(p.id, {
+        userId: p.user_id, name: p.name, email: null,
+        enrolledAt: p.enrolled_at, role: "learner", dbId: p.id,
+        dayProgress: p.day_progress || {}, emailVerified: true, supabaseId: null,
+      }));
+      (parts || []).forEach(p => byId.set(p.id, {
         userId: p.user_id, name: p.name, email: p.email,
         enrolledAt: p.enrolled_at, role: p.role || "learner", dbId: p.id,
-        scores: (allScores || []).filter(s => s.user_id === p.id).map(mapScoreRow),
-        dayProgress: (allProgress || []).find(pr => pr.user_id === p.id)?.day_progress || {},
+        dayProgress: (allProgress || []).find(pr => pr.user_id === p.id)?.day_progress || byId.get(p.id)?.dayProgress || {},
         emailVerified: true, supabaseId: p.auth_id,
+      }));
+
+      const merged = Array.from(byId.values());
+      if (merged.length) setParticipants(merged.map(p => ({
+        ...p,
+        scores: (allScores || []).filter(s => s.user_id === p.dbId).map(mapScoreRow),
       })));
     };
 
@@ -4079,7 +4125,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
   const actionBoxes = [
     { key: "profile", icon: "👤", label: "Profile Settings", desc: "User ID, email, password", onClick: () => setView("profile") },
     { key: "history", icon: "📋", label: "My History", desc: "Past quizzes & results", onClick: () => setView("history") },
-    { key: "receipt-req", icon: "🧾", label: "Request Receipt", desc: "For a donation you made", onClick: onRequestReceipt },
+    { key: "receipt-req", icon: "🧾", label: "Request Receipt", desc: "Coming soon", onClick: onRequestReceipt, disabled: true },
     { key: "receipts", icon: "🧾", label: "My Receipts", desc: "Download past receipts", onClick: () => setView("downloadReceipt") },
   ];
 
@@ -4156,7 +4202,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
       ) : (
         <div className="phub-grid" style={{ marginTop: 16 }}>
           {actionBoxes.map(b => (
-            <div key={b.key} className="phub-box phub-box-action" onClick={b.onClick}>
+            <div key={b.key} className={`phub-box phub-box-action ${b.disabled ? "phub-box-disabled" : ""}`} onClick={b.disabled ? undefined : b.onClick}>
               <div className="phub-icon">{b.icon}</div>
               <div className="phub-label">{b.label}</div>
               {b.desc && <div className="phub-desc">{b.desc}</div>}
@@ -4637,6 +4683,51 @@ function PlayPauseButton({ resolveUrl, className, title, playingLabel = "⏸", i
   );
 }
 
+// ── Plays a short lead-in portion of an ayah, word-by-word, chaining the
+// same per-word CDN clips used for single-word pronunciation — rather than
+// needing a separately trimmed audio file. wordCount is derived from how
+// many space-separated words are in the admin-pasted "partial ayah text"
+// (see WordsTable), on the assumption that text always starts from word 1.
+function PartialAyahPlayButton({ surahNumber, ayahNumber, wordCount, className, title }) {
+  const [state, setState] = useState("idle"); // idle | loading | playing | error
+  const audioRef = React.useRef(null);
+  const stoppedRef = React.useRef(false);
+
+  const stop = () => {
+    stoppedRef.current = true;
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+    setState("idle");
+  };
+
+  const playFrom = (position) => {
+    if (position > wordCount) { setState("idle"); return; }
+    const url = getWordAudioUrl(surahNumber, ayahNumber, position);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    audio.onended = () => { if (!stoppedRef.current) playFrom(position + 1); };
+    audio.onerror = () => { setState("error"); setTimeout(() => setState("idle"), 1800); };
+    audio.play().catch(() => { setState("error"); setTimeout(() => setState("idle"), 1800); });
+  };
+
+  const toggle = (e) => {
+    e.stopPropagation();
+    if (state === "playing" || state === "loading") { stop(); return; }
+    if (!wordCount || wordCount < 1) { setState("error"); setTimeout(() => setState("idle"), 1800); return; }
+    stoppedRef.current = false;
+    setState("playing");
+    playFrom(1);
+  };
+
+  React.useEffect(() => () => { stoppedRef.current = true; if (audioRef.current) audioRef.current.pause(); }, []);
+
+  return (
+    <button className={`play-btn ${state} ${className || ""}`} onClick={toggle} aria-label={state === "playing" ? "Stop" : "Play"} title={title}>
+      {state === "loading" ? "…" : state === "playing" ? "⏸" : state === "error" ? "⚠" : "▶"}
+    </button>
+  );
+}
+
+
 // ── Ayah reference popup — shows the actual mushaf-script image, with
 // zoom controls (since the source image is a small raster crop — stretching
 // it via CSS just blurs it, but letting the user zoom in on demand keeps it
@@ -4662,7 +4753,7 @@ function GateWarningModal({ message, onClose }) {
   );
 }
 
-function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
+function AyahImagePopup({ surahNumber, ayahNumber, partialAyahText, onClose }) {
   const [stage, setStage] = useState("custom"); // "custom" -> "cdn" -> "failed"
   // Fixed at a comfortable reading size (~400%, the sweet spot for legibility
   // on the low-res CDN fallback) rather than manual zoom controls — panning
@@ -4672,6 +4763,7 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
   // own natural fit instead of forcing the same aggressive zoom onto it.
   const READING_SCALE = 4;
   const imageSrc = stage === "custom" ? getCustomAyahImageUrl(surahNumber, ayahNumber) : getAyahImageUrl(surahNumber, ayahNumber);
+  const partialWordCount = partialAyahText ? partialAyahText.trim().split(/\s+/).filter(Boolean).length : 0;
 
   const handleImgError = () => {
     // No custom upload exists for this ayah yet (404) — silently fall back
@@ -4716,6 +4808,15 @@ function AyahImagePopup({ surahNumber, ayahNumber, onClose }) {
             />
             <span style={{ fontSize: 12, color: "var(--muted)" }}>Play full ayah recitation</span>
           </div>
+          {partialWordCount > 0 && (
+            <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <PartialAyahPlayButton
+                surahNumber={surahNumber} ayahNumber={ayahNumber} wordCount={partialWordCount}
+                title="Play/stop just the portion shown in this image"
+              />
+              <span style={{ fontSize: 12, color: "var(--gold2)" }}>Play up to here ({partialWordCount} word{partialWordCount !== 1 ? "s" : ""})</span>
+            </div>
+          )}
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 12 }}>Audio &amp; image courtesy of Al Quran Cloud (islamic.network)</p>
         </div>
       </div>
@@ -4740,26 +4841,28 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
       <div className="word-card-main">
         <div className="war-wrap">
           <div className="war">{word.arabic}</div>
-          {hasWordAudio && (
-            <PlayPauseButton
-              resolveUrl={() => Promise.resolve(getWordAudioUrl(word.surahNumber, word.ayahNumber, word.wordPosition))}
-              title="Play word pronunciation"
-            />
-          )}
         </div>
         <div className="word-mid">
           <div className="wtr">{word.translit}</div>
           <div className="wen">{word.english}</div>
           <div className="word-urdu">{word.urdu || "—"}</div>
         </div>
-        {word.ayahRef && (
-          <button className="word-toggle" onClick={onToggle}>
-            {isOpen ? "Hide ▲" : "Details ▼"}
-          </button>
-        )}
+        <div className="word-actions-col">
+          {hasWordAudio && (
+            <PlayPauseButton
+              resolveUrl={() => Promise.resolve(getWordAudioUrl(word.surahNumber, word.ayahNumber, word.wordPosition))}
+              title="Play word pronunciation"
+            />
+          )}
+          {word.ayahRef && (
+            <button className="word-toggle" onClick={onToggle}>
+              {isOpen ? "Hide ▲" : "Details ▼"}
+            </button>
+          )}
+        </div>
       </div>
       {isOpen && word.ayahRef && (
-        <div className="word-card-detail">
+        <div className="word-card-detail word-card-detail-compact">
           <span className="dlabel">Qur'an Ref</span>
           {hasAyahRef ? (
             <span className="dval ayah-ref-link" onClick={(e) => { e.stopPropagation(); setShowAyahPopup(true); }}>{word.ayahRef} 🖼</span>
@@ -4769,7 +4872,7 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
         </div>
       )}
       {showAyahPopup && hasAyahRef && (
-        <AyahImagePopup surahNumber={word.surahNumber} ayahNumber={word.ayahNumber} onClose={() => setShowAyahPopup(false)} />
+        <AyahImagePopup surahNumber={word.surahNumber} ayahNumber={word.ayahNumber} partialAyahText={word.partialAyahText} onClose={() => setShowAyahPopup(false)} />
       )}
     </div>
   );
@@ -5520,7 +5623,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
 
       {sessions.length > 0 && (
         <>
-          <div className="card chart-col" style={{ marginBottom: 18 }}>
+          <div className="card chart-col chart-col-teal" style={{ marginBottom: 18 }}>
             <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>Monthly Mastery Target — Last 6 Months</div></div>
             <div className="chart-col-inner">
               <MonthlyTargetChart scores={user.scores || []} target={user.monthlyTarget || 30} />
@@ -5528,13 +5631,13 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
           </div>
 
           <div className="chart-row">
-            <div className="card chart-col">
+            <div className="card chart-col chart-col-cyan">
               <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>Set Quizzes — Last {barData.length} Attempts</div></div>
               <div className="chart-col-inner">
                 {barData.length > 0 ? <ScoreBarChart data={barData} compact mode="score" /> : <div className="chart-empty">No set quizzes yet</div>}
               </div>
             </div>
-            <div className="card chart-col">
+            <div className="card chart-col chart-col-gold">
               <div className="chart-col-head">
                 <div className="lbl" style={{ marginBottom: 0 }}>All Sets Quiz — Last {allSetsBarData.length} Attempts</div>
               </div>
@@ -5556,7 +5659,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
 
           {/* Weak Words Practice — separate chart */}
           {weakBarData.length > 0 && (
-            <div className="card chart-col" style={{ marginBottom: 16 }}>
+            <div className="card chart-col chart-col-rose" style={{ marginBottom: 16 }}>
               <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>Weak Words Practice — Last {weakBarData.length} Attempts</div></div>
               <div className="chart-col-inner">
                 <ScoreBarChart data={weakBarData} compact mode="score" />
@@ -5567,7 +5670,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
           {(wordBreakdown.totalTracked > 0 || allSetsWordBreakdown.totalTracked > 0) && (
             <div className="chart-row" style={{ marginBottom: 16 }}>
               {wordBreakdown.totalTracked > 0 && (
-                <div className="card chart-col">
+                <div className="card chart-col chart-col-cyan">
                   <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>Set Quizzes — Word Strength</div></div>
                   <div className="chart-col-inner">
                     <WordStrengthPieChart strong={wordBreakdown.strong.length} weak={wordBreakdown.weak.length} even={wordBreakdown.even.length} compact />
@@ -5575,7 +5678,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
                 </div>
               )}
               {allSetsWordBreakdown.totalTracked > 0 && (
-                <div className="card chart-col">
+                <div className="card chart-col chart-col-gold">
                   <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>All Sets Quiz — Word Strength</div></div>
                   <div className="chart-col-inner">
                     <WordStrengthPieChart strong={allSetsWordBreakdown.strong.length} weak={allSetsWordBreakdown.weak.length} even={allSetsWordBreakdown.even.length} compact />
@@ -5838,14 +5941,15 @@ function LBPage({ participants, user, allWords }) {
       return { ...p, masteryPct, bestQuiz, unlockedWords: unlocked, masteredWords: masteredSet.size, sessions: scores.length };
     })
     .filter(p => p.unlockedWords > 0)
-    .sort((a, b) => b.masteryPct - a.masteryPct || b.masteredWords - a.masteredWords || b.bestQuiz - a.bestQuiz);
+    .sort((a, b) => b.masteryPct - a.masteryPct || b.masteredWords - a.masteredWords || b.bestQuiz - a.bestQuiz)
+    .slice(0, 10);
 
   const userKey = user ? (user.userId || user.email) : null;
   return (
     <div className="page pmd">
       <div className="lbl">Leaderboard</div>
       <h2>Top Learners</h2>
-      <p className="sub" style={{ marginBottom: 26 }}>Ranked by words mastered out of words unlocked</p>
+      <p className="sub" style={{ marginBottom: 26 }}>Top 10, ranked by words mastered out of words unlocked</p>
       {ranked.length === 0
         ? <div className="card" style={{ textAlign: "center", color: "var(--muted)", padding: 44 }}>No scores yet — complete a quiz to appear here!</div>
         : <div className="card">
@@ -6538,7 +6642,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                   <td><input value={editForm.arabic || ""} onChange={e => setEditForm(f => ({ ...f, arabic: e.target.value }))} style={{ direction: "rtl", fontSize: 18, fontFamily: "serif", width: 90, background: "transparent", border: "1px solid var(--cyan2)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.translit || ""} onChange={e => setEditForm(f => ({ ...f, translit: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.english || ""} onChange={e => setEditForm(f => ({ ...f, english: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
-                  <td><input value={editForm.urdu || ""} onChange={e => setEditForm(f => ({ ...f, urdu: e.target.value }))} style={{ direction: "rtl", fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 15, width: 70, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
+                  <td><input value={editForm.urdu || ""} onChange={e => setEditForm(f => ({ ...f, urdu: e.target.value }))} style={{ direction: "rtl", fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 13, width: 70, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td style={{ display: "flex", gap: 3, alignItems: "flex-end" }}>
                     <div>
                       <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 2 }}>Surah #</div>
@@ -6551,6 +6655,14 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                     <div>
                       <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 2 }}>Word #</div>
                       <input type="number" min="1" value={editForm.wordPosition ?? ""} onChange={e => setEditForm(f => ({ ...f, wordPosition: e.target.value ? parseInt(e.target.value, 10) : null }))} title="Word position within the ayah" style={{ width: 42, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px" }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 110 }}>
+                      <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 2 }}>Displayed Reference Text</div>
+                      <input value={editForm.ayahRef || ""} onChange={e => setEditForm(f => ({ ...f, ayahRef: e.target.value }))} placeholder="e.g. Surah Al-Baqarah 2:144" title="The text shown to learners — this does NOT auto-update from Surah#/Ayah# above, update both together" style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px", fontSize: 11 }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 2 }}>Partial Ayah Text (optional)</div>
+                      <input value={editForm.partialAyahText || ""} onChange={e => setEditForm(f => ({ ...f, partialAyahText: e.target.value }))} placeholder="Paste from Quran.com — plays word 1 through here" dir="rtl" style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px", fontSize: 12, fontFamily: "serif" }} />
                     </div>
                   </td>
                   <td>
@@ -6570,8 +6682,11 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                 <td><span className="arabic" style={{ fontSize: 20 }}>{w.arabic}</span></td>
                 <td style={{ color: "var(--muted)", fontStyle: "italic" }}>{w.translit}</td>
                 <td>{w.english}</td>
-                <td><span style={{ fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 16, color: "var(--teal2)", direction: "rtl" }}>{w.urdu || "—"}</span></td>
-                <td style={{ fontSize: 12, color: "var(--muted)" }}>{w.surahNumber && w.ayahNumber ? `${w.surahNumber}:${w.ayahNumber}${w.wordPosition ? ` (w${w.wordPosition})` : ""}` : "—"}</td>
+                <td><span style={{ fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 14, color: "var(--teal2)", direction: "rtl" }}>{w.urdu || "—"}</span></td>
+                <td style={{ fontSize: 12, color: "var(--muted)" }}>
+                  {w.surahNumber && w.ayahNumber ? `${w.surahNumber}:${w.ayahNumber}${w.wordPosition ? ` (w${w.wordPosition})` : ""}` : "—"}
+                  {w.ayahRef && <div style={{ fontSize: 10, color: "var(--gold2)", marginTop: 2 }}>"{w.ayahRef}"</div>}
+                </td>
                 <td>
                   {w.surahNumber && w.ayahNumber
                     ? <AyahImageUploadButton surahNumber={w.surahNumber} ayahNumber={w.ayahNumber} />
@@ -6638,11 +6753,12 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   // re-uploading — the upload step itself skips anything matching an
   // existing Arabic word, so re-uploading the existing rows is harmless.
   const downloadExistingWords = () => {
-    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Ayah Reference,Surah Number,Ayah Number,Word Position";
+    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text";
     const lines = allWords.map(w => [
       csvField(w.arabic), csvField(w.translit), csvField(w.english), csvField(w.urdu),
       csvField(w.ayahRef),
       csvField(w.surahNumber ?? ""), csvField(w.ayahNumber ?? ""), csvField(w.wordPosition ?? ""),
+      csvField(w.partialAyahText ?? ""),
     ].join(","));
     const csv = UTF8_BOM + [header, ...lines].join("\n") + "\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -6653,8 +6769,8 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   };
 
   const downloadBlankTemplate = () => {
-    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Ayah Reference,Surah Number,Ayah Number,Word Position\n'
-      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,"Surah Al-Baqarah 2:144",2,144,13\n';
+    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text\n'
+      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,"Surah Al-Baqarah 2:144",2,144,13,\n';
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -7023,7 +7139,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
           <div className="field"><label>Arabic Word *</label><input value={arabic} onChange={e => setArabic(e.target.value)} placeholder="e.g. مَسْجِدٌ" style={{ direction: "rtl", fontSize: 22, fontFamily: "'Scheherazade New','Amiri',serif" }} /></div>
           <div className="field"><label>Transliteration</label><input value={translit} onChange={e => setTranslit(e.target.value)} placeholder="e.g. Masjid" /></div>
           <div className="field"><label>English Meaning *</label><input value={english} onChange={e => setEnglish(e.target.value)} placeholder="e.g. Mosque" /></div>
-          <div className="field"><label>Urdu Meaning</label><input value={urdu} onChange={e => setUrdu(e.target.value)} placeholder="e.g. مسجد" style={{ direction: "rtl", fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 17 }} /></div>
+          <div className="field"><label>Urdu Meaning</label><input value={urdu} onChange={e => setUrdu(e.target.value)} placeholder="e.g. مسجد" style={{ direction: "rtl", fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 15 }} /></div>
           <div className="field"><label>Qur'an Reference (optional)</label><input value={ayahRef} onChange={e => setAyahRef(e.target.value)} placeholder="e.g. Surah Al-Baqarah 2:144" /></div>
           <div style={{ display: "flex", gap: 10 }}>
             <div className="field" style={{ flex: 1 }}><label>Surah # (for audio/image)</label><input type="number" min="1" max="114" value={surahNumber} onChange={e => setSurahNumber(e.target.value)} placeholder="e.g. 2" /></div>
