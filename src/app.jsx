@@ -1278,9 +1278,11 @@ const CSS = `
   --gold:#ffc940;--gold2:#ffd96b;--gold3:#ffe899;
   --text:#f0f8ff;--muted:#7ab8d4;
   --ok:#00c8e6;--err:#ff5252;
+  --pal-rose:#ff8a80;--pal-teal:#00e0a0;
   --glow:rgba(0,200,230,.22);--glow2:rgba(0,200,230,.12);
 }
-body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans-serif;min-height:100vh;font-size:17px;-webkit-font-smoothing:antialiased;}
+body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans-serif;min-height:100vh;font-size:17px;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+html{overflow-x:hidden;}
 .app{min-height:100vh;background:
   radial-gradient(ellipse 70% 45% at 15% -5%,rgba(0,180,220,.18),transparent),
   radial-gradient(ellipse 60% 60% at 88% 100%,rgba(0,180,210,.14),transparent),
@@ -1559,8 +1561,26 @@ input[type="password"]::-ms-clear{display:none;}
 .phub-target-btn{background:none;border:1px solid rgba(0,200,230,.3);color:var(--cyan2);font-size:11px;padding:4px 10px;border-radius:20px;margin-top:6px;cursor:pointer;}
 .phub-target-edit{display:flex;gap:6px;margin-top:6px;align-items:center;}
 .phub-target-edit input{width:60px;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.2);color:var(--text);font-size:13px;}
-@media(max-width:480px){.phub-logout-btn{padding:7px 10px;font-size:11px;}.phub-avatar{width:52px;height:52px;font-size:21px;}}
-@media(max-width:640px){.phub-stat-grid{grid-template-columns:repeat(2,1fr);}.phub-grid{grid-template-columns:repeat(2,1fr);}.phub-challenge-row{gap:8px;}.phub-badge-card{padding:12px 6px;}}
+@media(max-width:480px){.field-row{flex-direction:column;gap:0 !important;}.phub-logout-btn{padding:7px 10px;font-size:11px;}.phub-avatar{width:52px;height:52px;font-size:21px;}}
+@media(max-width:640px){
+  .phub-page{padding-left:12px;padding-right:12px;}
+  .phub-stat-grid{grid-template-columns:repeat(2,1fr);gap:14px;}
+  .phub-stat-card{padding:20px 16px;min-height:100px;gap:14px;}
+  .phub-stat-icon{font-size:30px;}
+  .phub-stat-num{font-size:24px;}
+  .phub-stat-label{font-size:12.5px;}
+  .phub-grid{grid-template-columns:repeat(2,1fr);gap:14px;}
+  .phub-box{padding:22px 16px;min-height:170px;}
+  .phub-icon{font-size:34px;margin-bottom:10px;}
+  .phub-label{font-size:15.5px;}
+  .phub-desc{font-size:12.5px;}
+  .phub-challenge-row{gap:10px;}
+  .phub-badge-card{padding:18px 8px;gap:6px;}
+  .phub-badge-shape{width:56px;height:56px;font-size:26px;}
+  .phub-badge-month{font-size:14.5px;}
+  .phub-badge-sub{font-size:12px;}
+  .phub-tab{font-size:15.5px;}
+}
 .cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:5px;}
 .cal-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:rgba(0,200,230,.3) transparent;}
 .cal-scroll::-webkit-scrollbar{height:4px;}
@@ -3367,7 +3387,7 @@ export default function App() {
             {view === "resetPassword" && <ResetPasswordPage onSetPassword={verifyResetCodeAndSetPassword} initialEmail={pendingResetEmail} setView={setView} />}
             {view === "profile" && user && <ProfilePage user={user} saveUser={saveUser} setView={setView} toast_={toast_} />}
             {view === "profileHub" && user && <ProfileHub user={user} saveUser={saveUser} setView={setView} toast_={toast_} onRequestReceipt={() => setShowRequestReceipt(true)} onLogout={logout} allWords={allWords} />}
-            {view === "downloadReceipt" && <DownloadReceiptPage prefillReceiptNo="" toast_={toast_} user={user} />}
+            {view === "downloadReceipt" && <DownloadReceiptPage prefillReceiptNo="" toast_={toast_} user={user} setView={setView} />}
             {/* Email verification handled automatically by Supabase via onAuthStateChange */}
           </>
         )}
@@ -4062,7 +4082,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
   ];
 
   return (
-    <div className="page pmd">
+    <div className="page pmd phub-page">
       {/* Header */}
       <div className="phub-header">
         <div className="phub-avatar">{(user.name || "?").trim().charAt(0).toUpperCase()}</div>
@@ -5178,6 +5198,17 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview, setSele
 // mode="time"  (All Sets Quiz): bar height = seconds taken, label on top =
 //   number of words answered correctly, y-axis gridlines scaled to seconds
 function ScoreBarChart({ data, compact = false, mode = "score" }) {
+  // Animate bars growing up from the baseline on mount (and whenever the
+  // underlying data changes, e.g. switching History tabs) — starts at 0
+  // height, transitions to full height a tick after mount so the browser
+  // registers the starting state first.
+  const [grown, setGrown] = useState(false);
+  useEffect(() => {
+    setGrown(false);
+    const t = setTimeout(() => setGrown(true), 30);
+    return () => clearTimeout(t);
+  }, [data]);
+
   if (data.length === 0) return null;
   const W = compact ? 320 : 420, H = compact ? 290 : 320, padL = compact ? 30 : 36, padB = 32, padT = 18, padR = 8;
   const chartW = W - padL - padR, chartH = H - padT - padB;
@@ -5225,18 +5256,20 @@ function ScoreBarChart({ data, compact = false, mode = "score" }) {
           const t = d.timeUsedSec ?? 0;
           barFraction = maxTime > 0 ? t / maxTime : 0;
           topLabel = d.score != null ? `${d.score}✓` : "—";
-          color = "var(--teal2)";
+          color = "var(--cyan2)";
         } else {
           barFraction = d.pct / 100;
           topLabel = (d.score != null && d.total != null) ? `${d.score}/${d.total}` : `${d.pct}%`;
-          color = d.pct >= 70 ? "var(--ok)" : d.pct >= 50 ? "var(--gold2)" : "var(--err)";
+          color = d.pct >= 70 ? "var(--pal-teal)" : d.pct >= 50 ? "var(--gold2)" : "var(--pal-rose)";
         }
-        const barH = barFraction * chartH;
+        const fullBarH = barFraction * chartH;
+        const barH = grown ? fullBarH : 0;
         const y = padT + chartH - barH;
         return (
           <g key={i}>
-            <rect x={x} y={y} width={barW} height={barH} rx="3" fill={color} opacity="0.85" />
-            {(!compact || data.length <= 8) && <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif">{topLabel}</text>}
+            <rect x={x} y={y} width={barW} height={barH} rx="3" fill={color} opacity="0.85"
+              style={{ transition: `height .55s cubic-bezier(.22,1,.36,1) ${i * 0.04}s, y .55s cubic-bezier(.22,1,.36,1) ${i * 0.04}s` }} />
+            {(!compact || data.length <= 8) && grown && <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif" style={{ transition: `opacity .3s ease ${i * 0.04 + 0.3}s`, opacity: grown ? 1 : 0 }}>{topLabel}</text>}
             {i % labelStep === 0 && <text x={x + barW / 2} y={H - 10} fontSize={compact ? 10 : 12} fill="var(--muted)" textAnchor="middle" fontFamily="Poppins, sans-serif">{d.label}</text>}
           </g>
         );
@@ -5246,49 +5279,57 @@ function ScoreBarChart({ data, compact = false, mode = "score" }) {
   );
 }
 
-// ── Simple SVG Pie/Donut Chart — Strong vs Weak vs Even words ─────────────────
+// ── Simple SVG Donut Chart — Strong vs Weak vs Even words ────────────────────
+// Built from stacked stroke-dasharray circles (not path arcs) specifically so
+// each ring segment can animate its length on mount — the whole donut
+// "sweeps" round from empty to full whenever the History page (or a word
+// tab within it) is visited, rather than appearing instantly.
 function WordStrengthPieChart({ strong, weak, even, compact = false }) {
   const total = strong + weak + even;
+
+  const [swept, setSwept] = useState(false);
+  useEffect(() => {
+    setSwept(false);
+    const t = setTimeout(() => setSwept(true), 30);
+    return () => clearTimeout(t);
+  }, [strong, weak, even]);
+
   if (total === 0) return null;
-  const size = 180, cx = size / 2, cy = size / 2, r = 70, innerR = 42;
+  const size = 180, cx = size / 2, cy = size / 2;
+  const ringR = 56; // radius at the centre of the ring stroke
+  const strokeW = 28; // r(70) - innerR(42) from the original path version
+  const circumference = 2 * Math.PI * ringR;
 
   const segments = [
-    { value: strong, color: "var(--ok)", label: "Strong" },
-    { value: weak, color: "var(--err)", label: "Weak" },
+    { value: strong, color: "var(--pal-teal)", label: "Strong" },
+    { value: weak, color: "var(--pal-rose)", label: "Weak" },
     { value: even, color: "var(--gold2)", label: "Mixed" },
   ].filter(s => s.value > 0);
 
-  let cumulativeAngle = -90; // start at top
-  const paths = segments.map(seg => {
-    const angle = (seg.value / total) * 360;
-    const startAngle = cumulativeAngle;
-    const endAngle = cumulativeAngle + angle;
-    cumulativeAngle = endAngle;
-
-    const toRad = (deg) => (deg * Math.PI) / 180;
-    const x1 = cx + r * Math.cos(toRad(startAngle));
-    const y1 = cy + r * Math.sin(toRad(startAngle));
-    const x2 = cx + r * Math.cos(toRad(endAngle));
-    const y2 = cy + r * Math.sin(toRad(endAngle));
-    const ix1 = cx + innerR * Math.cos(toRad(startAngle));
-    const iy1 = cy + innerR * Math.sin(toRad(startAngle));
-    const ix2 = cx + innerR * Math.cos(toRad(endAngle));
-    const iy2 = cy + innerR * Math.sin(toRad(endAngle));
-    const largeArc = angle > 180 ? 1 : 0;
-
-    const d = `M ${ix1} ${iy1} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerR} ${innerR} 0 ${largeArc} 0 ${ix1} ${iy1} Z`;
-    return { d, color: seg.color, label: seg.label, value: seg.value };
+  let cumLen = 0;
+  const rings = segments.map(seg => {
+    const segLen = (seg.value / total) * circumference;
+    const offsetBefore = cumLen;
+    cumLen += segLen;
+    return { ...seg, segLen, offsetBefore };
   });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: compact ? 14 : 18 }}>
       <svg viewBox={`0 0 ${size} ${size}`} style={{ width: compact ? 200 : 230, height: compact ? 200 : 230, flexShrink: 0, display: "block" }}>
-        {paths.map((p, i) => <path key={i} d={p.d} fill={p.color} opacity="0.88" />)}
-        <text x={cx} y={cy - 4} textAnchor="middle" fontSize={compact ? 24 : 28} fontFamily="Poppins, sans-serif" fill="var(--gold3)">{total}</text>
-        <text x={cx} y={cy + 18} textAnchor="middle" fontSize={compact ? 10 : 11} fontFamily="Poppins, sans-serif" fill="var(--muted)">words</text>
+        <g transform={`rotate(-90 ${cx} ${cy})`}>
+          {rings.map((seg, i) => (
+            <circle key={i} cx={cx} cy={cy} r={ringR} fill="none" stroke={seg.color} strokeWidth={strokeW} opacity="0.88"
+              strokeDasharray={`${swept ? seg.segLen : 0} ${circumference - (swept ? seg.segLen : 0)}`}
+              strokeDashoffset={-seg.offsetBefore}
+              style={{ transition: `stroke-dasharray .7s cubic-bezier(.22,1,.36,1) ${i * 0.1}s` }} />
+          ))}
+        </g>
+        <text x={cx} y={cy - 4} textAnchor="middle" fontSize={compact ? 24 : 28} fontFamily="Poppins, sans-serif" fill="var(--gold3)" style={{ transition: "opacity .4s ease .5s", opacity: swept ? 1 : 0 }}>{total}</text>
+        <text x={cx} y={cy + 18} textAnchor="middle" fontSize={compact ? 10 : 11} fontFamily="Poppins, sans-serif" fill="var(--muted)" style={{ transition: "opacity .4s ease .5s", opacity: swept ? 1 : 0 }}>words</text>
       </svg>
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: compact ? "6px 16px" : "8px 20px", paddingBottom: 6 }}>
-        {paths.map((p, i) => (
+        {rings.map((p, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: compact ? 13 : 14 }}>
             <span style={{ width: compact ? 11 : 12, height: compact ? 11 : 12, borderRadius: 3, background: p.color, display: "inline-block" }} />
             <span style={{ color: "var(--text)" }}>{p.label}</span>
@@ -7455,11 +7496,15 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
               </p>
               <div className="field"><label>Your Name</label><input value={donorName} onChange={e => setDonorName(e.target.value)} placeholder="Full name" /></div>
               <div className="field"><label>Your Email</label><input type="email" value={donorEmail} onChange={e => setDonorEmail(e.target.value)} placeholder="you@email.com" /></div>
-              <div style={{ display: "flex", gap: 12 }}>
+              <div className="field-row" style={{ display: "flex", gap: 12 }}>
                 <div className="field" style={{ flex: 1 }}><label>Amount Paid (₹, optional)</label><input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="1000" /></div>
-                <div className="field" style={{ flex: 1 }}><label>Date Paid (optional)</label><input type="date" value={donationDate} max={new Date().toISOString().slice(0, 10)} onChange={e => setDonationDate(e.target.value)} /></div>
+                <div className="field" style={{ flex: 1 }}><label>Date Paid (optional)</label><input type="date" value={donationDate} max={new Date().toISOString().slice(0, 10)} onChange={e => {
+                  const v = e.target.value;
+                  const todayStr = new Date().toISOString().slice(0, 10);
+                  setDonationDate(v > todayStr ? todayStr : v);
+                }} /></div>
               </div>
-              <div style={{ display: "flex", gap: 12 }}>
+              <div className="field-row" style={{ display: "flex", gap: 12 }}>
                 <div className="field" style={{ flex: 1 }}><label>UPI ID</label><input value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="username@bank" /></div>
                 <div className="field" style={{ flex: 1 }}><label>UTR Number (12 digits)</label><input value={utrReference} onChange={e => setUtrReference(e.target.value)} placeholder="123456789012" maxLength={12} /></div>
               </div>
@@ -7492,7 +7537,7 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
 // or by typing both fields in manually. Only ever returns a match when BOTH
 // the receipt number AND email match (see get_receipt_for_download() SQL) —
 // so a donor can only ever pull their own receipt, never anyone else's.
-function DownloadReceiptPage({ prefillReceiptNo, toast_, user }) {
+function DownloadReceiptPage({ prefillReceiptNo, toast_, user, setView }) {
   const [receiptNo, setReceiptNo] = useState(prefillReceiptNo || "");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -7545,8 +7590,9 @@ function DownloadReceiptPage({ prefillReceiptNo, toast_, user }) {
 
   return (
     <div className="page">
+      <button className="btn bh" style={{ maxWidth: 420, margin: "24px auto 0", display: "block" }} onClick={() => setView(user ? "profileHub" : "home")}>← Back</button>
       {user && myReceipts && myReceipts.length > 0 && (
-        <div className="card" style={{ maxWidth: 420, margin: "24px auto 16px" }}>
+        <div className="card" style={{ maxWidth: 420, margin: "16px auto 16px" }}>
           <div className="lbl">🧾 Your Receipts</div>
           <p style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 14, lineHeight: 1.5 }}>
             Only shows receipts issued to your account email ({user.email}).
