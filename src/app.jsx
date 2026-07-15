@@ -2550,17 +2550,15 @@ export default function App() {
 
     // Check duplicate EMAIL first — if the email is already registered,
     // that's the error the person needs to see (not a user-id clash)
-    const { data: existingEmail } = await supabase
-      .from("users").select("id").eq("email", emailLower).maybeSingle();
-    if (existingEmail) {
+    const { data: emailTaken } = await supabase.rpc("check_email_taken", { p_email: emailLower });
+    if (emailTaken) {
       toast_("That email is already registered. Please log in or use a different email.");
       return { ok: false, reason: "email-taken" };
     }
 
     // Check duplicate User ID in Supabase users table
-    const { data: existingId } = await supabase
-      .from("users").select("id").eq("user_id", idLower).maybeSingle();
-    if (existingId) {
+    const { data: idTaken } = await supabase.rpc("check_user_id_taken", { p_user_id: idLower });
+    if (idTaken) {
       toast_("That User ID is already taken. Please choose another.");
       return { ok: false, reason: "id-taken" };
     }
@@ -2612,8 +2610,8 @@ export default function App() {
 
   // ── SUPABASE AUTH: Resend verification email ─────────────────────────────
   const resendVerificationEmail = async (userId) => {
-    const { data: profile } = await supabase
-      .from("users").select("email").eq("user_id", userId.toLowerCase()).maybeSingle();
+    const { data: rows } = await supabase.rpc("get_login_lookup", { p_user_id: userId.toLowerCase() });
+    const profile = rows?.[0];
     if (!profile) return { ok: false, reason: "not-found" };
     const { error } = await supabase.auth.resend({
       type: "signup", email: profile.email,
@@ -2635,11 +2633,12 @@ export default function App() {
 
   // ── SUPABASE AUTH: Login ──────────────────────────────────────────────────
   const loginUser = async (userId, password) => {
-    // Look up email by userId from Supabase users table
-    const { data: profile, error: lookupErr } = await supabase
-      .from("users").select("email, user_id, name")
-      .eq("user_id", userId.trim().toLowerCase())
-      .maybeSingle();
+    // Look up email by userId via a narrow SECURITY DEFINER RPC — the RLS
+    // policy on `users` no longer allows anon to browse the table directly
+    // (fixed to close the public-email-exposure gap), so pre-auth lookups
+    // like this one go through purpose-built functions instead.
+    const { data: rows, error: lookupErr } = await supabase.rpc("get_login_lookup", { p_user_id: userId.trim().toLowerCase() });
+    const profile = rows?.[0];
     if (!profile) {
       toast_("No account found with that User ID.");
       return { ok: false, reason: "not-found" };
@@ -2842,9 +2841,8 @@ export default function App() {
   // ── SUPABASE AUTH: Forgot password — sends reset email directly ──────────
   const submitForgotPasswordRequest = async (userId, email, note) => {
     // Look up email by userId to confirm account exists
-    const { data: profile } = await supabase
-      .from("users").select("email, user_id")
-      .eq("user_id", userId.trim().toLowerCase()).maybeSingle();
+    const { data: rows } = await supabase.rpc("get_login_lookup", { p_user_id: userId.trim().toLowerCase() });
+    const profile = rows?.[0];
 
     if (!profile || profile.email.toLowerCase() !== email.trim().toLowerCase()) {
       return { ok: false, reason: "no-match" };
@@ -4168,8 +4166,8 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
     const newId = val1.trim().toLowerCase();
     if (!newId || !/^[a-z0-9_]{4,20}$/.test(newId)) { setError("User ID must be 4-20 characters, letters/numbers/underscore only."); setSaving(false); return; }
     if (newId === user.userId) { setError("That's already your current User ID."); setSaving(false); return; }
-    const { data: existing } = await supabase.from("users").select("id").eq("user_id", newId).maybeSingle();
-    if (existing) { setError("That User ID is already taken."); setSaving(false); return; }
+    const { data: idTaken } = await supabase.rpc("check_user_id_taken", { p_user_id: newId });
+    if (idTaken) { setError("That User ID is already taken."); setSaving(false); return; }
     const { error: err } = await supabase.from("users").update({ user_id: newId }).eq("auth_id", user.supabaseId);
     if (err) { setError(`Failed: ${err.message}. If this persists, contact support@awamibaitulmaal.org.in`); setSaving(false); return; }
     // No scores/progress migration needed (Phase 3): Supabase rows key off
@@ -4190,8 +4188,8 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
     if (!newEmail.includes("@")) { setError("Enter a valid email address."); setSaving(false); return; }
     if (newEmail === user.email) { setError("That's already your current email."); setSaving(false); return; }
     // Check the new email isn't already registered to another account
-    const { data: emailExists } = await supabase.from("users").select("id").eq("email", newEmail).maybeSingle();
-    if (emailExists) { setError("That email is already registered to another account."); setSaving(false); return; }
+    const { data: emailTaken } = await supabase.rpc("check_email_taken", { p_email: newEmail });
+    if (emailTaken) { setError("That email is already registered to another account."); setSaving(false); return; }
     const oldEmail = user.email;
     const { error: err } = await supabase.auth.updateUser({ email: newEmail });
     if (err) { setError("Failed to update email: " + err.message); setSaving(false); return; }
