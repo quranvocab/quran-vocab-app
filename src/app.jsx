@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom";
 import { supabase } from "./supabase.js";
 
@@ -1269,7 +1269,7 @@ function TurnstileWidget({ onVerify, onExpire }) {
 }
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Scheherazade+New:wght@400;600;700&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Scheherazade+New:wght@400;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600;700&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#071c2a;--s1:rgba(255,255,255,.05);--s2:rgba(255,255,255,.08);--s3:rgba(255,255,255,.12);
@@ -1283,6 +1283,7 @@ const CSS = `
 }
 body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans-serif;min-height:100vh;font-size:17px;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
 html{overflow-x:hidden;}
+#root{overflow-x:hidden;width:100%;max-width:100vw;}
 .app{min-height:100vh;background:
   radial-gradient(ellipse 70% 45% at 15% -5%,rgba(0,180,220,.18),transparent),
   radial-gradient(ellipse 60% 60% at 88% 100%,rgba(0,180,210,.14),transparent),
@@ -1383,7 +1384,8 @@ h2{font-family:'Poppins',sans-serif;font-size:34px;font-weight:700;margin-bottom
   box-shadow:0 8px 40px rgba(0,0,0,.45),0 0 0 1px rgba(0,200,230,.06),inset 0 1px 0 rgba(255,255,255,.07);
 }
 .card+.card{margin-top:16px;}
-.field{margin-bottom:16px;}
+.field{margin-bottom:16px;min-width:0;}
+.field input[type="date"]{-webkit-appearance:none;appearance:none;width:100%;min-width:0;box-sizing:border-box;}
 .field label{display:block;font-size:14px;color:var(--muted);margin-bottom:5px;letter-spacing:.07em;font-family:'Poppins',sans-serif;}
 .field input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(0,200,230,.2);color:var(--text);padding:11px 14px;border-radius:9px;font-family:'Poppins',sans-serif;font-size:17px;outline:none;transition:all .2s;box-shadow:inset 0 2px 8px rgba(0,0,0,.3);}
 /* Edge/IE auto-add their own "reveal password" eye icon inside every
@@ -1482,7 +1484,7 @@ input[type="password"]::-ms-clear{display:none;}
    each stat box's backdrop — dimmed via opacity so the number stays dominant. */
 .sbox::before{
   content:"";position:absolute;inset:0;border-radius:14px;
-  background-image:url("/images/stat-bg.jpg");background-size:cover;background-position:center;
+  background-image:url("/images/stat-bg.jpg");background-size:contain;background-repeat:no-repeat;background-position:center;
   opacity:.5;pointer-events:none;
 }
 .sbox .sn,.sbox .sl{position:relative;z-index:1;}
@@ -1658,7 +1660,7 @@ input[type="password"]::-ms-clear{display:none;}
 .wtr{font-size:15px;color:var(--muted);font-style:italic;text-align:center;display:none;}
 .wen{font-size:20px;font-weight:400;color:var(--text);text-align:center;}
 .word-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1;min-width:0;}
-.word-urdu{font-family:'Scheherazade New',serif;font-size:25px;color:var(--teal2);direction:rtl;text-align:right;text-shadow:0 0 12px rgba(0,212,168,.25);}
+.word-urdu{font-family:'Noto Nastaliq Urdu',serif;font-size:25px;line-height:1.9;color:var(--teal2);direction:rtl;text-align:right;text-shadow:0 0 12px rgba(0,212,168,.25);}
 .word-toggle{
   background:rgba(0,200,230,.08);border:1px solid rgba(0,200,230,.28);
   color:var(--muted);font-size:13px;padding:5px 10px;border-radius:8px;
@@ -1674,7 +1676,7 @@ input[type="password"]::-ms-clear{display:none;}
 .word-card-detail .dlabel{color:var(--muted);font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.07em;text-transform:uppercase;}
 .word-card-detail .dval{color:var(--text);}
 .word-card-detail .dval.arabic{font-family:'Scheherazade New',serif;font-size:32px;font-weight:600;color:var(--gold2);direction:rtl;text-align:left;text-shadow:0 0 14px rgba(255,184,0,.25);}
-.word-card-detail .dval.urdu{font-family:'Scheherazade New',serif;font-size:29px;font-weight:600;color:var(--teal2);direction:rtl;text-align:left;}
+.word-card-detail .dval.urdu{font-family:'Noto Nastaliq Urdu',serif;font-size:29px;line-height:1.9;font-weight:600;color:var(--teal2);direction:rtl;text-align:left;}
 .qwrap{max-width:620px;margin:0 auto;}
 .qprog{display:flex;gap:3px;margin-bottom:22px;}
 .qd{height:5px;flex:1;border-radius:3px;background:rgba(255,255,255,.08);transition:background .28s;}
@@ -1710,7 +1712,7 @@ input[type="password"]::-ms-clear{display:none;}
   min-height:82px;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;text-align:center;
 }
 .opt-en{font-size:20px;}
-.opt-ur{font-family:'Scheherazade New',serif;font-size:27px;color:var(--teal2);direction:rtl;}
+.opt-ur{font-family:'Noto Nastaliq Urdu',serif;font-size:27px;line-height:1.9;color:var(--teal2);direction:rtl;}
 .opt:hover:not(:disabled){
   border-color:rgba(0,200,230,.5);border-bottom-color:rgba(0,200,230,.5);
   color:var(--cyan2);
@@ -5198,16 +5200,38 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview, setSele
 // mode="time"  (All Sets Quiz): bar height = seconds taken, label on top =
 //   number of words answered correctly, y-axis gridlines scaled to seconds
 function ScoreBarChart({ data, compact = false, mode = "score" }) {
-  // Animate bars growing up from the baseline on mount (and whenever the
-  // underlying data changes, e.g. switching History tabs) — starts at 0
-  // height, transitions to full height a tick after mount so the browser
-  // registers the starting state first.
+  // Animate bars growing up from the baseline only once this chart actually
+  // scrolls into view — not the instant the History page mounts, since
+  // several charts sit below the fold and would otherwise finish animating
+  // before the user ever scrolls down to see them. Re-triggers if the
+  // underlying data changes while already visible (e.g. switching tabs).
+  const containerRef = useRef(null);
+  const [inView, setInView] = useState(false);
   const [grown, setGrown] = useState(false);
+
   useEffect(() => {
+    if (inView) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) { setInView(true); obs.disconnect(); }
+    }, { threshold: 0.1 });
+    obs.observe(el);
+    // Safety net: if the observer never reports intersection (layout timing
+    // quirks, an element that's already fully on-screen at mount not always
+    // firing its first callback reliably on every browser), reveal the
+    // chart anyway after a short delay rather than leaving it permanently
+    // stuck empty.
+    const fallback = setTimeout(() => setInView(true), 900);
+    return () => { obs.disconnect(); clearTimeout(fallback); };
+  }, [inView]);
+
+  useEffect(() => {
+    if (!inView) return;
     setGrown(false);
     const t = setTimeout(() => setGrown(true), 30);
     return () => clearTimeout(t);
-  }, [data]);
+  }, [inView, data]);
 
   if (data.length === 0) return null;
   const W = compact ? 320 : 420, H = compact ? 290 : 320, padL = compact ? 30 : 36, padB = 32, padT = 18, padR = 8;
@@ -5232,7 +5256,7 @@ function ScoreBarChart({ data, compact = false, mode = "score" }) {
     : [0, 25, 50, 75, 100];
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%", maxWidth: compact ? 340 : 440, display: "block" }}>
+    <svg ref={containerRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%", maxWidth: compact ? 340 : 440, display: "block" }}>
       {gridSteps.map(p => {
         const fraction = mode === "time" ? p / maxTime : p / 100;
         const y = padT + chartH - fraction * chartH;
@@ -5268,8 +5292,8 @@ function ScoreBarChart({ data, compact = false, mode = "score" }) {
         return (
           <g key={i}>
             <rect x={x} y={y} width={barW} height={barH} rx="3" fill={color} opacity="0.85"
-              style={{ transition: `height .55s cubic-bezier(.22,1,.36,1) ${i * 0.04}s, y .55s cubic-bezier(.22,1,.36,1) ${i * 0.04}s` }} />
-            {(!compact || data.length <= 8) && grown && <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif" style={{ transition: `opacity .3s ease ${i * 0.04 + 0.3}s`, opacity: grown ? 1 : 0 }}>{topLabel}</text>}
+              style={{ transition: `height 1.1s cubic-bezier(.22,1,.36,1) ${i * 0.09}s, y 1.1s cubic-bezier(.22,1,.36,1) ${i * 0.09}s` }} />
+            {(!compact || data.length <= 8) && grown && <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif" style={{ transition: `opacity .5s ease ${i * 0.09 + 0.7}s`, opacity: grown ? 1 : 0 }}>{topLabel}</text>}
             {i % labelStep === 0 && <text x={x + barW / 2} y={H - 10} fontSize={compact ? 10 : 12} fill="var(--muted)" textAnchor="middle" fontFamily="Poppins, sans-serif">{d.label}</text>}
           </g>
         );
@@ -5281,18 +5305,40 @@ function ScoreBarChart({ data, compact = false, mode = "score" }) {
 
 // ── Simple SVG Donut Chart — Strong vs Weak vs Even words ────────────────────
 // Built from stacked stroke-dasharray circles (not path arcs) specifically so
-// each ring segment can animate its length on mount — the whole donut
-// "sweeps" round from empty to full whenever the History page (or a word
-// tab within it) is visited, rather than appearing instantly.
+// each ring segment can animate its length — only once this chart scrolls
+// into view (not the instant the History page mounts), so it doesn't finish
+// sweeping before the user has scrolled down to see it. Re-triggers if the
+// underlying counts change while already visible.
 function WordStrengthPieChart({ strong, weak, even, compact = false }) {
   const total = strong + weak + even;
 
+  const containerRef = useRef(null);
+  const [inView, setInView] = useState(false);
   const [swept, setSwept] = useState(false);
+
   useEffect(() => {
+    if (inView) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) { setInView(true); obs.disconnect(); }
+    }, { threshold: 0.1 });
+    obs.observe(el);
+    // Safety net: if the observer never reports intersection (layout timing
+    // quirks, an element that's already fully on-screen at mount not always
+    // firing its first callback reliably on every browser), reveal the
+    // chart anyway after a short delay rather than leaving it permanently
+    // stuck empty.
+    const fallback = setTimeout(() => setInView(true), 900);
+    return () => { obs.disconnect(); clearTimeout(fallback); };
+  }, [inView]);
+
+  useEffect(() => {
+    if (!inView) return;
     setSwept(false);
     const t = setTimeout(() => setSwept(true), 30);
     return () => clearTimeout(t);
-  }, [strong, weak, even]);
+  }, [inView, strong, weak, even]);
 
   if (total === 0) return null;
   const size = 180, cx = size / 2, cy = size / 2;
@@ -5315,18 +5361,18 @@ function WordStrengthPieChart({ strong, weak, even, compact = false }) {
   });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: compact ? 14 : 18 }}>
+    <div ref={containerRef} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: compact ? 14 : 18 }}>
       <svg viewBox={`0 0 ${size} ${size}`} style={{ width: compact ? 200 : 230, height: compact ? 200 : 230, flexShrink: 0, display: "block" }}>
         <g transform={`rotate(-90 ${cx} ${cy})`}>
           {rings.map((seg, i) => (
             <circle key={i} cx={cx} cy={cy} r={ringR} fill="none" stroke={seg.color} strokeWidth={strokeW} opacity="0.88"
               strokeDasharray={`${swept ? seg.segLen : 0} ${circumference - (swept ? seg.segLen : 0)}`}
               strokeDashoffset={-seg.offsetBefore}
-              style={{ transition: `stroke-dasharray .7s cubic-bezier(.22,1,.36,1) ${i * 0.1}s` }} />
+              style={{ transition: `stroke-dasharray 1.1s cubic-bezier(.22,1,.36,1) ${i * 0.35}s` }} />
           ))}
         </g>
-        <text x={cx} y={cy - 4} textAnchor="middle" fontSize={compact ? 24 : 28} fontFamily="Poppins, sans-serif" fill="var(--gold3)" style={{ transition: "opacity .4s ease .5s", opacity: swept ? 1 : 0 }}>{total}</text>
-        <text x={cx} y={cy + 18} textAnchor="middle" fontSize={compact ? 10 : 11} fontFamily="Poppins, sans-serif" fill="var(--muted)" style={{ transition: "opacity .4s ease .5s", opacity: swept ? 1 : 0 }}>words</text>
+        <text x={cx} y={cy - 4} textAnchor="middle" fontSize={compact ? 24 : 28} fontFamily="Poppins, sans-serif" fill="var(--gold3)" style={{ transition: "opacity .5s ease 1.9s", opacity: swept ? 1 : 0 }}>{total}</text>
+        <text x={cx} y={cy + 18} textAnchor="middle" fontSize={compact ? 10 : 11} fontFamily="Poppins, sans-serif" fill="var(--muted)" style={{ transition: "opacity .5s ease 1.9s", opacity: swept ? 1 : 0 }}>words</text>
       </svg>
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: compact ? "6px 16px" : "8px 20px", paddingBottom: 6 }}>
         {rings.map((p, i) => (
@@ -5338,6 +5384,100 @@ function WordStrengthPieChart({ strong, weak, even, compact = false }) {
         ))}
       </div>
     </div>
+  );
+}
+
+// ── Monthly Mastery Target Chart — bars for the last 6 months (current +
+// 5 prior) vs the learner's monthly word target. Same visual language as
+// ScoreBarChart/WordStrengthPieChart: scroll-into-view animation, same
+// palette (teal = target met, coral = missed, cyan = current month still in
+// progress), same growth duration/stagger/easing.
+function MonthlyTargetChart({ scores, target, compact = false }) {
+  const containerRef = useRef(null);
+  const [inView, setInView] = useState(false);
+  const [grown, setGrown] = useState(false);
+
+  const monthlyCounts = React.useMemo(() => buildMonthlyMasteryCounts(scores || []), [scores]);
+
+  const now = new Date();
+  const months = [];
+  for (let offset = -5; offset <= 0; offset++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const key = d.toISOString().slice(0, 7);
+    months.push({
+      key, label: d.toLocaleDateString("en-GB", { month: "short" }),
+      count: monthlyCounts[key] || 0, isCurrent: offset === 0,
+    });
+  }
+
+  useEffect(() => {
+    if (inView) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) { setInView(true); obs.disconnect(); }
+    }, { threshold: 0.1 });
+    obs.observe(el);
+    // Safety net: if the observer never reports intersection (layout timing
+    // quirks, an element that's already fully on-screen at mount not always
+    // firing its first callback reliably on every browser), reveal the
+    // chart anyway after a short delay rather than leaving it permanently
+    // stuck empty.
+    const fallback = setTimeout(() => setInView(true), 900);
+    return () => { obs.disconnect(); clearTimeout(fallback); };
+  }, [inView]);
+
+  useEffect(() => {
+    if (!inView) return;
+    setGrown(false);
+    const t = setTimeout(() => setGrown(true), 30);
+    return () => clearTimeout(t);
+  }, [inView, scores, target]);
+
+  const W = compact ? 320 : 420, H = compact ? 290 : 320, padL = compact ? 30 : 36, padB = 32, padT = 18, padR = 8;
+  const chartW = W - padL - padR, chartH = H - padT - padB;
+  const barGap = compact ? 10 : 14;
+  const maxBarW = compact ? 30 : 42;
+  const barW = Math.min(maxBarW, (chartW - barGap * (months.length - 1)) / months.length);
+  const startX = padL;
+
+  const maxVal = Math.max(target, ...months.map(m => m.count), 1) * 1.15;
+  const targetY = padT + chartH - (target / maxVal) * chartH;
+
+  return (
+    <svg ref={containerRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%", maxWidth: compact ? 340 : 440, display: "block" }}>
+      {[0, 0.25, 0.5, 0.75, 1].map(f => {
+        const y = padT + chartH - f * chartH;
+        const v = Math.round(f * maxVal);
+        return (
+          <g key={f}>
+            <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+            <text x={padL - 8} y={y + 3} fontSize={compact ? 9 : 11} fill="var(--muted)" textAnchor="end" fontFamily="Poppins, sans-serif">{v}</text>
+          </g>
+        );
+      })}
+      {/* Target reference line */}
+      <line x1={padL} y1={targetY} x2={W - padR} y2={targetY} stroke="var(--gold2)" strokeWidth="1.5" strokeDasharray="5 4" opacity={grown ? 0.7 : 0}
+        style={{ transition: "opacity .6s ease 1.1s" }} />
+      <text x={W - padR} y={targetY - 6} fontSize={compact ? 9 : 10.5} fill="var(--gold2)" textAnchor="end" fontFamily="Poppins, sans-serif" opacity={grown ? 1 : 0}
+        style={{ transition: "opacity .6s ease 1.1s" }}>Target: {target}</text>
+      {months.map((m, i) => {
+        const x = startX + i * (barW + barGap);
+        const fullBarH = (m.count / maxVal) * chartH;
+        const barH = grown ? fullBarH : 0;
+        const y = padT + chartH - barH;
+        const color = m.isCurrent ? "var(--cyan2)" : m.count >= target ? "var(--pal-teal)" : "var(--pal-rose)";
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={barW} height={barH} rx="3" fill={color} opacity="0.85"
+              style={{ transition: `height 1.1s cubic-bezier(.22,1,.36,1) ${i * 0.09}s, y 1.1s cubic-bezier(.22,1,.36,1) ${i * 0.09}s` }} />
+            <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif"
+              style={{ transition: `opacity .5s ease ${i * 0.09 + 0.7}s`, opacity: grown ? 1 : 0 }}>{m.count}</text>
+            <text x={x + barW / 2} y={H - 10} fontSize={compact ? 10 : 12} fill={m.isCurrent ? "var(--cyan2)" : "var(--muted)"} textAnchor="middle" fontFamily="Poppins, sans-serif" fontWeight={m.isCurrent ? "600" : "400"}>{m.label}</text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -5380,6 +5520,13 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
 
       {sessions.length > 0 && (
         <>
+          <div className="card chart-col" style={{ marginBottom: 18 }}>
+            <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>Monthly Mastery Target — Last 6 Months</div></div>
+            <div className="chart-col-inner">
+              <MonthlyTargetChart scores={user.scores || []} target={user.monthlyTarget || 30} />
+            </div>
+          </div>
+
           <div className="chart-row">
             <div className="card chart-col">
               <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>Set Quizzes — Last {barData.length} Attempts</div></div>
@@ -6391,7 +6538,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                   <td><input value={editForm.arabic || ""} onChange={e => setEditForm(f => ({ ...f, arabic: e.target.value }))} style={{ direction: "rtl", fontSize: 18, fontFamily: "serif", width: 90, background: "transparent", border: "1px solid var(--cyan2)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.translit || ""} onChange={e => setEditForm(f => ({ ...f, translit: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.english || ""} onChange={e => setEditForm(f => ({ ...f, english: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
-                  <td><input value={editForm.urdu || ""} onChange={e => setEditForm(f => ({ ...f, urdu: e.target.value }))} style={{ direction: "rtl", fontFamily: "serif", width: 70, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
+                  <td><input value={editForm.urdu || ""} onChange={e => setEditForm(f => ({ ...f, urdu: e.target.value }))} style={{ direction: "rtl", fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 15, width: 70, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td style={{ display: "flex", gap: 3, alignItems: "flex-end" }}>
                     <div>
                       <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 2 }}>Surah #</div>
@@ -6423,7 +6570,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                 <td><span className="arabic" style={{ fontSize: 20 }}>{w.arabic}</span></td>
                 <td style={{ color: "var(--muted)", fontStyle: "italic" }}>{w.translit}</td>
                 <td>{w.english}</td>
-                <td><span className="arabic" style={{ fontSize: 14, color: "var(--teal2)" }}>{w.urdu || "—"}</span></td>
+                <td><span style={{ fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 16, color: "var(--teal2)", direction: "rtl" }}>{w.urdu || "—"}</span></td>
                 <td style={{ fontSize: 12, color: "var(--muted)" }}>{w.surahNumber && w.ayahNumber ? `${w.surahNumber}:${w.ayahNumber}${w.wordPosition ? ` (w${w.wordPosition})` : ""}` : "—"}</td>
                 <td>
                   {w.surahNumber && w.ayahNumber
@@ -6876,7 +7023,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
           <div className="field"><label>Arabic Word *</label><input value={arabic} onChange={e => setArabic(e.target.value)} placeholder="e.g. مَسْجِدٌ" style={{ direction: "rtl", fontSize: 22, fontFamily: "'Scheherazade New','Amiri',serif" }} /></div>
           <div className="field"><label>Transliteration</label><input value={translit} onChange={e => setTranslit(e.target.value)} placeholder="e.g. Masjid" /></div>
           <div className="field"><label>English Meaning *</label><input value={english} onChange={e => setEnglish(e.target.value)} placeholder="e.g. Mosque" /></div>
-          <div className="field"><label>Urdu Meaning</label><input value={urdu} onChange={e => setUrdu(e.target.value)} placeholder="e.g. مسجد" style={{ direction: "rtl", fontFamily: "'Scheherazade New',serif", fontSize: 17 }} /></div>
+          <div className="field"><label>Urdu Meaning</label><input value={urdu} onChange={e => setUrdu(e.target.value)} placeholder="e.g. مسجد" style={{ direction: "rtl", fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 17 }} /></div>
           <div className="field"><label>Qur'an Reference (optional)</label><input value={ayahRef} onChange={e => setAyahRef(e.target.value)} placeholder="e.g. Surah Al-Baqarah 2:144" /></div>
           <div style={{ display: "flex", gap: 10 }}>
             <div className="field" style={{ flex: 1 }}><label>Surah # (for audio/image)</label><input type="number" min="1" max="114" value={surahNumber} onChange={e => setSurahNumber(e.target.value)} placeholder="e.g. 2" /></div>
