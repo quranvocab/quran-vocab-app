@@ -3709,9 +3709,10 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
                   RLS itself restricts anon visitors to Set 1 rows only server-side
                   — slice(0,10) just caps it defensively at one set's worth. */}
               {allWords.slice(0, 10).map((w, i) => (
-                <div key={i} style={{ flex: "0 0 auto", width: 130, textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "16px 10px", backdropFilter: "blur(6px)" }}>
-                  <div className="arabic" style={{ fontSize: 24, color: "var(--gold2)", marginBottom: 8 }}>{w.arabic}</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text)" }}>{w.english}</div>
+                <div key={i} style={{ flex: "0 0 auto", width: 130, minHeight: 190, display: "flex", flexDirection: "column", justifyContent: "center", textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "22px 10px", backdropFilter: "blur(6px)" }}>
+                  <div className="arabic" style={{ fontSize: 24, color: "var(--gold2)", marginBottom: 10 }}>{w.arabic}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 8 }}>{w.english}</div>
+                  <div className="word-urdu" style={{ fontSize: 15, textAlign: "center", textShadow: "none" }}>{w.urdu || "—"}</div>
                 </div>
               ))}
             </div>
@@ -3725,7 +3726,6 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
       )}
       {!user && (
         <div className="scroll-hint" aria-hidden="true">
-          <span>See your progress stats</span>
           <div className="scroll-hint-arrow">⌄</div>
         </div>
       )}
