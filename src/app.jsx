@@ -3486,9 +3486,134 @@ export default function App() {
   );
 }
 
+// ── "Why This Works" — the vocabulary-coverage science modal ────────────────
+// Explains why frequency-ranked word learning is effective (Zipf's law: a
+// small set of high-frequency words does most of the comprehension work),
+// then shows the learner's own mastered-word count against that same curve.
+// Reuses estimateQuranCoverage() — the exact function already driving the
+// Home page's "Qur'an Coverage" stat — so the number here always matches
+// what's shown elsewhere, never a second, different-sounding estimate.
+const COVERAGE_MILESTONES = [
+  { words: 70, pct: 50 },
+  { words: 150, pct: 65 },
+  { words: 300, pct: 75 },
+  { words: 500, pct: 80 },
+  { words: 1000, pct: 90 },
+];
+
+function CoverageScienceModal({ user, allWords, onClose }) {
+  const containerRef = useRef(null);
+  const [inView, setInView] = useState(false);
+  const [grown, setGrown] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setInView(true), 30);
+    return () => clearTimeout(t);
+  }, []);
+  useEffect(() => {
+    if (!inView) return;
+    const t = setTimeout(() => setGrown(true), 30);
+    return () => clearTimeout(t);
+  }, [inView]);
+
+  const masteredCount = user ? getMasteredWords(user.scores || [], allWords).size : 0;
+  const myCoverage = estimateQuranCoverage(masteredCount);
+  const nextMilestone = COVERAGE_MILESTONES.find(m => m.words > masteredCount);
+
+  const W = 320, H = 200, padL = 32, padB = 26, padT = 10, padR = 8;
+  const chartW = W - padL - padR, chartH = H - padT - padB;
+  const maxWords = 1000;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3 style={{ margin: 0 }}>💡 Why This Works</h3>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div style={{ padding: "20px 24px 26px" }}>
+          <p style={{ fontSize: 14.5, lineHeight: 1.7, color: "var(--text)", marginTop: 0 }}>
+            The Quran repeats its core vocabulary constantly — a small set of words carries most of its meaning. Linguists call this pattern <strong style={{ color: "var(--gold2)" }}>Zipf's law</strong>: learn the most-repeated words first, and your understanding grows far faster than the word count suggests.
+          </p>
+
+          <div ref={containerRef} style={{ margin: "18px 0" }}>
+            <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: 380, display: "block", margin: "0 auto" }}>
+              {[0, 25, 50, 75, 100].map(p => {
+                const y = padT + chartH - (p / 100) * chartH;
+                return (
+                  <g key={p}>
+                    <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+                    <text x={padL - 6} y={y + 3} fontSize="9" fill="var(--muted)" textAnchor="end" fontFamily="Poppins, sans-serif">{p}%</text>
+                  </g>
+                );
+              })}
+              {COVERAGE_MILESTONES.map((m, i) => {
+                const barW = (chartW / COVERAGE_MILESTONES.length) * 0.55;
+                const gap = (chartW / COVERAGE_MILESTONES.length) - barW;
+                const x = padL + i * (barW + gap) + gap / 2;
+                const fullH = (m.pct / 100) * chartH;
+                const barH = grown ? fullH : 0;
+                const y = padT + chartH - barH;
+                const isMyTier = masteredCount >= m.words && (!COVERAGE_MILESTONES[i + 1] || masteredCount < COVERAGE_MILESTONES[i + 1].words);
+                return (
+                  <g key={m.words}>
+                    <rect x={x} y={y} width={barW} height={barH} rx="3" fill={isMyTier ? "var(--gold2)" : "var(--pal-teal)"} opacity="0.85"
+                      style={{ transition: `height .8s cubic-bezier(.22,1,.36,1) ${i * 0.1}s, y .8s cubic-bezier(.22,1,.36,1) ${i * 0.1}s` }} />
+                    <text x={x + barW / 2} y={y - 6} fontSize="11" fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif" style={{ transition: `opacity .4s ease ${i * 0.1 + 0.5}s`, opacity: grown ? 1 : 0 }}>{m.pct}%</text>
+                    <text x={x + barW / 2} y={H - 8} fontSize="9.5" fill="var(--muted)" textAnchor="middle" fontFamily="Poppins, sans-serif">{m.words}w</text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          <p style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--muted)" }}>
+            The Quran uses roughly 4,000 unique words total, built from about 1,700 Arabic roots. Master this app's word sets, and you're covering a meaningful share of everything the Quran says — not memorizing an unrelated foreign-language dictionary.
+          </p>
+
+          {user && (
+            <div style={{
+              marginTop: 18, padding: "16px 18px", borderRadius: 12,
+              background: "rgba(255,217,107,.08)", border: "1px solid rgba(255,217,107,.25)",
+              textAlign: "center",
+            }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Your Progress</div>
+              <div style={{ fontFamily: "'Poppins',sans-serif", fontSize: 26, fontWeight: 700, color: "var(--gold2)" }}>
+                {masteredCount} word{masteredCount !== 1 ? "s" : ""} mastered ≈ {myCoverage}%
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text)", marginTop: 4 }}>
+                {nextMilestone
+                  ? `${nextMilestone.words - masteredCount} more word${nextMilestone.words - masteredCount !== 1 ? "s" : ""} to reach ~${nextMilestone.pct}% coverage`
+                  : "You've passed every published milestone — incredible work"}
+              </div>
+            </div>
+          )}
+
+          <button className="btn bg bfw" style={{ marginTop: 20 }} onClick={onClose}>Continue Learning</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HomePage({ user, allWords, totalWordCount, participants, onStart, setView, onDonate, onInvite, onReview, toast_, setGateWarning }) {
   const [showAllSetsReady, setShowAllSetsReady] = useState(false);
   const [showMasteredList, setShowMasteredList] = useState(false);
+  const [showScienceModal, setShowScienceModal] = useState(false);
+
+  // Auto-show once per account (per device) the first time they land on
+  // Home after logging in — a per-user localStorage flag, same lightweight
+  // pattern as qv_user/qv_words_cache. Revisitable anytime after via the
+  // "Why This Works" button below regardless of this flag.
+  useEffect(() => {
+    if (!user?.userId) return;
+    const flagKey = `qv_seen_science_${user.userId.toLowerCase()}`;
+    if (!storageGet(flagKey)) {
+      storageSet(flagKey, true);
+      const t = setTimeout(() => setShowScienceModal(true), 500);
+      return () => clearTimeout(t);
+    }
+  }, [user?.userId]);
   const unlocked = user ? getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).length : 0;
   const completedWordsCount = user ? getCompletedWords(user.dayProgress, allWords).length : 0;
   const dayN = user ? getUnlockedDays(user.enrolledAt, user.dayProgress, Math.ceil(allWords.length / WORDS_PER_DAY)) : 0;
@@ -3521,6 +3646,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
         <div className="bism">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
         <h2>Master the <em>Language of the Quran</em></h2>
         <p className="sub tagline-prominent">Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>
+        <button className="btn bh" style={{ fontSize: 13, padding: "7px 16px", marginBottom: 16 }} onClick={() => setShowScienceModal(true)}>💡 Why This Works</button>
         {user ? (
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <button className="btn bg" onClick={() => setView("learn")}>Continue — Set {dayN}</button>
@@ -3739,6 +3865,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
           <span className="donate-strip-cta">Invite →</span>
         </div>
       )}
+      {showScienceModal && <CoverageScienceModal user={user} allWords={allWords} onClose={() => setShowScienceModal(false)} />}
     </div>
   );
 }
