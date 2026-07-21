@@ -1515,6 +1515,11 @@ input[type="password"]::-ms-clear{display:none;}
 .phub-tabs{display:flex;gap:22px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:20px;}
 .phub-tab{background:none;border:none;padding:10px 2px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;}
 .phub-tab:hover:not(.on){color:var(--text);}
+.phub-instr-row{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.06);}
+.phub-instr-row:last-child{border-bottom:none;}
+.phub-instr-icon{font-size:22px;flex:0 0 auto;line-height:1.3;}
+.phub-instr-title{font-weight:600;font-size:14.5px;color:var(--text);margin-bottom:3px;}
+.phub-instr-body{font-size:13px;color:var(--muted);line-height:1.6;}
 .phub-tab.on{color:var(--cyan2);border-bottom-color:var(--cyan2);}
 .phub-section-label{font-family:'Poppins',sans-serif;font-size:15px;font-weight:600;color:var(--text);margin:20px 0 12px;}
 .phub-stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
@@ -1789,6 +1794,21 @@ input[type="password"]::-ms-clear{display:none;}
 .tbl td{padding:9px 10px;border-bottom:1px solid rgba(0,0,0,.05);vertical-align:middle;}
 .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;}.del:hover{color:var(--err);}
 .hero{text-align:center;padding:54px 18px 38px;}
+.scroll-hint{display:none;}
+@media(max-width:600px){
+  .anon-hero-fold{
+    min-height:calc(100vh - 128px);
+    min-height:calc(100dvh - 128px);
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  .scroll-hint{
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    margin:0 0 6px;color:var(--muted);font-size:11px;
+    animation:scrollHintBounce 1.8s ease-in-out infinite;
+  }
+  .scroll-hint-arrow{font-size:20px;line-height:1;color:var(--cyan2);}
+  @keyframes scrollHintBounce{0%,100%{transform:translateY(0);opacity:.6;}50%{transform:translateY(6px);opacity:1;}}
+}
 .bism{font-family:'Scheherazade New',serif;font-size:71px;font-weight:700;color:var(--gold2);direction:rtl;margin-bottom:20px;line-height:1.45;text-shadow:0 0 40px rgba(255,184,0,.5),0 2px 8px rgba(0,0,0,.5);}
 .hero h2{font-size:44px;font-weight:500;color:var(--text);text-shadow:0 2px 10px rgba(0,0,0,.6);}.hero h2 em{color:var(--cyan2);font-style:normal;text-shadow:0 0 20px rgba(0,220,255,.35),0 2px 10px rgba(0,0,0,.6);}
 .hero .sub{max-width:500px;margin:0 auto 30px;font-size:21px;text-shadow:0 1px 8px rgba(0,0,0,.6);}
@@ -1830,6 +1850,8 @@ input[type="password"]::-ms-clear{display:none;}
   animation:mslide .26s ease;max-height:90vh;overflow-y:auto;
 }
 @keyframes mslide{from{transform:translateY(18px);opacity:0}to{transform:none;opacity:1}}
+@keyframes mzoom{from{transform:scale(.75);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-zoom-in{animation:mzoom .35s cubic-bezier(.2,1.4,.4,1) !important;}
 .modal-head{
   display:flex;align-items:center;justify-content:space-between;
   padding:20px 24px 16px;
@@ -1977,10 +1999,10 @@ input[type="password"]::-ms-clear{display:none;}
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;align-items:stretch;}
 .chart-col{padding:16px 14px;display:flex;flex-direction:column;height:365px;transition:transform .25s ease,box-shadow .25s ease;}
 .chart-col:hover{transform:translateY(-3px);box-shadow:0 14px 44px rgba(0,0,0,.4),0 0 0 1px rgba(0,200,230,.1);}
-.chart-col-teal{background:rgba(0,224,160,.07);border-color:rgba(0,224,160,.25);}
-.chart-col-cyan{background:rgba(0,200,230,.08);border-color:rgba(0,200,230,.28);}
-.chart-col-gold{background:rgba(255,217,107,.08);border-color:rgba(255,217,107,.28);}
-.chart-col-rose{background:rgba(255,138,128,.07);border-color:rgba(255,138,128,.25);}
+.chart-col-teal{background:rgba(0,224,160,.16);border-color:rgba(0,224,160,.4);}
+.chart-col-cyan{background:rgba(0,200,230,.16);border-color:rgba(0,200,230,.42);}
+.chart-col-gold{background:rgba(255,217,107,.16);border-color:rgba(255,217,107,.42);}
+.chart-col-rose{background:rgba(255,138,128,.16);border-color:rgba(255,138,128,.4);}
 .chart-col-head{min-height:28px;display:flex;align-items:flex-start;flex-shrink:0;padding-bottom:14px;}
 .chart-col-head .lbl{font-size:13px;letter-spacing:0;line-height:1.3;}
 .chart-col-inner{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;}
@@ -3524,9 +3546,16 @@ function CoverageScienceModal({ user, allWords, onClose }) {
   const chartW = W - padL - padR, chartH = H - padT - padB;
   const maxWords = 1000;
 
-  return (
+  // Rendered via a portal straight to document.body — .page-home has
+  // isolation:isolate (for its background-image layering), which creates a
+  // new stacking context that traps position:fixed descendants inside it
+  // no matter how high their z-index is. That's exactly what let the sticky
+  // top nav and fixed bottom nav render above this modal despite its
+  // z-index:500 — a portal escapes that trap entirely instead of just
+  // pushing the number higher, which wouldn't have fixed it.
+  return ReactDOM.createPortal(
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+      <div className="modal modal-zoom-in" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
         <div className="modal-head">
           <h3 style={{ margin: 0 }}>💡 Why This Works</h3>
           <button className="modal-close" onClick={onClose}>×</button>
@@ -3592,7 +3621,8 @@ function CoverageScienceModal({ user, allWords, onClose }) {
           <button className="btn bg bfw" style={{ marginTop: 20 }} onClick={onClose}>Continue Learning</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -3601,13 +3631,14 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
   const [showMasteredList, setShowMasteredList] = useState(false);
   const [showScienceModal, setShowScienceModal] = useState(false);
 
-  // Auto-show once per account (per device) the first time they land on
-  // Home after logging in — a per-user localStorage flag, same lightweight
-  // pattern as qv_user/qv_words_cache. Revisitable anytime after via the
-  // "Why This Works" button below regardless of this flag.
+  // Auto-show once per device — logged-in users get a per-account flag
+  // (so it still triggers once on a fresh device even for an existing
+  // account), anonymous visitors get a single device-level flag since
+  // there's no account identity to key off. Same lightweight localStorage
+  // pattern as qv_user/qv_words_cache either way. Revisitable anytime after
+  // via the "Why This Works" button below regardless of this flag.
   useEffect(() => {
-    if (!user?.userId) return;
-    const flagKey = `qv_seen_science_${user.userId.toLowerCase()}`;
+    const flagKey = user?.userId ? `qv_seen_science_${user.userId.toLowerCase()}` : "qv_seen_science_anon";
     if (!storageGet(flagKey)) {
       storageSet(flagKey, true);
       const t = setTimeout(() => setShowScienceModal(true), 500);
@@ -3642,10 +3673,11 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
 
   return (
     <div className="page page-home">
+      <div className={!user ? "anon-hero-fold" : undefined}>
       <div className="hero">
         <div className="bism">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
         <h2>Master the <em>Language of the Quran</em></h2>
-        <p className="sub tagline-prominent">Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>
+        {!user && <p className="sub tagline-prominent">Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>}
         <button className="btn bh" style={{ fontSize: 13, padding: "7px 16px", marginBottom: 16 }} onClick={() => setShowScienceModal(true)}>💡 Why This Works</button>
         {user ? (
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
@@ -3691,6 +3723,13 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
           </p>
         </div>
       )}
+      {!user && (
+        <div className="scroll-hint" aria-hidden="true">
+          <span>See your progress stats</span>
+          <div className="scroll-hint-arrow">⌄</div>
+        </div>
+      )}
+      </div>
 
       {/* All Sets Quiz Ready Modal */}
       {showAllSetsReady && (
@@ -4214,7 +4253,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
 // (last month / current month / next month locked).
 // Account tab: the same 5 actions the old dropdown held, as box-cards.
 function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogout, allWords }) {
-  const [tab, setTab] = useState("progress"); // "progress" | "account"
+  const [tab, setTab] = useState("progress"); // "progress" | "account" | "instructions"
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetVal, setTargetVal] = useState(user.monthlyTarget || 30);
   const [savingTarget, setSavingTarget] = useState(false);
@@ -4271,6 +4310,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
       {/* Tabs */}
       <div className="phub-tabs">
         <button className={`phub-tab ${tab === "progress" ? "on" : ""}`} onClick={() => setTab("progress")}>Progress</button>
+        <button className={`phub-tab ${tab === "instructions" ? "on" : ""}`} onClick={() => setTab("instructions")}>Instructions</button>
         <button className={`phub-tab ${tab === "account" ? "on" : ""}`} onClick={() => setTab("account")}>Account</button>
       </div>
 
@@ -4326,6 +4366,28 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
             </div>
           </div>
         </>
+      ) : tab === "instructions" ? (
+        <div className="phub-instructions">
+          <div className="phub-section-label" style={{ marginTop: 0 }}>How This App Works</div>
+          {[
+            { icon: "📖", title: "Learn in Sets of 10", body: "Words are grouped into Sets, starting with the most frequently-used words in the Qur'an. Complete Set 1 to unlock Set 2, and so on." },
+            { icon: "🔊", title: "Listen to Every Word", body: "Tap the play button on any word card to hear its correct pronunciation, straight from the Qur'an's recitation." },
+            { icon: "📜", title: "See the Word in Context", body: "Tap \"Details\" on a word card to see exactly where it appears in the Qur'an — with the actual mushaf image and audio for that verse." },
+            { icon: "❓", title: "Quiz Yourself", body: "Once you've studied a set, quiz yourself on it. Answer correctly 3 times in a row (even across different quizzes) and a word is marked Mastered." },
+            { icon: "🎯", title: "Track Your Monthly Target", body: "Set a personal monthly goal for how many words to master. Your Profile page shows your progress against it, month by month." },
+            { icon: "🔁", title: "Practice Weak Words", body: "The app quietly tracks which words you get wrong most often, so you can focus your practice where it actually helps." },
+            { icon: "🏆", title: "All Sets Quiz & Leaderboard", body: "Once you've completed a few sets, test yourself across everything you've learned, and see how you compare with other learners." },
+            { icon: "💡", title: "Why This Works", body: "Curious about the science behind frequency-based learning? Tap \"Why This Works\" on the Home page anytime." },
+          ].map((item, i) => (
+            <div key={i} className="phub-instr-row">
+              <span className="phub-instr-icon">{item.icon}</span>
+              <div>
+                <div className="phub-instr-title">{item.title}</div>
+                <div className="phub-instr-body">{item.body}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="phub-grid" style={{ marginTop: 16 }}>
           {actionBoxes.map(b => (
@@ -5069,41 +5131,43 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
       <p className="sub" style={{ marginBottom: 26 }}>Set {unlocked} unlocked so far · {unlocked * WORDS_PER_DAY} words available</p>
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="lbl" style={{ marginBottom: 13 }}>Progress Calendar</div>
-        <div className="cal-scroll" style={{ overflowX: "auto", paddingBottom: 6 }}>
-          <div style={{ display: "flex", gap: 8, width: "max-content", alignItems: "stretch" }}>
-            {Array.from({ length: totalDays }, (_, i) => i + 1).map(d => {
-              const locked = d > unlocked, isDone = done(d), isToday = d === unlocked;
-              return (
-                <div key={d}
-                  className={`cc ${locked ? "locked" : isDone ? "done" : isToday ? "today" : "avail"} ${selectedDay === d ? "selected" : ""}`}
-                  style={{ position: "relative", minWidth: 44, width: 44, height: 44 }}
-                  title={locked ? `Unlocks once Set ${d - 1} is completed` : `Set ${d}`}
-                  onClick={() => !locked && selectSet(d)}>
-                  {/* Tick in top-right corner for completed sets */}
-                  {isDone && (
-                    <span style={{
-                      position: "absolute", top: 2, right: 3,
-                      fontSize: 8, fontWeight: 900, color: "#22c55e",
-                      lineHeight: 1,
-                      textShadow: "0 0 1px #22c55e, 0 0 1px #22c55e",
-                      WebkitTextStroke: ".5px #22c55e"
-                    }}>✓</span>
-                  )}
-                  {/* Set number - same size whether done or not */}
-                  <span style={{ fontSize: 12, fontWeight: 600, lineHeight: 1 }}>{d}</span>
-                </div>
-              );
-            })}
-            <div className="cc cc-continues" style={{ minWidth: 44, width: 44, height: 44 }}
-              title="More sets coming">⋯</div>
-            <button
-              className={`cc-allsets ${viewingAllSets ? "selected" : ""}`}
-              style={{ height: 44, minWidth: 80 }}
-              onClick={selectAllSets}
-              title="All Sets Quiz">
-              All Sets
-            </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+          <div className="cal-scroll" style={{ overflowX: "auto", flex: 1, minWidth: 0, paddingBottom: 6 }}>
+            <div style={{ display: "flex", gap: 8, width: "max-content", alignItems: "stretch" }}>
+              {Array.from({ length: totalDays }, (_, i) => i + 1).map(d => {
+                const locked = d > unlocked, isDone = done(d), isToday = d === unlocked;
+                return (
+                  <div key={d}
+                    className={`cc ${locked ? "locked" : isDone ? "done" : isToday ? "today" : "avail"} ${selectedDay === d ? "selected" : ""}`}
+                    style={{ position: "relative", minWidth: 44, width: 44, height: 44 }}
+                    title={locked ? `Unlocks once Set ${d - 1} is completed` : `Set ${d}`}
+                    onClick={() => !locked && selectSet(d)}>
+                    {/* Tick in top-right corner for completed sets */}
+                    {isDone && (
+                      <span style={{
+                        position: "absolute", top: 2, right: 3,
+                        fontSize: 8, fontWeight: 900, color: "#22c55e",
+                        lineHeight: 1,
+                        textShadow: "0 0 1px #22c55e, 0 0 1px #22c55e",
+                        WebkitTextStroke: ".5px #22c55e"
+                      }}>✓</span>
+                    )}
+                    {/* Set number - same size whether done or not */}
+                    <span style={{ fontSize: 12, fontWeight: 600, lineHeight: 1 }}>{d}</span>
+                  </div>
+                );
+              })}
+              <div className="cc cc-continues" style={{ minWidth: 44, width: 44, height: 44 }}
+                title="More sets coming">⋯</div>
+            </div>
           </div>
+          <button
+            className={`cc-allsets ${viewingAllSets ? "selected" : ""}`}
+            style={{ height: 44, minWidth: 80, flexShrink: 0 }}
+            onClick={selectAllSets}
+            title="All Sets Quiz">
+            All Sets
+          </button>
         </div>
         <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 11, color: "var(--muted)" }}>
           <span><span style={{ color: "var(--gold3)" }}>■</span> Current</span>
