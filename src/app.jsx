@@ -1803,10 +1803,10 @@ input[type="password"]::-ms-clear{display:none;}
   }
   .scroll-hint{
     display:flex;flex-direction:column;align-items:center;gap:2px;
-    margin:0 0 6px;color:var(--muted);font-size:11px;
+    margin:10px 0 0;color:var(--muted);font-size:11px;
     animation:scrollHintBounce 1.8s ease-in-out infinite;
   }
-  .scroll-hint-arrow{font-size:20px;line-height:1;color:var(--cyan2);}
+  .scroll-hint-arrow{font-size:30px;line-height:1;color:var(--cyan2);text-shadow:0 0 12px rgba(0,200,230,.4);}
   @keyframes scrollHintBounce{0%,100%{transform:translateY(0);opacity:.6;}50%{transform:translateY(6px);opacity:1;}}
 }
 .bism{font-family:'Scheherazade New',serif;font-size:71px;font-weight:700;color:var(--gold2);direction:rtl;margin-bottom:20px;line-height:1.45;text-shadow:0 0 40px rgba(255,184,0,.5),0 2px 8px rgba(0,0,0,.5);}
@@ -3710,7 +3710,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
                   — slice(0,10) just caps it defensively at one set's worth. */}
               {allWords.slice(0, 10).map((w, i) => (
                 <div key={i} style={{ flex: "0 0 auto", width: 130, minHeight: 190, display: "flex", flexDirection: "column", justifyContent: "center", textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "22px 10px", backdropFilter: "blur(6px)" }}>
-                  <div className="arabic" style={{ fontSize: 24, color: "var(--gold2)", marginBottom: 10 }}>{w.arabic}</div>
+                  <div className="arabic" style={{ fontSize: 36, color: "var(--gold2)", marginBottom: 12, textShadow: "0 0 16px rgba(255,184,0,.35)" }}>{w.arabic}</div>
                   <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 8 }}>{w.english}</div>
                   <div className="word-urdu" style={{ fontSize: 15, textAlign: "center", textShadow: "none" }}>{w.urdu || "—"}</div>
                 </div>
@@ -3722,11 +3722,9 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
           <p style={{ textAlign: "center", fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
             <span className="forgot-link" onClick={() => setView("enroll")}>Sign up free to unlock all {totalWordCount ?? "100+"} words →</span>
           </p>
-        </div>
-      )}
-      {!user && (
-        <div className="scroll-hint" aria-hidden="true">
-          <div className="scroll-hint-arrow">⌄</div>
+          <div className="scroll-hint" aria-hidden="true">
+            <div className="scroll-hint-arrow">⌄</div>
+          </div>
         </div>
       )}
       </div>
