@@ -1815,6 +1815,9 @@ input[type="password"]::-ms-clear{display:none;}
     min-height:calc(100dvh - 128px);
     display:flex;flex-direction:column;justify-content:center;
   }
+  .anon-hero-fold .hero{padding-top:16px;padding-bottom:10px;}
+  .anon-hero-fold .bism{margin-bottom:8px;}
+  .anon-hero-fold .tagline-prominent{margin-bottom:8px;}
   .scroll-hint{
     display:flex;flex-direction:column;align-items:center;gap:2px;
     margin:2px 0 0;color:var(--muted);font-size:11px;
@@ -3775,8 +3778,8 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
                   RLS itself restricts anon visitors to Set 1 rows only server-side
                   — slice(0,10) just caps it defensively at one set's worth. */}
               {allWords.slice(0, 10).map((w, i) => (
-                <div key={i} style={{ flex: "0 0 auto", width: 130, minHeight: 190, display: "flex", flexDirection: "column", textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "16px 10px 22px", backdropFilter: "blur(6px)" }}>
-                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 32, marginBottom: 14 }}>
+                <div key={i} style={{ flex: "0 0 auto", width: 130, minHeight: 168, display: "flex", flexDirection: "column", textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "12px 10px 16px", backdropFilter: "blur(6px)" }}>
+                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 26, marginBottom: 8 }}>
                     {w.surahNumber && w.ayahNumber && w.wordPosition && (
                       <PlayPauseButton
                         resolveUrl={() => Promise.resolve(getWordAudioUrl(w.surahNumber, w.ayahNumber, w.wordPosition))}
@@ -3785,8 +3788,8 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
                     )}
                   </div>
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                    <div className="arabic" style={{ fontSize: 36, color: "var(--gold2)", marginBottom: 12, textShadow: "0 0 16px rgba(255,184,0,.35)" }}>{w.arabic}</div>
-                    <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 8 }}>{w.english}</div>
+                    <div className="arabic" style={{ fontSize: 32, color: "var(--gold2)", marginBottom: 8, textShadow: "0 0 16px rgba(255,184,0,.35)" }}>{w.arabic}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 6 }}>{w.english}</div>
                     <div className="word-urdu" style={{ fontSize: 15, textAlign: "center", textShadow: "none" }}>{w.urdu || "—"}</div>
                   </div>
                 </div>
