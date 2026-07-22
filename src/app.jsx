@@ -1512,6 +1512,20 @@ input[type="password"]::-ms-clear{display:none;}
   border:1px solid rgba(0,200,230,.35);
   box-shadow:0 0 20px rgba(0,200,230,.15);
 }
+.phub-avatar-wrap{position:relative;flex:0 0 auto;width:64px;height:64px;cursor:pointer;}
+.phub-avatar-img{
+  width:64px;height:64px;border-radius:50%;object-fit:cover;display:block;
+  border:1px solid rgba(0,200,230,.35);
+  box-shadow:0 0 20px rgba(0,200,230,.15);
+}
+.phub-avatar-edit{
+  position:absolute;bottom:-2px;right:-2px;
+  width:22px;height:22px;border-radius:50%;
+  background:var(--cyan2);color:#071c2a;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;border:2px solid #071c2a;
+  box-shadow:0 2px 6px rgba(0,0,0,.4);
+}
 .phub-tabs{display:flex;gap:22px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:20px;}
 .phub-tab{background:none;border:none;padding:10px 2px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;}
 .phub-tab:hover:not(.on){color:var(--text);}
@@ -1579,7 +1593,7 @@ input[type="password"]::-ms-clear{display:none;}
 .phub-target-btn{background:none;border:1px solid rgba(0,200,230,.3);color:var(--cyan2);font-size:11px;padding:4px 10px;border-radius:20px;margin-top:6px;cursor:pointer;}
 .phub-target-edit{display:flex;gap:6px;margin-top:6px;align-items:center;}
 .phub-target-edit input{width:60px;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.2);color:var(--text);font-size:13px;}
-@media(max-width:480px){.field-row{flex-direction:column;gap:0 !important;}.phub-logout-btn{padding:7px 10px;font-size:11px;}.phub-avatar{width:52px;height:52px;font-size:21px;}}
+@media(max-width:480px){.field-row{flex-direction:column;gap:0 !important;}.phub-logout-btn{padding:7px 10px;font-size:11px;}.phub-avatar{width:52px;height:52px;font-size:21px;}.phub-avatar-wrap{width:52px;height:52px;}.phub-avatar-img{width:52px;height:52px;}}
 @media(max-width:640px){
   .phub-page{padding-left:12px;padding-right:12px;}
   .phub-stat-grid{grid-template-columns:repeat(2,1fr);gap:14px;}
@@ -3761,18 +3775,20 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
                   RLS itself restricts anon visitors to Set 1 rows only server-side
                   — slice(0,10) just caps it defensively at one set's worth. */}
               {allWords.slice(0, 10).map((w, i) => (
-                <div key={i} style={{ flex: "0 0 auto", width: 130, minHeight: 190, display: "flex", flexDirection: "column", justifyContent: "center", textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "22px 10px", backdropFilter: "blur(6px)" }}>
-                  <div className="arabic" style={{ fontSize: 36, color: "var(--gold2)", marginBottom: 12, textShadow: "0 0 16px rgba(255,184,0,.35)" }}>{w.arabic}</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 8 }}>{w.english}</div>
-                  <div className="word-urdu" style={{ fontSize: 15, textAlign: "center", textShadow: "none", marginBottom: 10 }}>{w.urdu || "—"}</div>
-                  {w.surahNumber && w.ayahNumber && w.wordPosition && (
-                    <div style={{ display: "flex", justifyContent: "center" }}>
+                <div key={i} style={{ flex: "0 0 auto", width: 130, minHeight: 190, display: "flex", flexDirection: "column", textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "16px 10px 22px", backdropFilter: "blur(6px)" }}>
+                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 32, marginBottom: 14 }}>
+                    {w.surahNumber && w.ayahNumber && w.wordPosition && (
                       <PlayPauseButton
                         resolveUrl={() => Promise.resolve(getWordAudioUrl(w.surahNumber, w.ayahNumber, w.wordPosition))}
                         title="Play word pronunciation"
                       />
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    <div className="arabic" style={{ fontSize: 36, color: "var(--gold2)", marginBottom: 12, textShadow: "0 0 16px rgba(255,184,0,.35)" }}>{w.arabic}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 8 }}>{w.english}</div>
+                    <div className="word-urdu" style={{ fontSize: 15, textAlign: "center", textShadow: "none" }}>{w.urdu || "—"}</div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -4344,6 +4360,46 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
 // Progress tab: colorful summary stat grid + Monthly Challenge badge row
 // (last month / current month / next month locked).
 // Account tab: the same 5 actions the old dropdown held, as box-cards.
+// ── Uploadable profile avatar — click to change, falls back to the
+// initial-letter circle if nothing's been uploaded (or fails to load) ───────
+function ProfileAvatar({ user }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const inputRef = React.useRef(null);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !user.supabaseId) return;
+    setUploading(true);
+    const result = await uploadProfilePic(file, user.supabaseId);
+    setUploading(false);
+    if (result.ok) {
+      setImgFailed(false);
+      setRefreshKey(k => k + 1);
+    }
+    e.target.value = ""; // allow re-selecting the same file later if needed
+  };
+
+  return (
+    <div className="phub-avatar-wrap" onClick={() => !uploading && inputRef.current?.click()} title="Click to change your profile picture">
+      <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
+      {!imgFailed && user.supabaseId ? (
+        <img
+          key={refreshKey}
+          src={getProfilePicUrl(user.supabaseId)}
+          alt=""
+          className="phub-avatar-img"
+          onError={() => setImgFailed(true)}
+        />
+      ) : (
+        <div className="phub-avatar">{(user.name || "?").trim().charAt(0).toUpperCase()}</div>
+      )}
+      <div className="phub-avatar-edit">{uploading ? "…" : "📷"}</div>
+    </div>
+  );
+}
+
 function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogout, allWords }) {
   const [tab, setTab] = useState("progress"); // "progress" | "account" | "instructions"
   const [editingTarget, setEditingTarget] = useState(false);
@@ -4391,7 +4447,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
     <div className="page pmd phub-page">
       {/* Header */}
       <div className="phub-header">
-        <div className="phub-avatar">{(user.name || "?").trim().charAt(0).toUpperCase()}</div>
+        <ProfileAvatar user={user} />
         <div style={{ flex: 1 }}>
           <h2 style={{ margin: 0 }}>{user.name}</h2>
           <p className="sub" style={{ margin: "2px 0 0" }}>{user.userId ? `@${user.userId}` : user.email}</p>
@@ -4903,6 +4959,50 @@ async function uploadAyahImage(file, wordId) {
         if (error) { console.error("uploadAyahImage error:", error.message); resolve({ ok: false, reason: "upload-failed" }); return; }
         resolve({ ok: true });
       }, "image/png");
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve({ ok: false, reason: "invalid-image" }); };
+    img.src = objectUrl;
+  });
+}
+
+// ── Profile picture (Supabase Storage) ───────────────────────────────────────
+// Keyed by the user's own auth_id, not their public users.id — the storage
+// RLS policy checks the filename directly against auth.uid(), so this is
+// what actually makes "only I can overwrite my own avatar" enforceable
+// server-side, not just hidden in the UI. No new `users` column needed: the
+// URL is always deterministically derivable from auth_id, same pattern as
+// the ayah-image system, with the same graceful onError fallback to the
+// initial-letter circle for anyone who hasn't uploaded one.
+const PROFILE_PIC_BUCKET = "profile-pics";
+function getProfilePicUrl(authId) {
+  const { data } = supabase.storage.from(PROFILE_PIC_BUCKET).getPublicUrl(`${authId}.png`);
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
+
+// Square-crops to the shorter side (centered) then downsizes to a fixed
+// 400x400 — keeps every avatar a consistent size regardless of what was
+// uploaded, and keeps file size small since this renders at ~64px normally.
+async function uploadProfilePic(file, authId) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = async () => {
+      URL.revokeObjectURL(objectUrl);
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const sx = (img.naturalWidth - side) / 2;
+      const sy = (img.naturalHeight - side) / 2;
+      const SIZE = 400;
+      const canvas = document.createElement("canvas");
+      canvas.width = SIZE; canvas.height = SIZE;
+      canvas.getContext("2d").drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
+      canvas.toBlob(async (blob) => {
+        if (!blob) { resolve({ ok: false, reason: "conversion-failed" }); return; }
+        const { error } = await supabase.storage
+          .from(PROFILE_PIC_BUCKET)
+          .upload(`${authId}.png`, blob, { upsert: true, contentType: "image/png" });
+        if (error) { console.error("uploadProfilePic error:", error.message); resolve({ ok: false, reason: "upload-failed" }); return; }
+        resolve({ ok: true });
+      }, "image/png", 0.9);
     };
     img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve({ ok: false, reason: "invalid-image" }); };
     img.src = objectUrl;
