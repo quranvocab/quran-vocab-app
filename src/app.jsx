@@ -1803,7 +1803,7 @@ input[type="password"]::-ms-clear{display:none;}
   }
   .scroll-hint{
     display:flex;flex-direction:column;align-items:center;gap:2px;
-    margin:10px 0 0;color:var(--muted);font-size:11px;
+    margin:2px 0 0;color:var(--muted);font-size:11px;
     animation:scrollHintBounce 1.8s ease-in-out infinite;
   }
   .scroll-hint-arrow{font-size:30px;line-height:1;color:var(--cyan2);text-shadow:0 0 12px rgba(0,200,230,.4);}
@@ -3690,8 +3690,10 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
   useEffect(() => {
     const flagKey = user?.userId ? `qv_seen_science_${user.userId.toLowerCase()}` : "qv_seen_science_anon";
     if (!storageGet(flagKey)) {
-      storageSet(flagKey, true);
-      const t = setTimeout(() => setShowScienceModal(true), 500);
+      const t = setTimeout(() => {
+        storageSet(flagKey, true);
+        setShowScienceModal(true);
+      }, 500);
       return () => clearTimeout(t);
     }
   }, [user?.userId]);
@@ -3762,14 +3764,22 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
                 <div key={i} style={{ flex: "0 0 auto", width: 130, minHeight: 190, display: "flex", flexDirection: "column", justifyContent: "center", textAlign: "center", background: "rgba(7,28,42,.72)", border: "1px solid rgba(0,200,230,.25)", borderRadius: 10, padding: "22px 10px", backdropFilter: "blur(6px)" }}>
                   <div className="arabic" style={{ fontSize: 36, color: "var(--gold2)", marginBottom: 12, textShadow: "0 0 16px rgba(255,184,0,.35)" }}>{w.arabic}</div>
                   <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 8 }}>{w.english}</div>
-                  <div className="word-urdu" style={{ fontSize: 15, textAlign: "center", textShadow: "none" }}>{w.urdu || "—"}</div>
+                  <div className="word-urdu" style={{ fontSize: 15, textAlign: "center", textShadow: "none", marginBottom: 10 }}>{w.urdu || "—"}</div>
+                  {w.surahNumber && w.ayahNumber && w.wordPosition && (
+                    <div style={{ display: "flex", justifyContent: "center" }}>
+                      <PlayPauseButton
+                        resolveUrl={() => Promise.resolve(getWordAudioUrl(w.surahNumber, w.ayahNumber, w.wordPosition))}
+                        title="Play word pronunciation"
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
             <button className="preview-arrow" style={{ right: -14 }} aria-label="Scroll right"
               onClick={() => { const el = document.getElementById("set1-preview-strip"); if (el) el.scrollBy({ left: 300, behavior: "smooth" }); }}>›</button>
           </div>
-          <p style={{ textAlign: "center", fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
+          <p style={{ textAlign: "center", fontSize: 12.5, color: "var(--muted)", marginTop: 4, marginBottom: 0 }}>
             <span className="forgot-link" onClick={() => setView("enroll")}>Sign up free to unlock all {totalWordCount ?? "100+"} words →</span>
           </p>
           <div className="scroll-hint" aria-hidden="true">
