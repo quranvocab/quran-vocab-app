@@ -2401,6 +2401,10 @@ export default function App() {
       // Merge: the direct query (full row, may include email) wins when
       // present; the public RPC fills in every other learner the direct
       // query couldn't see (email intentionally absent from that source).
+      // get_leaderboard_data() doesn't return `verified` (not needed for
+      // the Leaderboard), so that fallback branch can't know real status —
+      // harmless in practice since admin's own view always has the direct
+      // `parts` query available, which does carry the real value below.
       const byId = new Map();
       (publicParts || []).forEach(p => byId.set(p.id, {
         userId: p.user_id, name: p.name, email: null,
@@ -2411,7 +2415,7 @@ export default function App() {
         userId: p.user_id, name: p.name, email: p.email,
         enrolledAt: p.enrolled_at, role: p.role || "learner", dbId: p.id,
         dayProgress: (allProgress || []).find(pr => pr.user_id === p.id)?.day_progress || byId.get(p.id)?.dayProgress || {},
-        emailVerified: true, supabaseId: p.auth_id,
+        emailVerified: !!p.verified, supabaseId: p.auth_id,
       }));
 
       const merged = Array.from(byId.values());
@@ -2506,6 +2510,16 @@ export default function App() {
         const alreadyLoggedIn = userRef.current?.supabaseId === session.user.id;
         await loadUserProfile(session.user.id, { silent: alreadyLoggedIn });
         await loadParticipants();
+        // Sync our own `verified` column from Supabase Auth's actual
+        // confirmation status. This was previously never written at all
+        // after signup — it stayed false forever, silently, because the
+        // Admin panel happened to show a hardcoded "verified" status that
+        // masked the gap. Cheap to check every sign-in; only writes when
+        // it's actually flipping false -> true.
+        if (session.user.email_confirmed_at) {
+          supabase.from("users").update({ verified: true }).eq("auth_id", session.user.id).eq("verified", false)
+            .then(({ error }) => { if (error) console.error("verified-sync error:", error.message); });
+        }
         // Re-fetch words/receipts now that we're actually authenticated — the
         // calls at the top of this effect only ever run once, at page mount,
         // before any login could possibly have happened yet (so they run as
@@ -2586,7 +2600,7 @@ export default function App() {
       role: profile.role || "learner", dbId: profile.id,
       scores: (scoreRows || []).map(mapScoreRow),
       dayProgress: progressRow?.day_progress || {},
-      emailVerified: true, supabaseId: authId,
+      emailVerified: !!profile.verified, supabaseId: authId,
       monthlyTarget: profile.monthly_word_target || 30,
     };
     setUser(u);
@@ -2936,6 +2950,10 @@ export default function App() {
 
     if (!profile || profile.email.toLowerCase() !== email.trim().toLowerCase()) {
       return { ok: false, reason: "no-match" };
+    }
+
+    if (!profile.verified) {
+      return { ok: false, reason: "not-verified" };
     }
 
     const { error } = await supabase.auth.resetPasswordForEmail(profile.email, {
@@ -3968,6 +3986,8 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
   // attempt that was blocked because the account isn't verified yet.
   const [pendingVerify, setPendingVerify] = useState(null); // { userId, email } or null
   const [resendStatus, setResendStatus] = useState(""); // "", "sending", "sent", "failed"
+  const [resendReason, setResendReason] = useState(null);
+  const [resendCooldown, setResendCooldown] = useState(0); // seconds remaining
 
   const isValidUserId = (id) => /^[a-zA-Z0-9_]{4,20}$/.test(id.trim());
 
@@ -3979,6 +3999,8 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
     setChecking(false);
     if (result.ok) {
       setForgotSent(true);
+    } else if (result.reason === "not-verified") {
+      setForgotError("This account hasn't verified its email yet — please verify first, then request a password reset.");
     } else {
       setForgotError("That User ID and email don't match any account on file. Please double-check both and try again.");
     }
@@ -4061,11 +4083,34 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
   };
   const useAnyway = () => { setTypoWarning(null); setIgnoreTypo(true); };
 
-  const submitResend = async () => {
+  // Cooldown persists to localStorage (keyed per user) so refreshing the
+  // page or reopening the tab doesn't reset it — same reasoning as the
+  // idle-timeout fix: an in-memory-only timer would just start over on
+  // every reload, defeating the point of a cooldown.
+  const RESEND_COOLDOWN_SEC = 60;
+  React.useEffect(() => {
     if (!pendingVerify) return;
+    const key = `qv_resend_cooldown_${pendingVerify.userId.toLowerCase()}`;
+    const tick = () => {
+      const until = Number(storageGet(key)) || 0;
+      const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      setResendCooldown(remaining);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [pendingVerify]);
+
+  const submitResend = async () => {
+    if (!pendingVerify || resendCooldown > 0) return;
     setResendStatus("sending");
+    setResendReason(null);
     const result = await onResendVerification(pendingVerify.userId);
     setResendStatus(result.ok ? "sent" : "failed");
+    setResendReason(result.ok ? null : result.reason);
+    const key = `qv_resend_cooldown_${pendingVerify.userId.toLowerCase()}`;
+    storageSet(key, Date.now() + RESEND_COOLDOWN_SEC * 1000);
+    setResendCooldown(RESEND_COOLDOWN_SEC);
   };
 
   // ── PENDING VERIFICATION SCREEN ──
@@ -4084,11 +4129,18 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
           <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
             Didn't get it? Check your spam folder, or request a new link below.
           </p>
-          <button className="btn bg bfw" onClick={submitResend} disabled={resendStatus === "sending"}>
-            {resendStatus === "sending" ? "Sending…" : "Resend Verification Email"}
+          <button className="btn bg bfw" onClick={submitResend} disabled={resendStatus === "sending" || resendCooldown > 0}>
+            {resendStatus === "sending" ? "Sending…" : resendCooldown > 0 ? `Resend available in ${resendCooldown}s` : "Resend Verification Email"}
           </button>
           {resendStatus === "sent" && <p style={{ fontSize: 12, color: "var(--ok)", marginTop: 10 }}>✅ New link sent — check your inbox.</p>}
-          {resendStatus === "failed" && <p style={{ fontSize: 12, color: "var(--err)", marginTop: 10 }}>⚠ Your email may already be verified — try logging in, or contact <a href="mailto:support@awamibaitulmaal.org.in" style={{ color: "var(--cyan2)" }}>support@awamibaitulmaal.org.in</a></p>}
+          {resendStatus === "failed" && resendReason === "already-verified" && (
+            <p style={{ fontSize: 12, color: "var(--gold2)", marginTop: 10 }}>
+              ✅ Good news — this email is already verified! (Sometimes an email provider's security scanner opens the link automatically before you see it.) Try logging in directly.
+            </p>
+          )}
+          {resendStatus === "failed" && resendReason !== "already-verified" && (
+            <p style={{ fontSize: 12, color: "var(--err)", marginTop: 10 }}>⚠ Couldn't send a new link — try again shortly, or contact <a href="mailto:support@awamibaitulmaal.org.in" style={{ color: "var(--cyan2)" }}>support@awamibaitulmaal.org.in</a></p>
+          )}
           <button className="btn bh bfw" style={{ marginTop: 10 }} onClick={() => { setPendingVerify(null); setError(""); setResendStatus(""); setMode("login"); }}>
             Back to Login
           </button>
@@ -7306,7 +7358,9 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
 
   const handleResendVerify = async (userId) => {
     const result = await onResendVerification(userId);
-    toast_(result.ok ? `Verification email resent to ${userId}.` : "Failed to resend — check EmailJS connection.");
+    if (result.ok) toast_(`Verification email resent to ${userId}.`);
+    else if (result.reason === "already-verified") toast_(`${userId}'s email is already verified — no need to resend.`);
+    else toast_("Failed to resend — check EmailJS connection.");
   };
 
   const add = async () => {
