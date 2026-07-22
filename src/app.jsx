@@ -3281,11 +3281,24 @@ export default function App() {
     const warnMs    = timeoutMs - IDLE_WARN_BEFORE;
     const roleLabel = (isAdminRoute || isFinanceRoute) ? "10 minutes" : "20 minutes";
 
+    // Persisted to localStorage (not just an in-memory closure variable) so
+    // a full page reload/reopen after the laptop was closed or slept for
+    // hours doesn't silently reset the idle clock to "now" — the previous
+    // version only tracked this in memory, meaning a fresh page load always
+    // looked like a brand new, fully-active session regardless of how long
+    // you'd actually been away, even though the login itself had correctly
+    // persisted. One storage key per role so learner/admin/finance idle
+    // clocks never interfere with each other.
+    const activityKey = `qv_last_activity_${isAdminRoute ? "admin" : isFinanceRoute ? "finance" : "learner"}`;
+    const readLastActivity = () => Number(storageGet(activityKey)) || Date.now();
+    const writeLastActivity = (t) => storageSet(activityKey, t);
+
     let warnTimer   = null;
     let logoutTimer = null;
-    let lastActivity = Date.now();
+    let lastActivity = readLastActivity();
 
     const doLogout = () => {
+      storageRemove(activityKey);
       if (isAdminActive && isAdminRoute) {
         sessionStorage.removeItem("qv_admin_unlocked");
         setAdminUnlocked(false);
@@ -3311,6 +3324,7 @@ export default function App() {
 
     const reset = () => {
       lastActivity = Date.now();
+      writeLastActivity(lastActivity);
       clearTimeout(warnTimer);
       clearTimeout(logoutTimer);
       warnTimer   = setTimeout(() => {
@@ -3319,12 +3333,21 @@ export default function App() {
       logoutTimer = setTimeout(doLogout, timeoutMs);
     };
 
+    // Check immediately on mount — if the persisted last-activity timestamp
+    // already shows the idle window has passed (laptop slept, tab was fully
+    // closed and reopened, etc.), log out right away instead of starting a
+    // fresh "active" session as if no time had passed.
+    if (Date.now() - lastActivity >= timeoutMs) {
+      doLogout();
+      return () => {};
+    }
+
     // iPhone PWA fix: when returning to the app, don't fire stale timers.
     // Instead check actual elapsed time — only logout if genuinely idle
     // beyond the limit; otherwise treat the return as fresh activity.
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
-        const elapsed = Date.now() - lastActivity;
+        const elapsed = Date.now() - readLastActivity();
         if (elapsed >= timeoutMs) {
           doLogout();
         } else {
@@ -4773,14 +4796,17 @@ function getAyahImageUrl(surahNumber, ayahNumber) {
 }
 
 // ── Admin-uploaded ayah images (Supabase Storage) ───────────────────────────
-// Per-ayah, not per-word — several words can share the same ayah, so one
-// upload benefits every word that references it. Falls back automatically
-// to the external CDN (getAyahImageUrl above) for any ayah nobody's
-// uploaded a custom image for yet — see AyahImagePopup's onError handling.
+// Per-WORD, not per-ayah — even when several words share the same ayah,
+// each gets its own image (e.g. the same ayah with a different word
+// highlighted each time). Keyed by the word's own database id, which is
+// already globally unique, rather than by surah:ayah. Falls back
+// automatically to the external CDN (getAyahImageUrl above) for any word
+// nobody's uploaded a custom image for yet — see AyahImagePopup's onError
+// handling.
 const AYAH_IMAGE_BUCKET = "ayah-images";
-function getCustomAyahImageUrl(surahNumber, ayahNumber) {
-  const { data } = supabase.storage.from(AYAH_IMAGE_BUCKET).getPublicUrl(`${surahNumber}_${ayahNumber}.png`);
-  // Cache-bust so a re-uploaded replacement for the same ayah shows
+function getCustomAyahImageUrl(wordId) {
+  const { data } = supabase.storage.from(AYAH_IMAGE_BUCKET).getPublicUrl(`word_${wordId}.png`);
+  // Cache-bust so a re-uploaded replacement for the same word shows
   // immediately instead of a stale browser-cached version.
   return `${data.publicUrl}?v=${Date.now()}`;
 }
@@ -4788,7 +4814,7 @@ function getCustomAyahImageUrl(surahNumber, ayahNumber) {
 // Normalizes whatever image format Admin uploads (jpg/png/webp/etc.) to a
 // consistent PNG via canvas, so the lookup above can always assume a fixed
 // `.png` extension without needing to track what was actually uploaded.
-async function uploadAyahImage(file, surahNumber, ayahNumber) {
+async function uploadAyahImage(file, wordId) {
   return new Promise((resolve) => {
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
@@ -4802,7 +4828,7 @@ async function uploadAyahImage(file, surahNumber, ayahNumber) {
         if (!blob) { resolve({ ok: false, reason: "conversion-failed" }); return; }
         const { error } = await supabase.storage
           .from(AYAH_IMAGE_BUCKET)
-          .upload(`${surahNumber}_${ayahNumber}.png`, blob, { upsert: true, contentType: "image/png" });
+          .upload(`word_${wordId}.png`, blob, { upsert: true, contentType: "image/png" });
         if (error) { console.error("uploadAyahImage error:", error.message); resolve({ ok: false, reason: "upload-failed" }); return; }
         resolve({ ok: true });
       }, "image/png");
@@ -4940,7 +4966,7 @@ function GateWarningModal({ message, onClose }) {
   );
 }
 
-function AyahImagePopup({ surahNumber, ayahNumber, partialAyahText, onClose }) {
+function AyahImagePopup({ wordId, surahNumber, ayahNumber, partialAyahText, onClose }) {
   const [stage, setStage] = useState("custom"); // "custom" -> "cdn" -> "failed"
   // Fixed at a comfortable reading size (~400%, the sweet spot for legibility
   // on the low-res CDN fallback) rather than manual zoom controls — panning
@@ -4949,7 +4975,7 @@ function AyahImagePopup({ surahNumber, ayahNumber, partialAyahText, onClose }) {
   // presumably already a reasonably-sized, clear crop, so it's shown at its
   // own natural fit instead of forcing the same aggressive zoom onto it.
   const READING_SCALE = 4;
-  const imageSrc = stage === "custom" ? getCustomAyahImageUrl(surahNumber, ayahNumber) : getAyahImageUrl(surahNumber, ayahNumber);
+  const imageSrc = stage === "custom" ? getCustomAyahImageUrl(wordId) : getAyahImageUrl(surahNumber, ayahNumber);
   const partialWordCount = partialAyahText ? partialAyahText.trim().split(/\s+/).filter(Boolean).length : 0;
 
   const handleImgError = () => {
@@ -5059,7 +5085,7 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
         </div>
       )}
       {showAyahPopup && hasAyahRef && (
-        <AyahImagePopup surahNumber={word.surahNumber} ayahNumber={word.ayahNumber} partialAyahText={word.partialAyahText} onClose={() => setShowAyahPopup(false)} />
+        <AyahImagePopup wordId={word.dbId} surahNumber={word.surahNumber} ayahNumber={word.ayahNumber} partialAyahText={word.partialAyahText} onClose={() => setShowAyahPopup(false)} />
       )}
     </div>
   );
@@ -6769,7 +6795,7 @@ function FinancePage({ receipts, receiptRequests, onIssueReceipt, onDismissReque
 // Small file-picker + upload button, used inline in the words admin table.
 // Shows the current image thumbnail (if any) as a visual confirmation, and
 // a compact status while uploading.
-function AyahImageUploadButton({ surahNumber, ayahNumber }) {
+function AyahImageUploadButton({ wordId }) {
   const [status, setStatus] = useState("idle"); // idle | uploading | done | error
   const inputRef = React.useRef(null);
 
@@ -6777,7 +6803,7 @@ function AyahImageUploadButton({ surahNumber, ayahNumber }) {
     const file = e.target.files?.[0];
     if (!file) return;
     setStatus("uploading");
-    const result = await uploadAyahImage(file, surahNumber, ayahNumber);
+    const result = await uploadAyahImage(file, wordId);
     setStatus(result?.ok ? "done" : "error");
     setTimeout(() => setStatus("idle"), 2000);
     e.target.value = ""; // allow re-selecting the same file later if needed
@@ -6790,7 +6816,7 @@ function AyahImageUploadButton({ surahNumber, ayahNumber }) {
         className="btn bh bsm" style={{ fontSize: 10, padding: "3px 8px" }}
         onClick={() => inputRef.current?.click()}
         disabled={status === "uploading"}
-        title="Upload a custom image for this ayah — used by every word that references it"
+        title="Upload a custom image for this word — even if other words share this ayah, each gets its own image"
       >
         {status === "uploading" ? "…" : status === "error" ? "⚠ retry" : status === "done" ? "✓ saved" : "🖼 Ayah Img"}
       </button>
@@ -6855,9 +6881,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                     </div>
                   </td>
                   <td>
-                    {editForm.surahNumber && editForm.ayahNumber
-                      ? <AyahImageUploadButton surahNumber={editForm.surahNumber} ayahNumber={editForm.ayahNumber} />
-                      : <span style={{ fontSize: 10, color: "var(--muted)" }}>Set Surah/Ayah first</span>}
+                    <AyahImageUploadButton wordId={editForm.dbId} />
                   </td>
                   <td style={{ display: "flex", gap: 4 }}>
                     <button className="btn bg bsm" onClick={saveEdit} disabled={saving}>{saving ? "…" : "✓"}</button>
@@ -6877,9 +6901,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                   {w.ayahRef && <div style={{ fontSize: 10, color: "var(--gold2)", marginTop: 2 }}>"{w.ayahRef}"</div>}
                 </td>
                 <td>
-                  {w.surahNumber && w.ayahNumber
-                    ? <AyahImageUploadButton surahNumber={w.surahNumber} ayahNumber={w.ayahNumber} />
-                    : <span style={{ fontSize: 10, color: "var(--muted)" }}>—</span>}
+                  <AyahImageUploadButton wordId={w.dbId} />
                 </td>
                 <td style={{ display: "flex", gap: 4 }}>
                   <button className="btn bh bsm" style={{ fontSize: 10 }} onClick={() => openEdit(w, i)}>✏</button>
@@ -7337,13 +7359,8 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
           </div>
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: -4, marginBottom: 11 }}>Word # is this word's position (1st, 2nd, 3rd…) within the ayah text — needed for the single-word pronunciation button. Leave blank if unsure; the ayah-level audio and image will still work with just Surah/Ayah #.</p>
           <div className="field" style={{ marginBottom: 14 }}>
-            <label>Ayah Image (optional)</label>
-            {surahNumber && ayahNumber
-              ? <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <AyahImageUploadButton surahNumber={parseInt(surahNumber, 10)} ayahNumber={parseInt(ayahNumber, 10)} />
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>Uploads for {surahNumber}:{ayahNumber} — shared by every word referencing this ayah</span>
-                </div>
-              : <span style={{ fontSize: 11, color: "var(--muted)" }}>Enter Surah # and Ayah # above first to enable image upload.</span>}
+            <label>Ayah Image</label>
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>Images are now uploaded per-word after saving, from the Words Table below — each word can have its own image even when several share the same ayah.</span>
           </div>
           <button className="btn bg" onClick={add} disabled={adding}>{adding ? "Adding…" : "Add Word"}</button>
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 11 }}>Custom words unlock day-by-day after the built-in words.</p>
