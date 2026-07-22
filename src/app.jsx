@@ -4400,6 +4400,33 @@ function ProfileAvatar({ user }) {
   );
 }
 
+// ── Small read-only avatar thumbnail for the admin Participants table —
+// same graceful fallback as ProfileAvatar, just smaller and not clickable.
+function AdminAvatarThumb({ authId, name }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  if (!authId || imgFailed) {
+    return (
+      <div style={{
+        width: 26, height: 26, borderRadius: "50%", flex: "0 0 auto",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 11, fontWeight: 700, color: "var(--gold3)",
+        background: "linear-gradient(135deg,rgba(0,200,230,.25),rgba(255,217,107,.2))",
+        border: "1px solid rgba(0,200,230,.3)",
+      }}>
+        {(name || "?").trim().charAt(0).toUpperCase()}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={getProfilePicUrl(authId)}
+      alt=""
+      onError={() => setImgFailed(true)}
+      style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto", border: "1px solid rgba(0,200,230,.3)" }}
+    />
+  );
+}
+
 function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogout, allWords }) {
   const [tab, setTab] = useState("progress"); // "progress" | "account" | "instructions"
   const [editingTarget, setEditingTarget] = useState(false);
@@ -7549,7 +7576,12 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
                 const isUnverified = p.emailVerified === false;
                 return (
                 <tr key={p.userId || p.email}>
-                  <td>{p.name}</td>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <AdminAvatarThumb authId={p.supabaseId} name={p.name} />
+                      <span>{p.name}</span>
+                    </div>
+                  </td>
                   <td style={{ color: p.userId ? "var(--gold3)" : "var(--muted)" }}>{p.userId || <span style={{ fontStyle: "italic", fontSize: 11 }}>legacy — not upgraded</span>}</td>
                   <td style={{ color: "var(--muted)" }}>{p.email}</td>
                   <td>
