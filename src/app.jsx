@@ -2437,6 +2437,15 @@ export default function App() {
       if (hash.includes("type=signup")) {
         return;
       }
+      // An expired or already-used verification link redirects here with an
+      // error in the hash instead of a session — this was previously just
+      // silently ignored, landing the person on the plain login page with
+      // zero explanation of what happened or what to do next.
+      if (hash.includes("error=") && (hash.includes("otp_expired") || hash.includes("access_denied"))) {
+        window.history.replaceState(null, "", window.location.pathname);
+        toast_("⚠ That verification link has expired or was already used. Please log in — if your account still needs verifying, you'll get an option to resend a fresh link.");
+        return;
+      }
 
       // ── PWA reload fix: restore user INSTANTLY from localStorage so an
       // iPhone app-switch (which often fully reloads the PWA) never shows a
