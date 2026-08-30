@@ -261,14 +261,17 @@ function hasMetMasteryGate(setDay, allScores, allWords) {
 // milestones rather than claiming false precision.
 function estimateQuranCoverage(wordsLearned) {
   if (wordsLearned <= 0) return 0;
-  if (wordsLearned >= 1000) return 90;
-  if (wordsLearned >= 500) return 80;
-  if (wordsLearned >= 300) return 75;
-  if (wordsLearned >= 150) return 65;
-  if (wordsLearned >= 70) return 50;
-  // Below the first published milestone (70 words ≈ 50%), interpolate linearly
-  // toward it rather than showing nothing.
-  return Math.round((wordsLearned / 70) * 50);
+  if (wordsLearned >= 4000) return 100;
+  if (wordsLearned >= 500) {
+    return Math.round(85 + ((wordsLearned - 500) / (4000 - 500)) * 15);
+  }
+  if (wordsLearned >= 250) {
+    return Math.round(75 + ((wordsLearned - 250) / (500 - 250)) * 10);
+  }
+  if (wordsLearned >= 125) {
+    return Math.round(50 + ((wordsLearned - 125) / (250 - 125)) * 25);
+  }
+  return Math.round((wordsLearned / 125) * 50);
 }
 
 // ── Words added in the last 7 days ──────────────────────────────────────────────
@@ -3583,11 +3586,9 @@ export default function App() {
 // Home page's "Qur'an Coverage" stat — so the number here always matches
 // what's shown elsewhere, never a second, different-sounding estimate.
 const COVERAGE_MILESTONES = [
-  { words: 70, pct: 50 },
-  { words: 150, pct: 65 },
-  { words: 300, pct: 75 },
-  { words: 500, pct: 80 },
-  { words: 1000, pct: 90 },
+  { words: 125, pct: 50 },
+  { words: 250, pct: 75 },
+  { words: 500, pct: 85 },
 ];
 
 function CoverageScienceModal({ user, allWords, onClose }) {
