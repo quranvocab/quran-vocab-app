@@ -55,6 +55,13 @@ function getUnlockedWords(enrolledAt, dayProgress = {}, allWords = []) {
   return allWords.slice(0, getUnlockedDays(enrolledAt, dayProgress, totalDays) * WORDS_PER_DAY);
 }
 
+// Words sharing the same three-letter root as a given word, excluding itself.
+// Root data is optional per-word — words without a root simply show no family.
+function getRelatedWordsByRoot(word, allWords = []) {
+  if (!word.root) return [];
+  return allWords.filter(w => w.root === word.root && w.arabic !== word.arabic);
+}
+
 // A word counts as mastered the moment its most recent 3 attempts are all
 // correct — regardless of whether those attempts came from that set's own
 // quiz, the All Sets Quiz, or a Weak Words Practice quiz, and regardless of
@@ -295,6 +302,18 @@ function countWordsAddedLastWeek(allWords) {
 function storageGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
 function storageSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 function storageRemove(k) { try { localStorage.removeItem(k); } catch {} }
+
+// ── Day/Night theme ─────────────────────────────────────────────────────────
+// "Auto" mode follows the device's local clock, not prefers-color-scheme —
+// dark from 7pm to 6am, light the rest of the day. A learner's explicit
+// choice (light/dark) always overrides auto until they cycle back to it.
+function getAutoTheme() {
+  const hour = new Date().getHours();
+  return (hour >= 19 || hour < 6) ? "dark" : "light";
+}
+function resolveTheme(pref) {
+  return pref === "auto" ? getAutoTheme() : pref;
+}
 
 // ── Password hashing (SHA-256 via Web Crypto API) ─────────────────────────────
 // ── Password complexity rule ───────────────────────────────────────────────────
@@ -573,7 +592,7 @@ async function upsertProgress(dbUserId, dayProgress) {
 function mapWordRow(row) {
   return {
     dbId: row.id, arabic: row.arabic, translit: row.translit, english: row.english,
-    urdu: row.urdu,
+    urdu: row.urdu, root: row.root || "",
     ayahRef: row.ayah_ref || "", isCustom: !!row.is_custom,
     surahNumber: row.surah_number ?? null, ayahNumber: row.ayah_number ?? null,
     wordPosition: row.word_position ?? null,
@@ -620,7 +639,7 @@ async function insertWord(word) {
   }
   const { error } = await supabase.from("words").insert({
     arabic: word.arabic, translit: word.translit, english: word.english,
-    urdu: word.urdu,
+    urdu: word.urdu, root: word.root || null,
     ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
     word_position: word.wordPosition || null, partial_ayah_text: word.partialAyahText || null, set_number: setNum, order_in_set: orderNum,
     is_custom: true, is_active: true, added_by: addedBy, added_at: new Date().toISOString(),
@@ -632,7 +651,7 @@ async function insertWord(word) {
 async function updateWord(dbId, fields) {
   const { error } = await supabase.from("words").update({
     arabic: fields.arabic, translit: fields.translit, english: fields.english,
-    urdu: fields.urdu,
+    urdu: fields.urdu, root: fields.root || null,
     ayah_ref: fields.ayahRef || null, surah_number: fields.surahNumber || null, ayah_number: fields.ayahNumber || null,
     word_position: fields.wordPosition || null, partial_ayah_text: fields.partialAyahText || null,
   }).eq("id", dbId);
@@ -679,6 +698,7 @@ const CSV_HEADER_ALIASES = {
   translit: ["transliteration", "translit"],
   english: ["english", "english meaning", "meaning"],
   urdu: ["urdu", "urdu meaning"],
+  root: ["root", "arabic root", "three-letter root"],
   ayahRef: ["ayah reference", "ayahref", "quran reference", "reference"],
   surahNumber: ["surah number", "surah#", "surah no", "surah"],
   ayahNumber: ["ayah number", "ayah#", "ayah no", "ayah"],
@@ -733,6 +753,7 @@ function parseWordsCSV(text, existingArabicSet = new Set()) {
     words.push({
       rowNum: i + 1, arabic, english,
       translit: get("translit"), urdu: get("urdu") || "—",
+      root: get("root"),
       ayahRef: get("ayahRef"),
       surahNumber: get("surahNumber") ? parseInt(get("surahNumber"), 10) || null : null,
       ayahNumber: get("ayahNumber") ? parseInt(get("ayahNumber"), 10) || null : null,
@@ -768,7 +789,7 @@ async function bulkInsertWords(words) {
   const rows = words.map(word => {
     const row = {
       arabic: word.arabic, translit: word.translit, english: word.english,
-      urdu: word.urdu,
+      urdu: word.urdu, root: word.root || null,
       ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
       word_position: word.wordPosition || null, partial_ayah_text: word.partialAyahText || null, set_number: setNum, order_in_set: orderNum,
       is_custom: true, is_active: true, added_by: addedBy, added_at: nowIso,
@@ -1296,6 +1317,29 @@ const CSS = `
   --pal-rose:#ff8a80;--pal-teal:#00e0a0;
   --glow:rgba(0,200,230,.22);--glow2:rgba(0,200,230,.12);
 }
+/* Light theme — same variable set, swapped for a bright/readable daytime
+   palette. Applied via a data-theme attribute on <html>, set by the theme
+   toggle logic in App() — never a separate stylesheet or duplicated rules,
+   so every existing var(--x) reference across the app repaints correctly
+   with zero other CSS changes needed. */
+[data-theme="light"]{
+  --bg:#f4f9fb;--s1:rgba(7,28,42,.05);--s2:rgba(7,28,42,.08);--s3:rgba(7,28,42,.12);
+  --cyan:#0090a8;--cyan2:#007a90;
+  --teal:#00a884;--teal2:#00876a;
+  --gold:#c98a00;--gold2:#b8790a;--gold3:#9c6600;
+  --text:#0d2536;--muted:#4a7086;
+  --ok:#0090a8;--err:#d64545;
+  --pal-rose:#c85a50;--pal-teal:#00966e;
+  --glow:rgba(0,144,168,.14);--glow2:rgba(0,144,168,.08);
+}
+.theme-toggle-btn{
+  position:fixed;top:14px;right:14px;z-index:600;
+  width:40px;height:40px;border-radius:50%;
+  background:var(--s2);border:1px solid var(--s3);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;cursor:pointer;transition:background .2s ease;
+}
+.theme-toggle-btn:hover{background:var(--s3);}
 body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans-serif;min-height:100vh;font-size:17px;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
 html{overflow-x:hidden;}
 #root{overflow-x:hidden;width:100%;max-width:100vw;}
@@ -2390,6 +2434,30 @@ export default function App() {
   const [receipts, setReceipts] = useState([]);
   const [receiptRequests, setReceiptRequests] = useState([]);
   const [showRequestReceipt, setShowRequestReceipt] = useState(false);
+  // "auto" | "light" | "dark" — persisted choice; auto re-evaluates against
+  // the device clock (see getAutoTheme). themePref is what the user chose;
+  // resolvedTheme is what's actually applied right now (same as themePref
+  // unless themePref is "auto").
+  const [themePref, setThemePref] = useState(() => storageGet("qv_theme_pref") || "auto");
+  const [resolvedTheme, setResolvedTheme] = useState(() => resolveTheme(storageGet("qv_theme_pref") || "auto"));
+
+  // Applies whenever themePref changes, and — only in "auto" mode — re-checks
+  // the clock every 15 minutes so a session left open across the day/night
+  // boundary flips over on its own without needing a reload.
+  useEffect(() => {
+    setResolvedTheme(resolveTheme(themePref));
+    if (themePref !== "auto") return;
+    const id = setInterval(() => setResolvedTheme(resolveTheme("auto")), 15 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [themePref]);
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", resolvedTheme);
+  }, [resolvedTheme]);
+  const cycleTheme = () => {
+    const next = themePref === "auto" ? "light" : themePref === "light" ? "dark" : "auto";
+    setThemePref(next);
+    storageSet("qv_theme_pref", next);
+  };
 
   useEffect(() => {
     setMessages(getMessages());
@@ -3582,6 +3650,13 @@ export default function App() {
           />
         )}
         {toast && <div className="toast">{toast}</div>}
+        <button
+          className="theme-toggle-btn"
+          onClick={cycleTheme}
+          title={`Theme: ${themePref === "auto" ? `Auto (currently ${resolvedTheme})` : themePref === "light" ? "Light" : "Dark"} — tap to change`}
+        >
+          {themePref === "auto" ? "🌗" : resolvedTheme === "light" ? "☀️" : "🌙"}
+        </button>
       </div>
     </>
   );
@@ -5263,7 +5338,7 @@ function AyahImagePopup({ wordId, surahNumber, ayahNumber, partialAyahText, onCl
 // ── Shared expandable word card — used on Day Words page and History's ──────
 // Strong/Weak word breakdown, so both show identical detail (Urdu,
 // Qur'an reference).
-function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
+function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false, allWords }) {
   const [showAyahPopup, setShowAyahPopup] = useState(false);
   const hasAyahRef = !!(word.surahNumber && word.ayahNumber);
   const hasWordAudio = !!(word.surahNumber && word.ayahNumber && word.wordPosition);
@@ -5308,6 +5383,41 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false }) {
       )}
       {showAyahPopup && hasAyahRef && (
         <AyahImagePopup wordId={word.dbId} surahNumber={word.surahNumber} ayahNumber={word.ayahNumber} partialAyahText={word.partialAyahText} onClose={() => setShowAyahPopup(false)} />
+      )}
+      {allWords && <WordFamilySection word={word} allWords={allWords} />}
+    </div>
+  );
+}
+
+// Optional "word family" panel — shown only when a word has root data and
+// at least one other word in the bank shares that root. Purely additive:
+// the main learn/quiz/mastery flow is unaffected whether or not a word has
+// a root, or whether the learner ever opens this panel.
+function WordFamilySection({ word, allWords }) {
+  const [open, setOpen] = useState(false);
+  const related = getRelatedWordsByRoot(word, allWords);
+  if (!word.root || related.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button className="word-toggle" onClick={() => setOpen(o => !o)}>
+        {open ? "Hide Word Family ▲" : `See ${related.length} related word${related.length !== 1 ? "s" : ""} from this root ▼`}
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(0,200,230,.05)", border: "1px solid rgba(0,200,230,.15)", borderRadius: 8 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+            Root: <span className="arabic" style={{ fontSize: 18, color: "var(--gold2)" }}>{word.root}</span>
+          </div>
+          {related.map((w, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderTop: i > 0 ? "1px solid rgba(0,200,230,.08)" : "none" }}>
+              <span className="arabic" style={{ fontSize: 18, color: "var(--gold2)" }}>{w.arabic}</span>
+              <span style={{ fontSize: 13, color: "var(--text)" }}>{w.english}</span>
+            </div>
+          ))}
+          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, fontStyle: "italic" }}>
+            Words from the same root often share a core meaning, but each has its own precise usage — worth learning individually, not assumed identical.
+          </p>
+        </div>
       )}
     </div>
   );
@@ -5447,6 +5557,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
                   isOpen={isOpen}
                   onToggle={() => setExpandedWord(isOpen ? null : `${selectedDay}-${i}`)}
                   highlight={!isMastered}
+                  allWords={allWords}
                 />
               );
             })}
@@ -5499,6 +5610,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
                         isOpen={isOpen}
                         onToggle={() => setExpandedWord(isOpen ? null : `allsets-${i}`)}
                         highlight={!isMastered}
+                        allWords={allWords}
                       />
                     );
                   })}
@@ -6161,6 +6273,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
                         isOpen={isOpen}
                         onToggle={() => setExpandedHistWord(isOpen ? null : `${wordTab}-${i}`)}
                         badge={badge}
+                        allWords={allWords}
                       />
                     );
                   })}
@@ -6211,6 +6324,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
                         isOpen={isOpen}
                         onToggle={() => setExpandedAllSetsHistWord(isOpen ? null : `${allSetsWordTab}-${i}`)}
                         badge={badge}
+                        allWords={allWords}
                       />
                     );
                   })}
@@ -6263,6 +6377,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
                         onToggle={() => setExpandedWeakWord(isOpen ? null : `weak-${i}`)}
                         badge={badge}
                         highlight={!isMastered}
+                        allWords={allWords}
                       />
                     );
                   })}
@@ -6343,6 +6458,7 @@ function ReviewPage({ rec, setView, allWords }) {
                     isOpen={isOpen}
                     onToggle={() => setExpandedReviewWord(isOpen ? null : i)}
                     badge={badge}
+                    allWords={allWords}
                   />
                   {!d.isCorrect && (
                     <div className="review-answer-note">
@@ -7070,7 +7186,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
   return (
     <div style={{ maxHeight: 500, overflowY: "auto" }}>
       <table className="tbl">
-        <thead><tr><th>Arabic</th><th>Translit</th><th>English</th><th>Urdu</th><th>Surah:Ayah</th><th>Image</th><th></th></tr></thead>
+        <thead><tr><th>Arabic</th><th>Translit</th><th>English</th><th>Urdu</th><th>Root</th><th>Surah:Ayah</th><th>Image</th><th></th></tr></thead>
         <tbody>
           {allWords.map((w, i) => {
             if (editIdx === i) {
@@ -7080,6 +7196,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                   <td><input value={editForm.translit || ""} onChange={e => setEditForm(f => ({ ...f, translit: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.english || ""} onChange={e => setEditForm(f => ({ ...f, english: e.target.value }))} style={{ width: 90, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td><input value={editForm.urdu || ""} onChange={e => setEditForm(f => ({ ...f, urdu: e.target.value }))} style={{ direction: "rtl", fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 13, width: 70, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
+                  <td><input value={editForm.root || ""} onChange={e => setEditForm(f => ({ ...f, root: e.target.value }))} title="Three-letter Arabic root" style={{ direction: "rtl", fontFamily: "'Scheherazade New','Amiri',serif", fontSize: 15, width: 50, background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 6px" }} /></td>
                   <td style={{ display: "flex", gap: 3, alignItems: "flex-end" }}>
                     <div>
                       <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 2 }}>Surah #</div>
@@ -7118,6 +7235,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                 <td style={{ color: "var(--muted)", fontStyle: "italic" }}>{w.translit}</td>
                 <td>{w.english}</td>
                 <td><span style={{ fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 14, color: "var(--teal2)", direction: "rtl" }}>{w.urdu || "—"}</span></td>
+                <td><span className="arabic" style={{ fontSize: 15, color: "var(--gold2)" }}>{w.root || "—"}</span></td>
                 <td style={{ fontSize: 12, color: "var(--muted)" }}>
                   {w.surahNumber && w.ayahNumber ? `${w.surahNumber}:${w.ayahNumber}${w.wordPosition ? ` (w${w.wordPosition})` : ""}` : "—"}
                   {w.ayahRef && <div style={{ fontSize: 10, color: "var(--gold2)", marginTop: 2 }}>"{w.ayahRef}"</div>}
@@ -7473,6 +7591,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
   const [tab, setTab] = useState("words");
   const [arabic, setArabic] = useState(""), [translit, setTranslit] = useState(""), [english, setEnglish] = useState("");
   const [urdu, setUrdu] = useState("");
+  const [root, setRoot] = useState("");
   const [ayahRef, setAyahRef] = useState("");
   const [surahNumber, setSurahNumber] = useState(""), [ayahNumber, setAyahNumber] = useState("");
   const [wordPosition, setWordPosition] = useState("");
@@ -7539,6 +7658,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
     const ok = await onAddWord({
       arabic: arabic.trim(), translit: translit.trim(), english: english.trim(),
       urdu: urdu.trim() || "—",
+      root: root.trim() || "",
       ayahRef: ayahRef.trim() || "",
       surahNumber: surahNumber ? parseInt(surahNumber, 10) || null : null,
       ayahNumber: ayahNumber ? parseInt(ayahNumber, 10) || null : null,
@@ -7546,7 +7666,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
     });
     setAdding(false);
     if (ok) {
-      setArabic(""); setTranslit(""); setEnglish(""); setUrdu(""); setAyahRef(""); setSurahNumber(""); setAyahNumber(""); setWordPosition("");
+      setArabic(""); setTranslit(""); setEnglish(""); setUrdu(""); setRoot(""); setAyahRef(""); setSurahNumber(""); setAyahNumber(""); setWordPosition("");
       toast_("Word added!");
     } else {
       toast_("⚠ Couldn't add the word — please try again.");
@@ -7575,6 +7695,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
           <div className="field"><label>Transliteration</label><input value={translit} onChange={e => setTranslit(e.target.value)} placeholder="e.g. Masjid" /></div>
           <div className="field"><label>English Meaning *</label><input value={english} onChange={e => setEnglish(e.target.value)} placeholder="e.g. Mosque" /></div>
           <div className="field"><label>Urdu Meaning</label><input value={urdu} onChange={e => setUrdu(e.target.value)} placeholder="e.g. مسجد" style={{ direction: "rtl", fontFamily: "'Noto Nastaliq Urdu',serif", fontSize: 15 }} /></div>
+          <div className="field"><label>Root (optional)</label><input value={root} onChange={e => setRoot(e.target.value)} placeholder="e.g. سجد" title="Three-letter Arabic root — used to group related words as a 'word family'" style={{ direction: "rtl", fontFamily: "'Scheherazade New','Amiri',serif", fontSize: 17 }} /></div>
           <div className="field"><label>Qur'an Reference (optional)</label><input value={ayahRef} onChange={e => setAyahRef(e.target.value)} placeholder="e.g. Surah Al-Baqarah 2:144" /></div>
           <div style={{ display: "flex", gap: 10 }}>
             <div className="field" style={{ flex: 1 }}><label>Surah # (for audio/image)</label><input type="number" min="1" max="114" value={surahNumber} onChange={e => setSurahNumber(e.target.value)} placeholder="e.g. 2" /></div>
