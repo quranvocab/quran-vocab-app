@@ -253,25 +253,34 @@ function hasMetMasteryGate(setDay, allScores, allWords) {
   return (masteredInSet / setWords.length) * 100 >= MASTERY_GATE_PCT;
 }
 
-// ── Qur'an coverage estimate ────────────────────────────────────────────────────
-// Based on published research on Quranic word frequency (not a made-up curve):
-// learning the ~70-80 most frequent words covers roughly 50% of the Qur'an's
-// text, ~150-200 words covers ~65%, ~300 covers ~75%, 500 covers ~80%, and
-// beyond 1000 words approaches ~90%+. This interpolates between those known
-// milestones rather than claiming false precision.
+// ── Word-recognition coverage estimate ──────────────────────────────────────────
+// "Coverage" here means word-OCCURRENCE recognition — the share of the
+// Qur'an's total word occurrences made up by words the learner has mastered
+// — not reading comprehension. Recognizing a word is not the same as
+// understanding a sentence; real comprehension also depends on grammar
+// (naḥw/ṣarf), morphology, and context, none of which this figure measures.
+// Vocabulary-coverage research (e.g. Hu & Nation 2000) finds ~95-98% word
+// coverage is typically needed for independent reading comprehension of a
+// text — so these milestones represent a valuable foundation, not fluency.
+// Milestones are computed directly from real per-word occurrence counts in
+// the Quranic Arabic Corpus (corpus.quran.com, Kais Dukes / University of
+// Leeds, GNU GPL) — not estimated or borrowed from a secondary source.
 function estimateQuranCoverage(wordsLearned) {
   if (wordsLearned <= 0) return 0;
-  if (wordsLearned >= 4000) return 100;
-  if (wordsLearned >= 500) {
-    return Math.round(85 + ((wordsLearned - 500) / (4000 - 500)) * 15);
+  if (wordsLearned >= 1111) return 90;
+  if (wordsLearned >= 470) {
+    return Math.round(80 + ((wordsLearned - 470) / (1111 - 470)) * 10);
   }
-  if (wordsLearned >= 250) {
-    return Math.round(75 + ((wordsLearned - 250) / (500 - 250)) * 10);
+  if (wordsLearned >= 236) {
+    return Math.round(70 + ((wordsLearned - 236) / (470 - 236)) * 10);
   }
-  if (wordsLearned >= 125) {
-    return Math.round(50 + ((wordsLearned - 125) / (250 - 125)) * 25);
+  if (wordsLearned >= 120) {
+    return Math.round(60 + ((wordsLearned - 120) / (236 - 120)) * 10);
   }
-  return Math.round((wordsLearned / 125) * 50);
+  if (wordsLearned >= 60) {
+    return Math.round(50 + ((wordsLearned - 60) / (120 - 60)) * 10);
+  }
+  return Math.round((wordsLearned / 60) * 50);
 }
 
 // ── Words added in the last 7 days ──────────────────────────────────────────────
@@ -3578,17 +3587,21 @@ export default function App() {
   );
 }
 
-// ── "Why This Works" — the vocabulary-coverage science modal ────────────────
-// Explains why frequency-ranked word learning is effective (Zipf's law: a
-// small set of high-frequency words does most of the comprehension work),
-// then shows the learner's own mastered-word count against that same curve.
+// ── "Why This Works" — the vocabulary-recognition science modal ────────────
+// Explains why frequency-ranked word learning is a strong starting point
+// (Zipf's law: a small set of high-frequency words accounts for most word
+// occurrences), while being explicit that word recognition is a foundation
+// for comprehension, not comprehension itself — full understanding also
+// needs grammar (naḥw/ṣarf), which this app does not yet teach.
 // Reuses estimateQuranCoverage() — the exact function already driving the
-// Home page's "Qur'an Coverage" stat — so the number here always matches
+// Home page's "Word Recognition" stat — so the number here always matches
 // what's shown elsewhere, never a second, different-sounding estimate.
 const COVERAGE_MILESTONES = [
-  { words: 125, pct: 50 },
-  { words: 250, pct: 75 },
-  { words: 500, pct: 85 },
+  { words: 60, pct: 50 },
+  { words: 120, pct: 60 },
+  { words: 236, pct: 70 },
+  { words: 470, pct: 80 },
+  { words: 1111, pct: 90 },
 ];
 
 function CoverageScienceModal({ user, allWords, onClose }) {
@@ -3630,7 +3643,7 @@ function CoverageScienceModal({ user, allWords, onClose }) {
         </div>
         <div style={{ padding: "20px 24px 26px" }}>
           <p style={{ fontSize: 14.5, lineHeight: 1.7, color: "var(--text)", marginTop: 0 }}>
-            The Quran repeats its core vocabulary constantly — a small set of words carries most of its meaning. Linguists call this pattern <strong style={{ color: "var(--gold2)" }}>Zipf's law</strong>: learn the most-repeated words first, and your understanding grows far faster than the word count suggests.
+            The Quran repeats a core set of words constantly — a small number of words accounts for a large share of everything it says. Linguists call this pattern <strong style={{ color: "var(--gold2)" }}>Zipf's law</strong>. Learning the most-repeated words first is the fastest way to build real vocabulary — the essential foundation for deeper study of grammar (naḥw/ṣarf) and, ultimately, genuine understanding.
           </p>
 
           <div ref={containerRef} style={{ margin: "18px 0" }}>
@@ -3665,7 +3678,13 @@ function CoverageScienceModal({ user, allWords, onClose }) {
           </div>
 
           <p style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--muted)" }}>
-            The Quran uses roughly 4,000 unique words total, built from about 1,700 Arabic roots. Master this app's word sets, and you're covering a meaningful share of everything the Quran says — not memorizing an unrelated foreign-language dictionary.
+            The Quran uses roughly 4,800 unique words total. Master this app's word sets, and you're covering a meaningful share of everything the Quran says — not memorizing an unrelated foreign-language dictionary.
+          </p>
+          <p style={{ fontSize: 11, lineHeight: 1.6, color: "var(--muted)", marginTop: 10 }}>
+            <strong>Word recognition is not the same as full comprehension.</strong> Understanding a sentence also depends on grammar, sentence structure, and context — skills this app doesn't yet teach. Think of this vocabulary as the essential foundation that future study of Arabic grammar (naḥw/ṣarf) builds on.
+          </p>
+          <p style={{ fontSize: 10, lineHeight: 1.6, color: "var(--muted)", opacity: .7, marginTop: 10 }}>
+            Word-frequency data from <a href="https://corpus.quran.com" target="_blank" rel="noopener noreferrer" style={{ color: "var(--cyan2)" }}>The Quranic Arabic Corpus</a> (Kais Dukes, University of Leeds; maintained by the Quran.com team), used under its GNU GPL license.
           </p>
 
           {user && (
@@ -3676,11 +3695,11 @@ function CoverageScienceModal({ user, allWords, onClose }) {
             }}>
               <div style={{ fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Your Progress</div>
               <div style={{ fontFamily: "'Poppins',sans-serif", fontSize: 26, fontWeight: 700, color: "var(--gold2)" }}>
-                {masteredCount} word{masteredCount !== 1 ? "s" : ""} mastered ≈ {myCoverage}%
+                {masteredCount} word{masteredCount !== 1 ? "s" : ""} mastered ≈ {myCoverage}% word recognition
               </div>
               <div style={{ fontSize: 12.5, color: "var(--text)", marginTop: 4 }}>
                 {nextMilestone
-                  ? `${nextMilestone.words - masteredCount} more word${nextMilestone.words - masteredCount !== 1 ? "s" : ""} to reach ~${nextMilestone.pct}% coverage`
+                  ? `${nextMilestone.words - masteredCount} more word${nextMilestone.words - masteredCount !== 1 ? "s" : ""} to reach ~${nextMilestone.pct}% word recognition`
                   : "You've passed every published milestone — incredible work"}
               </div>
             </div>
@@ -3746,7 +3765,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
       <div className={!user ? "anon-hero-fold" : undefined}>
       <div className="hero">
         <div className="bism">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
-        <h2>Master the <em>Language of the Quran</em></h2>
+        <h2>Build Your <em>Vocabulary of the Quran</em></h2>
         {!user && <p className="sub tagline-prominent">Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>}
         <button className="btn bh" style={{ fontSize: 13, padding: "7px 16px", marginBottom: 16 }} onClick={() => setShowScienceModal(true)}>💡 Why This Works</button>
         {user ? (
@@ -3845,7 +3864,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
           <div className="sl">Words to Learn</div>
         </div>
         <div className="sbox"><div className="sn">+{wordsAddedLastWeek}</div><div className="sl">Newly added words</div></div>
-        <div className="sbox"><div className="sn">{quranCoverage}%</div><div className="sl">Qur'an Coverage</div></div>
+        <div className="sbox"><div className="sn">{quranCoverage}%</div><div className="sl">Word Recognition</div></div>
         {user ? (
           <div className="sbox">
             <span style={{ position: "absolute", top: 7, right: 9, fontSize: 11, opacity: .65 }}>🔓</span>
@@ -4557,6 +4576,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
             { icon: "🔁", title: "Practice Weak Words", body: "The app quietly tracks which words you get wrong most often, so you can focus your practice where it actually helps." },
             { icon: "🏆", title: "All Sets Quiz & Leaderboard", body: "Once you've completed a few sets, test yourself across everything you've learned, and see how you compare with other learners." },
             { icon: "💡", title: "Why This Works", body: "Curious about the science behind frequency-based learning? Tap \"Why This Works\" on the Home page anytime." },
+            { icon: "🎯", title: "What This App Does — and Doesn't — Teach", body: "This app builds real Qur'anic vocabulary — the single strongest foundation for understanding. But word recognition alone isn't full comprehension; that also needs Arabic grammar (naḥw/ṣarf). Think of this as the essential first stage: once you know the words, studying grammar afterward is dramatically easier, since you won't be learning vocabulary and grammar at the same time." },
           ].map((item, i) => (
             <div key={i} className="phub-instr-row">
               <span className="phub-instr-icon">{item.icon}</span>
