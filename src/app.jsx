@@ -1369,7 +1369,9 @@ const CSS = `
   text-shadow:0 0 5px #fff,0 0 12px #fff,0 0 22px rgba(255,255,255,.95),0 0 36px rgba(255,255,255,.8);
 }
 [data-theme="light"] .page-enroll .sub{color:#173a50;font-weight:500;}
-[data-theme="light"] .tagline-prominent{color:#0a1f2e!important;}
+[data-theme="light"] .preview-heading{text-align:center;font-size:14px;font-weight:600;color:var(--text);margin-bottom:14px;letter-spacing:.01em;}
+[data-theme="light"] .preview-heading{color:#0a1f2e;}
+.tagline-prominent{color:#0a1f2e!important;}
 .cov-table{width:100%;border-collapse:collapse;font-size:12.5px;text-align:center;}
 .cov-table th{color:var(--muted);font-weight:500;font-size:11px;padding:6px 4px;border-bottom:1px solid rgba(var(--cyan-rgb),.25);}
 .cov-table td{padding:6px 4px;color:var(--text);border-bottom:1px solid rgba(var(--cyan-rgb),.1);}
@@ -1982,7 +1984,7 @@ input[type="password"]::-ms-clear{display:none;}
 .tbl th{text-align:left;padding:7px 10px;color:var(--muted);font-weight:400;font-size:12px;letter-spacing:.01em;border-bottom:1px solid rgba(var(--cyan-rgb),.1);}
 .tbl td{padding:9px 10px;border-bottom:1px solid rgba(0,0,0,.05);vertical-align:middle;}
 .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;}.del:hover{color:var(--err);}
-.hero{text-align:center;padding:54px 18px 38px;}
+.hero{text-align:center;padding:78px 18px 38px;}
 .scroll-hint{display:none;}
 @media(max-width:600px){
   .anon-hero-fold{
@@ -2294,7 +2296,7 @@ input[type="password"]::-ms-clear{display:none;}
   h2{font-size:28px;}
   .page{padding:28px 16px;}
   .page-home,.page-enroll{margin:-28px -16px;padding:28px 16px;}
-  .hero{padding:36px 14px 26px;}
+  .hero{padding:56px 14px 26px;}
   .bism{font-size:44px;}
   .hero h2{font-size:30px;}
   .chart-row{grid-template-columns:1fr;}
@@ -2318,7 +2320,7 @@ input[type="password"]::-ms-clear{display:none;}
   /* PAGE & HERO */
   .page{padding:18px 12px;}
   .page-home,.page-enroll{margin:-18px -12px;padding:18px 12px;}
-  .hero{padding:24px 12px 18px;}
+  .hero{padding:40px 12px 18px;}
   .bism{font-size:39px;}
   .hero h2{font-size:25px;}
   .hero .sub{font-size:17px;margin-bottom:20px;}
@@ -3996,8 +3998,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
       <div className="hero">
         <div className="bism">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
         <h2>Build Your <em>Vocabulary of the Quran</em></h2>
-        {!user && <p className="sub tagline-prominent">Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>}
-        <div className="hero-actions">
+                <div className="hero-actions">
           <button className="btn bh" onClick={() => setShowScienceModal(true)}>💡 Why This Works</button>
           {user ? (
             <>
@@ -4019,9 +4020,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
           defensive belt-and-suspenders in case allWords ever contains more). */}
       {!user && (
         <div style={{ margin: "8px 0 24px" }}>
-          <p style={{ textAlign: "center", fontSize: 13, color: "var(--muted)", marginBottom: 14 }}>
-            A taste of what you'll learn — Set 1:
-          </p>
+          <p className="preview-heading">A taste of what you'll learn — Set 1:</p>
           <div style={{ position: "relative" }}>
             <button className="preview-arrow" style={{ left: -14 }} aria-label="Scroll left"
               onClick={() => { const el = document.getElementById("set1-preview-strip"); if (el) el.scrollBy({ left: -300, behavior: "smooth" }); }}>‹</button>
@@ -4050,6 +4049,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
             <button className="preview-arrow" style={{ right: -14 }} aria-label="Scroll right"
               onClick={() => { const el = document.getElementById("set1-preview-strip"); if (el) el.scrollBy({ left: 300, behavior: "smooth" }); }}>›</button>
           </div>
+          <p className="sub tagline-prominent" style={{ marginTop: 18 }}>Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>
           <p style={{ textAlign: "center", fontSize: 12.5, color: "var(--muted)", marginTop: 4, marginBottom: 0 }}>
             <span className="forgot-link" onClick={() => setView("enroll")}>Sign up free to unlock all {totalWordCount ?? "100+"} words →</span>
           </p>
@@ -4445,7 +4445,6 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
 
   return (
     <div className="page psm page-enroll">
-      <p className="sub tagline-prominent" style={{ marginBottom: 20 }}>Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>
       <div className="lbl">{mode === "login" ? "Login" : "Create Account"}</div>
       <h2>{mode === "login" ? "Welcome Back" : "Join the Series"}</h2>
       <p className="sub" style={{ marginBottom: 22 }}>
