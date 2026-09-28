@@ -598,7 +598,7 @@ async function upsertProgress(dbUserId, dayProgress) {
 function mapWordRow(row) {
   return {
     dbId: row.id, arabic: row.arabic, translit: row.translit, english: row.english,
-    urdu: row.urdu, root: row.root || "", otherForms: row.other_forms || "",
+    urdu: row.urdu, root: row.root || "", otherForms: row.other_forms || "", occurrences: row.occurrences ?? null,
     ayahRef: row.ayah_ref || "", isCustom: !!row.is_custom,
     surahNumber: row.surah_number ?? null, ayahNumber: row.ayah_number ?? null,
     wordPosition: row.word_position ?? null,
@@ -645,7 +645,7 @@ async function insertWord(word) {
   }
   const { error } = await supabase.from("words").insert({
     arabic: word.arabic, translit: word.translit, english: word.english,
-    urdu: word.urdu, root: word.root || null, other_forms: word.otherForms || null,
+    urdu: word.urdu, root: word.root || null, other_forms: word.otherForms || null, occurrences: word.occurrences || null,
     ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
     word_position: word.wordPosition || null, partial_ayah_text: word.partialAyahText || null, set_number: setNum, order_in_set: orderNum,
     is_custom: true, is_active: true, added_by: addedBy, added_at: new Date().toISOString(),
@@ -657,7 +657,7 @@ async function insertWord(word) {
 async function updateWord(dbId, fields) {
   const { error } = await supabase.from("words").update({
     arabic: fields.arabic, translit: fields.translit, english: fields.english,
-    urdu: fields.urdu, root: fields.root || null, other_forms: fields.otherForms || null,
+    urdu: fields.urdu, root: fields.root || null, other_forms: fields.otherForms || null, occurrences: fields.occurrences || null,
     ayah_ref: fields.ayahRef || null, surah_number: fields.surahNumber || null, ayah_number: fields.ayahNumber || null,
     word_position: fields.wordPosition || null, partial_ayah_text: fields.partialAyahText || null,
   }).eq("id", dbId);
@@ -706,6 +706,7 @@ const CSV_HEADER_ALIASES = {
   urdu: ["urdu", "urdu meaning"],
   root: ["root", "arabic root", "three-letter root"],
   otherForms: ["other forms", "forms", "word forms"],
+  occurrences: ["occurrences", "frequency", "times in quran", "times in qur'an"],
   ayahRef: ["ayah reference", "ayahref", "quran reference", "reference"],
   surahNumber: ["surah number", "surah#", "surah no", "surah"],
   ayahNumber: ["ayah number", "ayah#", "ayah no", "ayah"],
@@ -762,6 +763,7 @@ function parseWordsCSV(text, existingArabicSet = new Set()) {
       translit: get("translit"), urdu: get("urdu") || "—",
       root: get("root"),
       otherForms: get("otherForms"),
+      occurrences: get("occurrences") ? parseInt(get("occurrences"), 10) || null : null,
       ayahRef: get("ayahRef"),
       surahNumber: get("surahNumber") ? parseInt(get("surahNumber"), 10) || null : null,
       ayahNumber: get("ayahNumber") ? parseInt(get("ayahNumber"), 10) || null : null,
@@ -797,7 +799,7 @@ async function bulkInsertWords(words) {
   const rows = words.map(word => {
     const row = {
       arabic: word.arabic, translit: word.translit, english: word.english,
-      urdu: word.urdu, root: word.root || null, other_forms: word.otherForms || null,
+      urdu: word.urdu, root: word.root || null, other_forms: word.otherForms || null, occurrences: word.occurrences || null,
       ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
       word_position: word.wordPosition || null, partial_ayah_text: word.partialAyahText || null, set_number: setNum, order_in_set: orderNum,
       is_custom: true, is_active: true, added_by: addedBy, added_at: nowIso,
@@ -1370,10 +1372,14 @@ const CSS = `
 [data-theme="light"] .mobile-nav{box-shadow:0 -1px 6px rgba(7,28,42,.14);}
 [data-theme="light"] .modal{box-shadow:0 12px 40px rgba(7,28,42,.28);}
 [data-theme="light"] .ayah-flashcard{box-shadow:0 12px 40px rgba(7,28,42,.28);}
-[data-theme="light"] .bism,[data-theme="light"] .hero h2,[data-theme="light"] .tagline-prominent{
-  background:rgba(255,255,255,.88);box-shadow:0 1px 6px rgba(7,28,42,.15);text-shadow:none;
+/* Day theme: no boxes behind the hero text — a soft white glow keeps it readable over the photo. */
+[data-theme="light"] .bism,[data-theme="light"] .hero h2,[data-theme="light"] .hero h2 em,
+[data-theme="light"] .tagline-prominent,[data-theme="light"] .page-enroll h2,
+[data-theme="light"] .page-enroll .sub,[data-theme="light"] .page-enroll .lbl{
+  text-shadow:0 0 5px #fff,0 0 12px #fff,0 0 22px rgba(255,255,255,.95),0 0 36px rgba(255,255,255,.8);
 }
-[data-theme="light"] .hero h2 em{text-shadow:none;}
+[data-theme="light"] .page-enroll .sub{color:#173a50;font-weight:500;}
+[data-theme="light"] .tagline-prominent{color:#0a1f2e!important;}
 .cov-table{width:100%;border-collapse:collapse;font-size:12.5px;text-align:center;}
 .cov-table th{color:var(--muted);font-weight:500;font-size:11px;padding:6px 4px;border-bottom:1px solid rgba(var(--cyan-rgb),.25);}
 .cov-table td{padding:6px 4px;color:var(--text);border-bottom:1px solid rgba(var(--cyan-rgb),.1);}
@@ -1391,10 +1397,23 @@ const CSS = `
 .thanks-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold2);font-weight:600;margin-bottom:6px;}
 .thanks-body{font-size:13.5px;line-height:1.7;color:var(--text);}
 .thanks-body a,.credits-list a{color:var(--cyan2);text-decoration:none;font-weight:600;}
-.thanks-contact{display:inline-block;}
+.thanks-contact{display:block;}
 .credits-list{display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.7;color:var(--muted);padding:2px 2px 8px;}
 .credits-list strong{color:var(--text);}
 [data-theme="light"] .thanks-card{background:#ffffff;border:1px solid rgba(7,28,42,.14);box-shadow:var(--shadow-box);}
+.hero-actions{display:flex;gap:8px;justify-content:center;align-items:stretch;flex-wrap:nowrap;max-width:560px;margin:0 auto;}
+.hero-actions .btn{flex:1 1 0;min-width:0;padding:8px 10px;font-size:14px;line-height:1.25;height:46px;text-align:center;}
+@media(max-width:480px){.hero-actions .btn{font-size:12.5px;padding:6px 6px;height:44px;}}
+.fc-word{text-align:center;padding:4px 0 12px;border-bottom:1px solid rgba(var(--cyan-rgb),.15);margin-bottom:14px;}
+.fc-word-ar{font-family:'Scheherazade New','Amiri',serif;font-size:clamp(34px,8vw,48px);color:var(--gold2);line-height:1.5;}
+.fc-word-tr{font-size:14px;color:var(--text);}
+.fc-word-ur{font-family:'Noto Nastaliq Urdu',serif;font-size:18px;line-height:1.9;color:var(--teal2);}
+.instr-lang{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px;}
+.instr-lang-btn{background:var(--s2);border:1px solid var(--s3);color:var(--text);padding:6px 14px;border-radius:18px;font-size:13px;cursor:pointer;}
+.instr-lang-btn.on{background:var(--cyan);border-color:var(--cyan);color:#fff;font-weight:600;}
+.instr-note{font-size:11.5px;color:var(--muted);margin:0 0 10px;}
+.instr-ur .phub-instr-title,.instr-ur .phub-instr-body,.instr-ur .phub-section-label{font-family:'Noto Nastaliq Urdu',serif;line-height:2.1;text-align:right;}
+.instr-ar .phub-instr-title,.instr-ar .phub-instr-body,.instr-ar .phub-section-label{font-family:'Scheherazade New','Amiri',serif;font-size:1.15em;line-height:1.9;text-align:right;}
 .phub-actions{display:flex;flex-direction:column;align-items:stretch;gap:8px;flex:0 0 auto;}
 .phub-theme-btn{
   background:var(--s2);border:1px solid var(--s3);color:var(--text);
@@ -1436,18 +1455,15 @@ html{overflow-x:hidden;}
    ::before structure, just a different image + a lighter scrim so the
    photo's own brightness carries the "day" feeling. */
 [data-theme="light"] .page-home::before,[data-theme="light"] .page-enroll::before{
-  left:50%;right:auto;width:100vw;transform:translateX(-50%);
-  background:url("/images/masjid-bg-day.jpg") center 22%/cover no-repeat;
-  -webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 62%,transparent 100%);
-  mask-image:linear-gradient(to bottom,#000 0%,#000 62%,transparent 100%);
+  /* Whole photo visible (both minarets and domes): fitted, with its own edges pre-faded to white
+     inside the image file, so there are no visible borders on wide screens. */
+  background:url("/images/masjid-bg-day.webp") center top/contain no-repeat;
 }
 .page-enroll h2,.page-enroll .sub,.page-enroll .lbl{text-shadow:0 2px 10px rgba(0,0,0,.6);}
 .page-enroll > .tagline-prominent,.page-enroll > .lbl,.page-enroll > h2,.page-enroll > p.sub{text-align:center;justify-content:center;}
 .tagline-prominent{
   color:var(--text)!important;font-size:19px!important;font-weight:500!important;
-  display:block;width:fit-content;margin-left:auto;margin-right:auto;padding:9px 20px;border-radius:14px;margin-top:10px!important;
-  background:rgba(var(--bg-rgb),.55);backdrop-filter:blur(6px);
-  text-shadow:0 1px 6px rgba(var(--bg-rgb),.5);
+  text-shadow:0 2px 12px rgba(0,0,0,.7),0 0 20px rgba(var(--cyan-rgb),.15);
 }
 .nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:13px 28px;
   background:rgba(var(--navbg-rgb),.82);backdrop-filter:blur(28px) saturate(1.6);
@@ -1676,6 +1692,8 @@ input[type="password"]::-ms-clear{display:none;}
 .phub-stat-card.streak{background:rgba(255,138,128,.12);border-color:rgba(255,138,128,.25);}
 .phub-stat-card.mastered{background:rgba(var(--cyan-rgb),.12);border-color:rgba(var(--cyan-rgb),.28);}
 .phub-stat-card.month{background:rgba(0,224,160,.12);border-color:rgba(0,224,160,.28);}
+.phub-stat-card.occ{background:rgba(140,130,255,.13);border-color:rgba(140,130,255,.3);}
+.phub-stat-card.cov{background:rgba(255,160,90,.14);border-color:rgba(255,160,90,.32);}
 .phub-stat-card.best{background:rgba(255,217,107,.14);border-color:rgba(255,217,107,.3);}
 .phub-stat-icon{font-size:22px;flex:0 0 auto;}
 .phub-stat-num{font-family:'Poppins',sans-serif;font-size:clamp(16px,3.6vw,22px);font-weight:700;color:var(--text);line-height:1.2;}
@@ -1958,14 +1976,8 @@ input[type="password"]::-ms-clear{display:none;}
   .scroll-hint-arrow{font-size:30px;line-height:1;color:var(--cyan2);text-shadow:0 0 12px rgba(var(--cyan-rgb),.4);}
   @keyframes scrollHintBounce{0%,100%{transform:translateY(0);opacity:.6;}50%{transform:translateY(6px);opacity:1;}}
 }
-.bism{font-family:'Scheherazade New',serif;font-size:71px;font-weight:700;color:var(--gold2);direction:rtl;margin-bottom:20px;line-height:1.45;
-  display:block;width:fit-content;margin-left:auto;margin-right:auto;padding:6px 22px;border-radius:16px;
-  background:rgba(var(--bg-rgb),.55);backdrop-filter:blur(6px);
-  text-shadow:0 0 40px rgba(255,184,0,.5),0 2px 8px rgba(var(--bg-rgb),.6);}
-.hero h2{font-size:44px;font-weight:500;color:var(--text);
-  display:block;width:fit-content;padding:8px 24px;border-radius:16px;margin:0 auto;
-  background:rgba(var(--bg-rgb),.55);backdrop-filter:blur(6px);
-  text-shadow:0 2px 10px rgba(var(--bg-rgb),.6);}.hero h2 em{color:var(--cyan2);font-style:normal;text-shadow:0 0 20px rgba(var(--cyan-rgb),.35),0 2px 10px rgba(var(--bg-rgb),.6);}
+.bism{font-family:'Scheherazade New',serif;font-size:71px;font-weight:700;color:var(--gold2);direction:rtl;margin-bottom:20px;line-height:1.45;text-shadow:0 0 40px rgba(255,184,0,.5),0 2px 8px rgba(0,0,0,.5);}
+.hero h2{font-size:44px;font-weight:500;color:var(--text);text-shadow:0 2px 10px rgba(0,0,0,.6);}.hero h2 em{color:var(--cyan2);font-style:normal;text-shadow:0 0 20px rgba(0,220,255,.35),0 2px 10px rgba(0,0,0,.6);}
 .hero .sub{max-width:500px;margin:0 auto 30px;font-size:21px;text-shadow:0 1px 8px rgba(0,0,0,.6);}
 .streak{display:inline-flex;align-items:center;gap:6px;
   background:rgba(var(--cyan-rgb),.1);
@@ -2040,6 +2052,15 @@ input[type="password"]::-ms-clear{display:none;}
   border:1px solid rgba(var(--cyan-rgb),.12);
 }
 .ayah-word{display:inline-block;margin:0 4px;}
+[data-theme="light"] .ayah-flashcard{border:1.5px solid rgba(0,119,163,.6);}
+[data-theme="light"] .ayah-flashcard-head{border-bottom:1.5px solid rgba(0,119,163,.35);}
+[data-theme="light"] .ayah-flashcard-text{
+  background:#ffffff;color:#0a1f2e;border:2px solid rgba(0,119,163,.6);
+  box-shadow:0 3px 12px rgba(7,28,42,.16);
+}
+[data-theme="light"] .ayah-word-highlight{background:#ffe6a0;color:#6b3d00;box-shadow:0 0 0 2px rgba(184,114,10,.55);}
+[data-theme="light"] .fc-word-ar{color:#8a5200;}
+[data-theme="light"] .wforms{background:#f3fafd;border:1.5px solid rgba(0,119,163,.4);}
 .ayah-word-highlight{
   color:var(--gold2);font-weight:700;
   background:rgba(255,217,107,.14);
@@ -2420,10 +2441,6 @@ input[type="password"]::-ms-clear{display:none;}
 .gate-footer{margin-top:24px;font-size:13px;color:rgba(122,184,152,.45);line-height:1.7;}
 `;
 
-// ── Access Gate ── Change GATE_CODE to any word/phrase you want.
-// Delete this whole block (and the gate check in App) when you go public.
-const GATE_CODE = "B!sm!11@h";
-const GATE_KEY  = "qv_gate_unlocked";
 const DONATE = {
   charityName: "Your Charity Name Here",
   upiId:       "yourcharity@upi",
@@ -2457,69 +2474,21 @@ const THANKS_CREDIT = {
   name: "Al Ilm Institute", tagline: "Online Islamic Studies", place: "Jamia Nagar, New Delhi",
   phones: [{ label: "+91 95684 74771", tel: "+919568474771" }, { label: "+91 90584 70747", tel: "+919058470747" }],
 };
-function ThanksLine() {
+function ThanksLine({ icon = false }) {
   return (
     <>
-      <strong>{THANKS_CREDIT.name}</strong> ({THANKS_CREDIT.tagline}), {THANKS_CREDIT.place} — for helping with the Urdu meanings and ayah corrections.{" "}
-      <span className="thanks-contact">📞{" "}
+      <div>{icon ? "🤝 " : ""}<strong>{THANKS_CREDIT.name}</strong> ({THANKS_CREDIT.tagline}), {THANKS_CREDIT.place}</div>
+      <div>for helping with the Urdu meanings and ayah corrections.</div>
+      <div className="thanks-contact">📞{" "}
         {THANKS_CREDIT.phones.map((p, i) => (
           <React.Fragment key={p.tel}>{i > 0 && " · "}<a href={`tel:${p.tel}`}>{p.label}</a></React.Fragment>
         ))}
-      </span>
+      </div>
     </>
   );
 }
 const DONATION_MAILTO = `mailto:${DONATION_CONTACT}?subject=${encodeURIComponent("Donation enquiry — Quranic Vocab")}`;
 
-
-// ── GateScreen — shown to everyone until they enter the access code ──────────
-function GateScreen({ onUnlock }) {
-  const [code, setCode]     = React.useState("");
-  const [err, setErr]       = React.useState("");
-  const [shake, setShake]   = React.useState(false);
-
-  const attempt = () => {
-    if (code.trim().toUpperCase() === GATE_CODE.toUpperCase()) {
-      sessionStorage.setItem(GATE_KEY, "1");
-      onUnlock();
-    } else {
-      setErr("Incorrect access code. Please try again.");
-      setShake(true);
-      setCode("");
-      setTimeout(() => setShake(false), 450);
-    }
-  };
-
-  const onKey = (e) => { if (e.key === "Enter") attempt(); };
-
-  return (
-    <div className="gate">
-      <style>{CSS}</style>
-      <div className="gate-card">
-        <div className="gate-icon">📖</div>
-        <div className="gate-bism">بِسْمِ اللَّهِ</div>
-        <h2 className="gate-title">Quranic Vocab</h2>
-        <p className="gate-sub">This app is currently in private beta.<br/>Enter the access code to continue.</p>
-        <span className="gate-badge">🔒 PRIVATE BETA</span>
-        <PasswordInput
-          className={`gate-input${shake ? " shake" : ""}`}
-          placeholder="Enter access code"
-          value={code}
-          onChange={e => { setCode(e.target.value); setErr(""); }}
-          onKeyDown={onKey}
-          autoFocus
-          autoComplete="off"
-        />
-        <p className="gate-err">{err}</p>
-        <button className="gate-btn" onClick={attempt}>Enter App →</button>
-        <p className="gate-footer">
-          Quranic Vocabulary Memorization Platform<br/>
-          Awami Baitulmaal Committee
-        </p>
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const isAdminRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/admin";
@@ -2548,7 +2517,10 @@ export default function App() {
   const [optsVisible, setOptsVisible] = useState(true);
   const [toast, setToast] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
-  const openDonate = () => { window.location.href = DONATION_MAILTO; };
+  const [showDonate, setShowDonate] = useState(false);
+  const openDonate = () => setShowDonate(true);
+  const [hubTab, setHubTab] = useState(null);   // lets sub-pages return to Profile → Account
+  const goAccount = () => { setHubTab("account"); setView("profileHub"); };
   const [showInvite, setShowInvite] = useState(false);
   const [gateWarning, setGateWarning] = useState(null);
   const [pendingResetEmail, setPendingResetEmail] = useState(""); // carries email into the "Enter Reset Code" screen
@@ -3303,6 +3275,7 @@ export default function App() {
 
   const startQuiz = (day = null, customPool = null) => {
     if (!user) { toast_("Please enroll first"); return; }
+    if (typeof day === "number" && getWordsForDay(day, allWords).length === 0) { toast_("This set has no words yet — new words are coming soon."); return; }
     const pool = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords); // wrong-answer distractors + general fallback
     if (pool.length < 4) { toast_("Need more unlocked words"); return; }
     const isAllSetsQuiz = day === null && !customPool;
@@ -3633,13 +3606,6 @@ export default function App() {
   }, [user, adminUnlocked, financeUnlocked, isAdminRoute, isFinanceRoute]); // re-run when session changes
   // ── End idle timeout ──────────────────────────────────────────────────────
 
-  // ── Access gate — remove this block when going public ──
-  const [gateOpen, setGateOpen] = React.useState(
-    () => sessionStorage.getItem(GATE_KEY) === "1"
-  );
-  if (!gateOpen) return <GateScreen onUnlock={() => setGateOpen(true)} />;
-  // ── End gate ──
-
   return (
     <>
       <style>{CSS}</style>
@@ -3732,18 +3698,19 @@ export default function App() {
             {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} setView={setView} onGoToResetCode={(email) => { setPendingResetEmail(email); setView("resetPassword"); }} />}
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
             {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} optsVisible={optsVisible} />}
-            {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={openDonate} onReview={reviewSession} setSelectedDay={setSelectedDay} />}
+            {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={openDonate} onReview={reviewSession} setSelectedDay={setSelectedDay} allWords={allWords} />}
             {view === "history" && <HistoryPage user={user} setView={setView} onReview={reviewSession} allWords={allWords} onStart={startQuiz} />}
             {view === "review" && reviewing && <ReviewPage rec={reviewing} setView={setView} allWords={allWords} />}
             {view === "leaderboard" && <LBPage participants={participants} user={user} allWords={allWords} />}
             {view === "resetPassword" && <ResetPasswordPage onSetPassword={verifyResetCodeAndSetPassword} initialEmail={pendingResetEmail} setView={setView} />}
-            {view === "profile" && user && <ProfilePage user={user} saveUser={saveUser} setView={setView} toast_={toast_} />}
-            {view === "profileHub" && user && <ProfileHub user={user} saveUser={saveUser} setView={setView} toast_={toast_} onRequestReceipt={() => setShowRequestReceipt(true)} onLogout={logout} allWords={allWords} themePref={themePref} resolvedTheme={resolvedTheme} onCycleTheme={cycleTheme} />}
-            {view === "downloadReceipt" && <DownloadReceiptPage prefillReceiptNo="" toast_={toast_} user={user} setView={setView} />}
+            {view === "profile" && user && <ProfilePage user={user} saveUser={saveUser} setView={setView} toast_={toast_} onBack={goAccount} />}
+            {view === "profileHub" && user && <ProfileHub user={user} saveUser={saveUser} setView={setView} toast_={toast_} onRequestReceipt={() => setShowRequestReceipt(true)} onLogout={logout} allWords={allWords} themePref={themePref} resolvedTheme={resolvedTheme} onCycleTheme={cycleTheme} initialTab={hubTab} onTabApplied={() => setHubTab(null)} />}
+            {view === "downloadReceipt" && <DownloadReceiptPage prefillReceiptNo="" toast_={toast_} user={user} setView={setView} onBack={goAccount} />}
             {/* Email verification handled automatically by Supabase via onAuthStateChange */}
           </>
         )}
 
+        {!isAdminRoute && !isFinanceRoute && showDonate && <DonateContactModal onClose={() => setShowDonate(false)} toast_={toast_} />}
         {!isAdminRoute && !isFinanceRoute && showInvite && <InviteModal onClose={() => setShowInvite(false)} toast_={toast_} user={user} />}
         {gateWarning && <GateWarningModal message={gateWarning} onClose={() => setGateWarning(null)} />}
         {!isAdminRoute && !isFinanceRoute && showRequestReceipt && <RequestReceiptModal onClose={() => setShowRequestReceipt(false)} toast_={toast_} user={user} onSubmit={submitRequestReceipt} />}
@@ -3798,6 +3765,17 @@ export default function App() {
 // Reuses estimateQuranCoverage() — the exact function already driving the
 // Home page's "Word Recognition" stat — so the number here always matches
 // what's shown elsewhere, never a second, different-sounding estimate.
+// Exact coverage from the mastered words' own occurrence counts (each word's count already
+// covers all of its forms); falls back to the interpolated estimate if any count is missing.
+function computeCoverage(masteredWordObjs, masteredCount) {
+  const known = masteredWordObjs.filter(w => w.occurrences > 0);
+  if (masteredWordObjs.length > 0 && known.length === masteredWordObjs.length) {
+    const occ = known.reduce((a, w) => a + w.occurrences, 0);
+    return { occ, pct: (occ / QURAN_TOTAL_OCCURRENCES) * 100, exact: true };
+  }
+  const pct = estimateQuranCoverage(masteredCount);
+  return { occ: Math.round((pct / 100) * QURAN_TOTAL_OCCURRENCES), pct, exact: false };
+}
 const QURAN_TOTAL_OCCURRENCES = 77429;   // printed words in the Qur'an (corpus.quran.com count)
 const QURAN_UNIQUE_WORDS = 4844;         // distinct words when every printed word is counted once
 const COVERAGE_MILESTONES = [
@@ -3823,8 +3801,10 @@ function CoverageScienceModal({ user, allWords, onClose }) {
     return () => clearTimeout(t);
   }, [inView]);
 
-  const masteredCount = user ? getMasteredWords(user.scores || [], allWords).size : 0;
-  const myCoverage = estimateQuranCoverage(masteredCount);
+  const masteredSetForCov = user ? getMasteredWords(user.scores || [], allWords) : new Set();
+  const masteredCount = masteredSetForCov.size;
+  const myCov = computeCoverage((allWords || []).filter(w => masteredSetForCov.has(w.english)), masteredCount);
+  const myCoverage = myCov.pct >= 10 ? Math.round(myCov.pct) : myCov.pct.toFixed(1);
   const nextMilestone = COVERAGE_MILESTONES.find(m => m.words > masteredCount);
 
   const W = 320, H = 200, padL = 32, padB = 26, padT = 10, padR = 8;
@@ -3922,6 +3902,9 @@ function CoverageScienceModal({ user, allWords, onClose }) {
                   ? `${nextMilestone.words - masteredCount} more word${nextMilestone.words - masteredCount !== 1 ? "s" : ""} to reach ~${nextMilestone.pct}% word recognition`
                   : "You've passed every published milestone — incredible work"}
               </div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4 }}>
+                {myCov.occ.toLocaleString("en-US")} of {QURAN_TOTAL_OCCURRENCES.toLocaleString("en-US")} word occurrences{myCov.exact ? "" : " (estimate)"}
+              </div>
             </div>
           )}
 
@@ -3987,19 +3970,21 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
         <div className="bism">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
         <h2>Build Your <em>Vocabulary of the Quran</em></h2>
         {!user && <p className="sub tagline-prominent">Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>}
-        <button className="btn bh" style={{ fontSize: 13, padding: "7px 16px", marginBottom: 16 }} onClick={() => setShowScienceModal(true)}>💡 Why This Works</button>
-        {user ? (
-          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-            <button className="btn bg" onClick={() => setView("learn")}>Continue — Set {dayN}</button>
-            <button className="btn bh" onClick={() => {
-              if (completedWordsCount < 4) {
-                setGateWarning("Complete at least Set 1 first to unlock the All Sets Quiz.");
-                return;
-              }
-              setShowAllSetsReady(true);
-            }}>All Sets Quiz</button>
-          </div>
-        ) : <button className="btn bg" onClick={() => setView("enroll")}>Begin Your Journey →</button>}
+        <div className="hero-actions">
+          <button className="btn bh" onClick={() => setShowScienceModal(true)}>💡 Why This Works</button>
+          {user ? (
+            <>
+              <button className="btn bg" onClick={() => setView("learn")}>Continue — Set {dayN}</button>
+              <button className="btn bh" onClick={() => {
+                if (completedWordsCount < 4) {
+                  setGateWarning("Complete at least Set 1 first to unlock the All Sets Quiz.");
+                  return;
+                }
+                setShowAllSetsReady(true);
+              }}>All Sets Quiz</button>
+            </>
+          ) : <button className="btn bg" onClick={() => setView("enroll")}>Begin Your Journey →</button>}
+        </div>
       </div>
 
       {/* Word preview for logged-out visitors — Set 1 only (RLS scopes anon
@@ -4674,8 +4659,68 @@ function AdminAvatarThumb({ authId, name }) {
   );
 }
 
-function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogout, allWords, themePref, resolvedTheme, onCycleTheme }) {
-  const [tab, setTab] = useState("progress"); // "progress" | "account" | "instructions"
+// ── Instructions: language options ─────────────────────────────────────────
+// English is the reference text. Translations are provided for convenience and
+// should be reviewed by a native reader; add another language by adding one
+// entry to INSTR_LANGS and one to INSTRUCTION_TR (9 items, same order).
+const INSTRUCTION_ITEMS = [
+            { icon: "📖", title: "Learn in Sets of 10", body: "Words are grouped into Sets, starting with the most frequently-used words in the Qur'an. Complete Set 1 to unlock Set 2, and so on." },
+            { icon: "🔊", title: "Listen to Every Word", body: "Tap the play button on any word card to hear its correct pronunciation, straight from the Qur'an's recitation." },
+            { icon: "📜", title: "See the Word in Context", body: "Tap \"Details\" on a word card to see where it appears in the Qur'an — the full ayah with the word highlighted, its recitation, and other forms of the word." },
+            { icon: "❓", title: "Quiz Yourself", body: "Once you've studied a set, quiz yourself on it. Answer correctly 3 times in a row (even across different quizzes) and a word is marked Mastered." },
+            { icon: "🎯", title: "Track Your Monthly Target", body: "Set a personal monthly goal for how many words to master. Your Profile page shows your progress against it, month by month." },
+            { icon: "🔁", title: "Practice Weak Words", body: "The app quietly tracks which words you get wrong most often, so you can focus your practice where it actually helps." },
+            { icon: "🏆", title: "All Sets Quiz & Leaderboard", body: "Once you've completed a few sets, test yourself across everything you've learned, and see how you compare with other learners." },
+            { icon: "💡", title: "Why This Works", body: "Curious about the science behind frequency-based learning? Tap \"Why This Works\" on the Home page anytime." },
+            { icon: "🎯", title: "What This App Does — and Doesn't — Teach", body: "This app builds real Qur'anic vocabulary — the single strongest foundation for understanding. But word recognition alone isn't full comprehension; that also needs Arabic grammar (naḥw/ṣarf). Think of this as the essential first stage: once you know the words, studying grammar afterward is dramatically easier, since you won't be learning vocabulary and grammar at the same time." },
+];
+const INSTR_LANGS = [
+  { code: "en", label: "English" }, { code: "ur", label: "اردو", rtl: true },
+  { code: "hi", label: "हिन्दी" }, { code: "ar", label: "العربية", rtl: true },
+];
+const INSTRUCTION_TR = {
+  ur: { heading: "یہ ایپ کیسے کام کرتی ہے", credits: "شکریہ اور حوالہ جات", items: [
+    { title: "10 الفاظ کے سیٹ میں سیکھیں", body: "الفاظ کو سیٹس میں تقسیم کیا گیا ہے، جن کا آغاز قرآن کے سب سے زیادہ استعمال ہونے والے الفاظ سے ہوتا ہے۔ سیٹ 1 مکمل کریں تو سیٹ 2 کھل جائے گا، اور اسی طرح آگے۔" },
+    { title: "ہر لفظ سنیں", body: "کسی بھی لفظ کے کارڈ پر پلے کا بٹن دبائیں اور قرآن کی تلاوت سے اس کا صحیح تلفظ سنیں۔" },
+    { title: "لفظ کو آیت میں دیکھیں", body: "لفظ کے کارڈ پر \"Details\" دبائیں تاکہ دیکھ سکیں کہ یہ لفظ قرآن میں کہاں آیا ہے — پوری آیت (متعلقہ لفظ نمایاں)، اس کی تلاوت، اور اس لفظ کی دیگر صورتیں۔" },
+    { title: "خود کو آزمائیں", body: "کوئی سیٹ پڑھنے کے بعد اس کا کوئز حل کریں۔ کسی لفظ کا جواب مسلسل تین بار درست دیں (خواہ مختلف کوئزز میں ہی) تو وہ لفظ \"Mastered\" (مہارت یافتہ) شمار ہوگا۔" },
+    { title: "ماہانہ ہدف مقرر کریں", body: "ہر ماہ کتنے الفاظ پر عبور حاصل کرنا ہے، اس کا ذاتی ہدف مقرر کریں۔ آپ کا پروفائل صفحہ مہینہ بہ مہینہ آپ کی پیش رفت دکھاتا ہے۔" },
+    { title: "کمزور الفاظ کی مشق", body: "ایپ خاموشی سے یاد رکھتی ہے کہ آپ سے کن الفاظ میں سب سے زیادہ غلطیاں ہوتی ہیں، تاکہ آپ اپنی مشق وہیں کریں جہاں واقعی فائدہ ہو۔" },
+    { title: "تمام سیٹس کا کوئز اور لیڈر بورڈ", body: "کچھ سیٹس مکمل کرنے کے بعد اب تک سیکھے ہوئے تمام الفاظ پر خود کو آزمائیں، اور دیکھیں کہ دوسرے سیکھنے والوں کے مقابلے میں آپ کہاں ہیں۔" },
+    { title: "یہ طریقہ کیوں کارگر ہے", body: "کثرتِ استعمال پر مبنی سیکھنے کے پیچھے سائنس جاننا چاہتے ہیں؟ ہوم پیج پر کسی بھی وقت \"Why This Works\" دبائیں۔" },
+    { title: "یہ ایپ کیا سکھاتی ہے — اور کیا نہیں", body: "یہ ایپ قرآنی الفاظ کا مضبوط ذخیرہ بناتی ہے — جو سمجھنے کی سب سے اہم بنیاد ہے۔ لیکن صرف الفاظ پہچاننا مکمل فہم نہیں؛ اس کے لیے عربی گرامر (نحو و صرف) بھی درکار ہے۔ اسے پہلا بنیادی مرحلہ سمجھیں: الفاظ آ جائیں تو بعد میں گرامر پڑھنا بہت آسان ہو جاتا ہے، کیونکہ آپ کو الفاظ اور گرامر ایک ساتھ نہیں سیکھنے پڑتے۔" },
+  ] },
+  hi: { heading: "यह ऐप कैसे काम करता है", credits: "आभार", items: [
+    { title: "10-10 शब्दों के सेट में सीखें", body: "शब्दों को सेट में बाँटा गया है, जिनकी शुरुआत क़ुरआन के सबसे ज़्यादा इस्तेमाल होने वाले शब्दों से होती है। सेट 1 पूरा करने पर सेट 2 खुल जाता है, और इसी तरह आगे।" },
+    { title: "हर शब्द सुनें", body: "किसी भी शब्द के कार्ड पर प्ले बटन दबाएँ और क़ुरआन की तिलावत से उसका सही उच्चारण सुनें।" },
+    { title: "शब्द को आयत में देखें", body: "शब्द के कार्ड पर \"Details\" दबाएँ और देखें कि वह क़ुरआन में कहाँ आया है — पूरी आयत (वह शब्द उभरा हुआ), उसकी तिलावत, और उस शब्द के अन्य रूप।" },
+    { title: "खुद को परखें", body: "कोई सेट पढ़ने के बाद उसका क्विज़ हल करें। किसी शब्द का जवाब लगातार तीन बार सही दें (अलग-अलग क्विज़ में भी) तो वह शब्द \"Mastered\" (महारत हासिल) माना जाएगा।" },
+    { title: "मासिक लक्ष्य तय करें", body: "हर महीने कितने शब्दों में महारत हासिल करनी है, इसका अपना लक्ष्य तय करें। आपका प्रोफ़ाइल पेज महीने-दर-महीने आपकी प्रगति दिखाता है।" },
+    { title: "कमज़ोर शब्दों का अभ्यास", body: "ऐप चुपचाप याद रखता है कि आप किन शब्दों में सबसे ज़्यादा ग़लती करते हैं, ताकि आप अपना अभ्यास वहीं करें जहाँ सचमुच फ़ायदा हो।" },
+    { title: "ऑल सेट्स क्विज़ और लीडरबोर्ड", body: "कुछ सेट पूरे करने के बाद अब तक सीखे हुए सभी शब्दों पर खुद को परखें, और देखें कि दूसरे सीखने वालों के मुक़ाबले आप कहाँ हैं।" },
+    { title: "यह तरीका क्यों कारगर है", body: "बारंबारता पर आधारित सीखने के पीछे का विज्ञान जानना चाहते हैं? होम पेज पर कभी भी \"Why This Works\" दबाएँ।" },
+    { title: "यह ऐप क्या सिखाता है — और क्या नहीं", body: "यह ऐप क़ुरआनी शब्दों का मज़बूत ज़ख़ीरा बनाता है — जो समझने की सबसे अहम बुनियाद है। लेकिन सिर्फ़ शब्द पहचानना पूरी समझ नहीं है; इसके लिए अरबी व्याकरण (नह्व/सर्फ़) भी चाहिए। इसे पहला बुनियादी चरण समझें: शब्द आ जाएँ तो बाद में व्याकरण पढ़ना बहुत आसान हो जाता है, क्योंकि शब्द और व्याकरण एक साथ नहीं सीखने पड़ते।" },
+  ] },
+  ar: { heading: "كيف يعمل هذا التطبيق", credits: "شكر وتقدير", items: [
+    { title: "تعلّم في مجموعات من 10 كلمات", body: "تُقسَّم الكلمات إلى مجموعات تبدأ بأكثر الكلمات تكرارًا في القرآن الكريم. أكمل المجموعة الأولى لتُفتح الثانية، وهكذا." },
+    { title: "استمع إلى كل كلمة", body: "اضغط زر التشغيل على بطاقة أي كلمة لتسمع نطقها الصحيح من تلاوة القرآن." },
+    { title: "شاهد الكلمة في سياقها", body: "اضغط «Details» على بطاقة الكلمة لترى موضعها في القرآن: الآية كاملة مع إبراز الكلمة، وتلاوتها، وصيغ الكلمة الأخرى." },
+    { title: "اختبر نفسك", body: "بعد دراسة مجموعة، اختبر نفسك فيها. إذا أجبتَ إجابة صحيحة ثلاث مرات متتالية (ولو في اختبارات مختلفة) تُعلَّم الكلمة بأنها «متقنة» (Mastered)." },
+    { title: "حدّد هدفك الشهري", body: "حدّد هدفًا شخصيًا شهريًا لعدد الكلمات التي تريد إتقانها. تعرض صفحة ملفك الشخصي تقدّمك شهرًا بعد شهر." },
+    { title: "تدرّب على الكلمات الضعيفة", body: "يتتبّع التطبيق بهدوء الكلمات التي تخطئ فيها أكثر، لتركّز تدريبك حيث يفيدك فعلًا." },
+    { title: "اختبار كل المجموعات ولوحة المتصدرين", body: "بعد إكمال عدة مجموعات، اختبر نفسك في كل ما تعلّمته، وانظر كيف تقارن بغيرك من المتعلمين." },
+    { title: "لماذا ينجح هذا الأسلوب", body: "هل تريد أن تعرف العلم وراء التعلّم القائم على التكرار؟ اضغط «Why This Works» في الصفحة الرئيسية في أي وقت." },
+    { title: "ما الذي يعلّمه هذا التطبيق وما الذي لا يعلّمه", body: "يبني هذا التطبيق حصيلة حقيقية من مفردات القرآن، وهي أقوى أساس للفهم. لكنّ التعرّف على الكلمات وحده ليس فهمًا كاملًا؛ فالفهم يحتاج أيضًا إلى النحو والصرف. اعتبره المرحلة الأولى الأساسية: فإذا عرفتَ الكلمات صار تعلّم النحو بعد ذلك أسهل بكثير، لأنك لن تتعلّم المفردات والنحو معًا في الوقت نفسه." },
+  ] },
+};
+
+
+function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogout, allWords, themePref, resolvedTheme, onCycleTheme, initialTab, onTabApplied }) {
+  const [tab, setTab] = useState(initialTab || "progress"); // "progress" | "account" | "instructions"
+  const [instrLang, setInstrLang] = useState(() => storageGet("qv_instr_lang") || "en");
+  const instrTr = instrLang !== "en" ? INSTRUCTION_TR[instrLang] : null;
+  const instrRtl = !!INSTR_LANGS.find(l => l.code === instrLang && l.rtl);
+  useEffect(() => { if (initialTab && onTabApplied) onTabApplied(); }, []);
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetVal, setTargetVal] = useState(user.monthlyTarget || 30);
   const [savingTarget, setSavingTarget] = useState(false);
@@ -4696,6 +4741,9 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
   const streak = calcStreak(user.scores || []);
   const masteredCount = getMasteredWords(user.scores || [], allWords || []).size;
   const masteredPct = allWords?.length ? Math.round((masteredCount / allWords.length) * 100) : 0;
+  const hubMasteredSet = getMasteredWords(user.scores || [], allWords || []);
+  const hubCov = computeCoverage((allWords || []).filter(w => hubMasteredSet.has(w.english)), masteredCount);
+  const hubCovPct = hubCov.pct >= 10 ? Math.round(hubCov.pct) : (hubCov.pct === 0 ? 0 : hubCov.pct.toFixed(1));
   const bestScore = user.scores?.length ? Math.max(...user.scores.map(s => s.pct)) : 0;
 
   const saveTarget = async () => {
@@ -4761,6 +4809,14 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
               <span className="phub-stat-icon">🏆</span>
               <div><div className="phub-stat-num">{bestScore}%</div><div className="phub-stat-label">Personal Best</div></div>
             </div>
+            <div className="phub-stat-card occ">
+              <span className="phub-stat-icon">🔢</span>
+              <div><div className="phub-stat-num">{hubCov.occ.toLocaleString("en-US")}</div><div className="phub-stat-label">Occurrences covered{hubCov.exact ? "" : " (est.)"}</div></div>
+            </div>
+            <div className="phub-stat-card cov">
+              <span className="phub-stat-icon">📖</span>
+              <div><div className="phub-stat-num">{hubCovPct}%</div><div className="phub-stat-label">of the Qur'an's {QURAN_TOTAL_OCCURRENCES.toLocaleString("en-US")} words</div></div>
+            </div>
           </div>
 
           <div className="phub-section-label">Monthly Challenge</div>
@@ -4795,32 +4851,32 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
         </>
       ) : tab === "instructions" ? (
         <div className="phub-instructions">
-          <div className="phub-section-label" style={{ marginTop: 0 }}>How This App Works</div>
-          {[
-            { icon: "📖", title: "Learn in Sets of 10", body: "Words are grouped into Sets, starting with the most frequently-used words in the Qur'an. Complete Set 1 to unlock Set 2, and so on." },
-            { icon: "🔊", title: "Listen to Every Word", body: "Tap the play button on any word card to hear its correct pronunciation, straight from the Qur'an's recitation." },
-            { icon: "📜", title: "See the Word in Context", body: "Tap \"Details\" on a word card to see exactly where it appears in the Qur'an — with the full ayah text and its recitation." },
-            { icon: "❓", title: "Quiz Yourself", body: "Once you've studied a set, quiz yourself on it. Answer correctly 3 times in a row (even across different quizzes) and a word is marked Mastered." },
-            { icon: "🎯", title: "Track Your Monthly Target", body: "Set a personal monthly goal for how many words to master. Your Profile page shows your progress against it, month by month." },
-            { icon: "🔁", title: "Practice Weak Words", body: "The app quietly tracks which words you get wrong most often, so you can focus your practice where it actually helps." },
-            { icon: "🏆", title: "All Sets Quiz & Leaderboard", body: "Once you've completed a few sets, test yourself across everything you've learned, and see how you compare with other learners." },
-            { icon: "💡", title: "Why This Works", body: "Curious about the science behind frequency-based learning? Tap \"Why This Works\" on the Home page anytime." },
-            { icon: "🎯", title: "What This App Does — and Doesn't — Teach", body: "This app builds real Qur'anic vocabulary — the single strongest foundation for understanding. But word recognition alone isn't full comprehension; that also needs Arabic grammar (naḥw/ṣarf). Think of this as the essential first stage: once you know the words, studying grammar afterward is dramatically easier, since you won't be learning vocabulary and grammar at the same time." },
-          ].map((item, i) => (
-            <div key={i} className="phub-instr-row">
-              <span className="phub-instr-icon">{item.icon}</span>
-              <div>
-                <div className="phub-instr-title">{item.title}</div>
-                <div className="phub-instr-body">{item.body}</div>
+          <div className="instr-lang">
+            <span>🌐</span>
+            {INSTR_LANGS.map(l => (
+              <button key={l.code} className={`instr-lang-btn ${instrLang === l.code ? "on" : ""}`}
+                onClick={() => { setInstrLang(l.code); storageSet("qv_instr_lang", l.code); }}>{l.label}</button>
+            ))}
+          </div>
+          {instrLang !== "en" && <p className="instr-note">Translation for convenience — the English text is the reference.</p>}
+          <div className={`instr-body ${"instr-" + instrLang}`} dir={instrRtl ? "rtl" : "ltr"}>
+            <div className="phub-section-label" style={{ marginTop: 0 }}>{instrTr ? instrTr.heading : "How This App Works"}</div>
+            {INSTRUCTION_ITEMS.map((item, i) => (
+              <div key={i} className="phub-instr-row">
+                <span className="phub-instr-icon">{item.icon}</span>
+                <div>
+                  <div className="phub-instr-title">{instrTr ? instrTr.items[i].title : item.title}</div>
+                  <div className="phub-instr-body">{instrTr ? instrTr.items[i].body : item.body}</div>
+                </div>
               </div>
-            </div>
-          ))}
-          <div className="phub-section-label">Credits</div>
+            ))}
+            <div className="phub-section-label">{instrTr ? instrTr.credits : "Credits"}</div>
           <div className="credits-list">
-            <div>🤝 <ThanksLine /></div>
+            <div><ThanksLine icon /></div>
             <div>📊 Word-frequency and grammar data: <a href="https://corpus.quran.com" target="_blank" rel="noopener noreferrer">The Quranic Arabic Corpus</a> — Kais Dukes, University of Leeds; maintained by the Quran.com team; used under the GNU GPL.</div>
             <div>📜 Qur'an text: <a href="https://tanzil.net" target="_blank" rel="noopener noreferrer">Tanzil.net</a> (Uthmani text).</div>
             <div>🔊 Recitation audio: Al Quran Cloud (islamic.network) and Quran.com word-by-word audio.</div>
+          </div>
           </div>
         </div>
       ) : (
@@ -4838,7 +4894,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
   );
 }
 
-function ProfilePage({ user, saveUser, setView, toast_ }) {
+function ProfilePage({ user, saveUser, setView, toast_, onBack }) {
   const [section, setSection] = useState(null); // "userid" | "email" | "password"
   const [val1, setVal1] = useState("");
   const [val2, setVal2] = useState("");
@@ -5058,7 +5114,7 @@ function ProfilePage({ user, saveUser, setView, toast_ }) {
         </div>
       ))}
 
-      <button className="btn bh" style={{ marginTop: 8 }} onClick={() => setView("home")}>← Back to Home</button>
+      <button className="btn bh" style={{ marginTop: 8 }} onClick={onBack}>← Back to Account</button>
     </div>
   );
 }
@@ -5259,33 +5315,6 @@ function getCustomAyahImageUrl(wordId) {
   return `${data.publicUrl}?v=${Date.now()}`;
 }
 
-// Normalizes whatever image format Admin uploads (jpg/png/webp/etc.) to a
-// consistent PNG via canvas, so the lookup above can always assume a fixed
-// `.png` extension without needing to track what was actually uploaded.
-async function uploadAyahImage(file, wordId) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    img.onload = async () => {
-      URL.revokeObjectURL(objectUrl);
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      canvas.getContext("2d").drawImage(img, 0, 0);
-      canvas.toBlob(async (blob) => {
-        if (!blob) { resolve({ ok: false, reason: "conversion-failed" }); return; }
-        const { error } = await supabase.storage
-          .from(AYAH_IMAGE_BUCKET)
-          .upload(`word_${wordId}.png`, blob, { upsert: true, contentType: "image/png" });
-        if (error) { console.error("uploadAyahImage error:", error.message); resolve({ ok: false, reason: "upload-failed" }); return; }
-        resolve({ ok: true });
-      }, "image/png");
-    };
-    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve({ ok: false, reason: "invalid-image" }); };
-    img.src = objectUrl;
-  });
-}
-
 // ── Profile picture (Supabase Storage) ───────────────────────────────────────
 // Keyed by the user's own auth_id, not their public users.id — the storage
 // RLS policy checks the filename directly against auth.uid(), so this is
@@ -5465,11 +5494,15 @@ function GateWarningModal({ message, onClose }) {
 // and the specific word this card was opened from is highlighted inline.
 // Falls back to the legacy custom-upload / CDN image path automatically for
 // any ayah not yet in ayah_texts, so nothing breaks for older words.
-function AyahFlashCard({ wordId, surahNumber, ayahNumber, wordPosition, partialAyahText, onClose }) {
-  const [ayahText, setAyahText] = useState(undefined); // undefined=loading, null=not found, string=ready
+function AyahFlashCard({ word, onClose }) {
+  const { dbId: wordId, surahNumber, ayahNumber, wordPosition, partialAyahText } = word;
+  const hasAyah = !!(surahNumber && ayahNumber);
+  const forms = parseOtherForms(word.otherForms);
+  const [ayahText, setAyahText] = useState(hasAyah ? undefined : null); // undefined=loading, null=not found, string=ready
   const [imgStage, setImgStage] = useState("custom"); // fallback path only
 
   useEffect(() => {
+    if (!hasAyah) return;
     let cancelled = false;
     fetchAyahText(surahNumber, ayahNumber).then(text => { if (!cancelled) setAyahText(text); });
     return () => { cancelled = true; };
@@ -5479,7 +5512,6 @@ function AyahFlashCard({ wordId, surahNumber, ayahNumber, wordPosition, partialA
   const partialWordCount = partialAyahText ? partialAyahText.trim().split(/\s+/).filter(Boolean).length : 0;
   const imageSrc = imgStage === "custom" ? getCustomAyahImageUrl(wordId) : getAyahImageUrl(surahNumber, ayahNumber);
   const handleImgError = () => setImgStage(s => (s === "custom" ? "cdn" : "failed"));
-
   const words = ayahText ? ayahText.split(/\s+/) : [];
 
   // Rendered via portal straight into document.body — this modal is normally
@@ -5492,13 +5524,18 @@ function AyahFlashCard({ wordId, surahNumber, ayahNumber, wordPosition, partialA
       <div className="modal modal-zoom-in ayah-flashcard" style={{ maxWidth: 640 }}>
         <div className="modal-head ayah-flashcard-head">
           <div>
-            <div className="ayah-flashcard-eyebrow">Surah {surahNumber} · Ayah {ayahNumber}</div>
-            <h3 style={{ margin: 0 }}>{surahName}</h3>
+            {hasAyah && <div className="ayah-flashcard-eyebrow">Surah {surahNumber} · Ayah {ayahNumber}</div>}
+            <h3 style={{ margin: 0 }}>{hasAyah ? surahName : "Word details"}</h3>
           </div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body" style={{ textAlign: "center" }}>
-          {ayahText === undefined ? (
+          <div className="fc-word">
+            <div className="fc-word-ar">{word.arabic}</div>
+            <div className="fc-word-tr">{word.translit} — {word.english}</div>
+            {word.urdu && <div className="fc-word-ur">{word.urdu}</div>}
+          </div>
+          {hasAyah && (ayahText === undefined ? (
             <div style={{ padding: "40px 0", color: "var(--muted)", fontSize: 13 }}>Loading ayah…</div>
           ) : ayahText ? (
             <div className="ayah-flashcard-text" dir="rtl">
@@ -5523,15 +5560,17 @@ function AyahFlashCard({ wordId, surahNumber, ayahNumber, wordPosition, partialA
                 }
               />
             </div>
+          ))}
+          {hasAyah && (
+            <div style={{ marginTop: 18, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <PlayPauseButton
+                resolveUrl={() => fetchAyahAudioUrl(surahNumber, ayahNumber)}
+                title="Play/stop this ayah's recitation"
+              />
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>Play full ayah recitation</span>
+            </div>
           )}
-          <div style={{ marginTop: 18, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            <PlayPauseButton
-              resolveUrl={() => fetchAyahAudioUrl(surahNumber, ayahNumber)}
-              title="Play/stop this ayah's recitation"
-            />
-            <span style={{ fontSize: 12, color: "var(--muted)" }}>Play full ayah recitation</span>
-          </div>
-          {partialWordCount > 0 && (
+          {hasAyah && partialWordCount > 0 && (
             <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
               <PartialAyahPlayButton
                 surahNumber={surahNumber} ayahNumber={ayahNumber} wordCount={partialWordCount}
@@ -5540,11 +5579,14 @@ function AyahFlashCard({ wordId, surahNumber, ayahNumber, wordPosition, partialA
               <span style={{ fontSize: 12, color: "var(--gold2)" }}>Play up to here ({partialWordCount} word{partialWordCount !== 1 ? "s" : ""})</span>
             </div>
           )}
-          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 14 }}>
-            {ayahText
-              ? "Ayah text from The Quranic Arabic Corpus (Tanzil-verified) · Audio courtesy of Al Quran Cloud"
-              : "Image courtesy of Al Quran Cloud (islamic.network) · Audio courtesy of Al Quran Cloud"}
-          </p>
+          {forms.length > 0 && <OtherFormsList forms={forms} />}
+          {hasAyah && (
+            <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 14 }}>
+              {ayahText
+                ? "Ayah text from The Quranic Arabic Corpus (Tanzil-verified) · Audio courtesy of Al Quran Cloud"
+                : "Image courtesy of Al Quran Cloud (islamic.network) · Audio courtesy of Al Quran Cloud"}
+            </p>
+          )}
         </div>
       </div>
     </div>,
@@ -5609,26 +5651,11 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false, allW
             />
           )}
           {hasDetails && (
-            <button className="word-toggle" onClick={onToggle}>
-              {isOpen ? "Hide ▲" : "Details ▼"}
-            </button>
+            <button className="word-toggle" onClick={() => setShowAyahPopup(true)}>Details</button>
           )}
         </div>
       </div>
-      {isOpen && word.ayahRef && (
-        <div className="word-card-detail word-card-detail-compact">
-          <span className="dlabel">Qur'an Ref</span>
-          {hasAyahRef ? (
-            <span className="dval ayah-ref-link" onClick={(e) => { e.stopPropagation(); setShowAyahPopup(true); }}>{word.ayahRef} 📖</span>
-          ) : (
-            <span className="dval">{word.ayahRef}</span>
-          )}
-        </div>
-      )}
-      {isOpen && forms.length > 0 && <OtherFormsList forms={forms} />}
-      {showAyahPopup && hasAyahRef && (
-        <AyahFlashCard wordId={word.dbId} surahNumber={word.surahNumber} ayahNumber={word.ayahNumber} wordPosition={word.wordPosition} partialAyahText={word.partialAyahText} onClose={() => setShowAyahPopup(false)} />
-      )}
+      {showAyahPopup && hasDetails && <AyahFlashCard word={word} onClose={() => setShowAyahPopup(false)} />}
       {allWords && <WordFamilySection word={word} allWords={allWords} />}
     </div>
   );
@@ -5682,7 +5709,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
   );
   const unlocked = getUnlockedDays(user.enrolledAt, user.dayProgress, Math.ceil(allWords.length / WORDS_PER_DAY));
   const totalDays = Math.ceil(allWords.length / WORDS_PER_DAY);
-  const words = selectedDay ? allWords.slice((selectedDay - 1) * WORDS_PER_DAY, selectedDay * WORDS_PER_DAY) : null;
+  const words = selectedDay && selectedDay <= totalDays ? allWords.slice((selectedDay - 1) * WORDS_PER_DAY, selectedDay * WORDS_PER_DAY) : null;
   const done = (d) => !!user.dayProgress?.[String(d)];
 
   const selectSet = (d) => { setSelectedDay(d); setViewingAllSets(false); };
@@ -5769,11 +5796,6 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
             title="All Sets Quiz">
             All Sets
           </button>
-        </div>
-        <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 11, color: "var(--muted)" }}>
-          <span><span style={{ color: "var(--gold3)" }}>■</span> Current</span>
-          <span><span style={{ color: "var(--ok)" }}>■</span> Done</span>
-          <span style={{ opacity: .5 }}>■ Locked</span>
         </div>
       </div>
 
@@ -6000,7 +6022,10 @@ function Confetti() {
   );
 }
 
-function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview, setSelectedDay }) {
+function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview, setSelectedDay, allWords }) {
+  const totalSets = Math.ceil((allWords || []).length / WORDS_PER_DAY);
+  const nextSetNo = (typeof quiz.day === "number" ? quiz.day : parseInt(quiz.day)) + 1;
+  const hasNextSet = nextSetNo <= totalSets;
   const { result, missed } = quiz;
   const { score, total, pct } = result;
   const msg = pct >= 90 ? { t: "Excellent! ما شاء الله", c: "var(--ok)" }
@@ -6063,7 +6088,7 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview, setSele
       )}
       <div style={{ display: "flex", gap: 9, justifyContent: "center", flexWrap: "wrap", marginBottom: 12 }}>
         {/* Go to Next Set if passed */}
-        {quiz.passed && quiz.day && quiz.day !== "weak-practice" && (
+        {quiz.passed && quiz.day && quiz.day !== "weak-practice" && hasNextSet && (
           <button className="btn bg" style={{ fontSize: 16, padding: "12px 28px", boxShadow: "0 0 28px rgba(0,200,230,.5)", animation: "glow 1.5s ease-in-out infinite alternate" }}
             onClick={() => {
               const nextDay = typeof quiz.day === "number" ? quiz.day + 1 : parseInt(quiz.day) + 1;
@@ -6084,8 +6109,8 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview, setSele
       {quiz.passed && (
         <div style={{ background: "rgba(0,200,230,.08)", border: "1px solid rgba(0,200,230,.3)", borderRadius: 10, padding: "14px 18px", textAlign: "center", marginBottom: 12, animation: "tagIn .4s ease" }}>
           <div style={{ fontSize: 22, marginBottom: 4 }}>🏆✨🎊</div>
-          <div style={{ fontSize: 14, color: "var(--cyan2)", fontWeight: 600 }}>ما شاء الله — Set unlocked!</div>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Your next set of words is now available.</div>
+          <div style={{ fontSize: 14, color: "var(--cyan2)", fontWeight: 600 }}>ما شاء الله — {hasNextSet ? "Set unlocked!" : "All available sets completed!"}</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{hasNextSet ? "Your next set of words is now available." : "New words are on the way — check back soon."}</div>
         </div>
       )}
     </div>
@@ -7374,39 +7399,6 @@ function FinancePage({ receipts, receiptRequests, onIssueReceipt, onDismissReque
   );
 }
 
-// ─── Words Table with inline editing ─────────────────────────────────────────
-// Small file-picker + upload button, used inline in the words admin table.
-// Shows the current image thumbnail (if any) as a visual confirmation, and
-// a compact status while uploading.
-function AyahImageUploadButton({ wordId }) {
-  const [status, setStatus] = useState("idle"); // idle | uploading | done | error
-  const inputRef = React.useRef(null);
-
-  const handleFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setStatus("uploading");
-    const result = await uploadAyahImage(file, wordId);
-    setStatus(result?.ok ? "done" : "error");
-    setTimeout(() => setStatus("idle"), 2000);
-    e.target.value = ""; // allow re-selecting the same file later if needed
-  };
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-      <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
-      <button
-        className="btn bh bsm" style={{ fontSize: 10, padding: "3px 8px" }}
-        onClick={() => inputRef.current?.click()}
-        disabled={status === "uploading"}
-        title="Upload a custom image for this word — even if other words share this ayah, each gets its own image"
-      >
-        {status === "uploading" ? "…" : status === "error" ? "⚠ retry" : status === "done" ? "✓ saved" : "🖼 Ayah Img"}
-      </button>
-    </div>
-  );
-}
-
 function WordsTable({ allWords, onEditWord, onDeleteWord }) {
   const [editIdx, setEditIdx] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -7431,7 +7423,7 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
   return (
     <div style={{ maxHeight: 500, overflowY: "auto" }}>
       <table className="tbl">
-        <thead><tr><th>Arabic</th><th>Translit</th><th>English</th><th>Urdu</th><th>Root</th><th>Surah:Ayah</th><th>Image</th><th></th></tr></thead>
+        <thead><tr><th>Arabic</th><th>Translit</th><th>English</th><th>Urdu</th><th>Root</th><th>Surah:Ayah</th><th></th></tr></thead>
         <tbody>
           {allWords.map((w, i) => {
             if (editIdx === i) {
@@ -7464,9 +7456,6 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                       <input value={editForm.partialAyahText || ""} onChange={e => setEditForm(f => ({ ...f, partialAyahText: e.target.value }))} placeholder="Paste from Quran.com — plays word 1 through here" dir="rtl" style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 4, color: "var(--text)", padding: "2px 4px", fontSize: 12, fontFamily: "serif" }} />
                     </div>
                   </td>
-                  <td>
-                    <AyahImageUploadButton wordId={editForm.dbId} />
-                  </td>
                   <td style={{ display: "flex", gap: 4 }}>
                     <button className="btn bg bsm" onClick={saveEdit} disabled={saving}>{saving ? "…" : "✓"}</button>
                     <button className="btn bh bsm" onClick={cancelEdit} disabled={saving}>✕</button>
@@ -7484,9 +7473,6 @@ function WordsTable({ allWords, onEditWord, onDeleteWord }) {
                 <td style={{ fontSize: 12, color: "var(--muted)" }}>
                   {w.surahNumber && w.ayahNumber ? `${w.surahNumber}:${w.ayahNumber}${w.wordPosition ? ` (w${w.wordPosition})` : ""}` : "—"}
                   {w.ayahRef && <div style={{ fontSize: 10, color: "var(--gold2)", marginTop: 2 }}>"{w.ayahRef}"</div>}
-                </td>
-                <td>
-                  <AyahImageUploadButton wordId={w.dbId} />
                 </td>
                 <td style={{ display: "flex", gap: 4 }}>
                   <button className="btn bh bsm" style={{ fontSize: 10 }} onClick={() => openEdit(w, i)}>✏</button>
@@ -7549,12 +7535,12 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   // re-uploading — the upload step itself skips anything matching an
   // existing Arabic word, so re-uploading the existing rows is harmless.
   const downloadExistingWords = () => {
-    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Root,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text,Other Forms";
+    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Root,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text,Other Forms,Occurrences";
     const lines = allWords.map(w => [
       csvField(w.arabic), csvField(w.translit), csvField(w.english), csvField(w.urdu),
       csvField(w.root ?? ""), csvField(w.ayahRef),
       csvField(w.surahNumber ?? ""), csvField(w.ayahNumber ?? ""), csvField(w.wordPosition ?? ""),
-      csvField(w.partialAyahText ?? ""), csvField(w.otherForms ?? ""),
+      csvField(w.partialAyahText ?? ""), csvField(w.otherForms ?? ""), csvField(w.occurrences ?? ""),
     ].join(","));
     const csv = UTF8_BOM + [header, ...lines].join("\n") + "\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -7565,8 +7551,8 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   };
 
   const downloadBlankTemplate = () => {
-    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Root,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text,Other Forms\n'
-      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,س ج د,"Surah Al-Baqarah 2:144",2,144,13,,"ٱلْمَسْجِدِ = the mosque"\n';
+    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Root,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text,Other Forms,Occurrences\n'
+      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,س ج د,"Surah Al-Baqarah 2:144",2,144,13,,"ٱلْمَسْجِدِ = the mosque",\n';
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -7669,56 +7655,6 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
         </div>
       )}
 
-      <BulkAyahImageUploader toast_={toast_} />
-    </div>
-  );
-}
-
-// ─── Bulk ayah-image uploader — sits under the CSV panel. Filenames encode
-// the target: "2_255.jpg" → Surah 2, Ayah 255. Any image format; each is
-// canvas-normalized to PNG by uploadAyahImage. ────────────────────────────────
-function BulkAyahImageUploader({ toast_ }) {
-  const [busy, setBusy] = useState(false);
-  const [report, setReport] = useState(null); // { ok: [], failed: [] } | null
-  const inputRef = React.useRef(null);
-
-  const handleFiles = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-    setBusy(true);
-    const ok = [], failed = [];
-    for (const file of files) {
-      // Accept "2_255.png", "002_255.jpg", "2-255.webp" etc.
-      const m = file.name.match(/^(\d{1,3})[_-](\d{1,3})\./);
-      if (!m) { failed.push(`${file.name} — name must be Surah_Ayah (e.g. 2_255.jpg)`); continue; }
-      const surah = parseInt(m[1], 10), ayah = parseInt(m[2], 10);
-      if (surah < 1 || surah > 114 || ayah < 1) { failed.push(`${file.name} — invalid surah/ayah number`); continue; }
-      const result = await uploadAyahImage(file, surah, ayah);
-      if (result?.ok) ok.push(`${surah}:${ayah}`);
-      else failed.push(`${file.name} — upload failed`);
-    }
-    setBusy(false);
-    setReport({ ok, failed });
-    if (ok.length > 0) toast_(`${ok.length} ayah image${ok.length === 1 ? "" : "s"} uploaded.`);
-    e.target.value = "";
-  };
-
-  return (
-    <div style={{ marginTop: 26, paddingTop: 20, borderTop: "1px solid rgba(0,200,230,.15)" }}>
-      <div className="lbl" style={{ marginBottom: 8 }}>Bulk Ayah Images</div>
-      <p style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.7, marginBottom: 12 }}>
-        Upload multiple ayah images at once. Name each file <strong style={{ color: "var(--gold3)" }}>Surah_Ayah</strong> (e.g. <code style={{ color: "var(--cyan2)" }}>2_255.jpg</code> for Ayat al-Kursi). Each image is shared automatically by every word referencing that ayah. Re-uploading the same name replaces the previous image.
-      </p>
-      <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleFiles} />
-      <button className="btn bh" onClick={() => inputRef.current?.click()} disabled={busy}>
-        {busy ? "Uploading…" : "🖼 Select Images"}
-      </button>
-      {report && (
-        <div style={{ marginTop: 12, fontSize: 12.5 }}>
-          {report.ok.length > 0 && <div style={{ color: "var(--ok)", marginBottom: 4 }}>✅ Uploaded: {report.ok.join(", ")}</div>}
-          {report.failed.length > 0 && report.failed.map((f, i) => <div key={i} style={{ color: "var(--err)" }}>⚠ {f}</div>)}
-        </div>
-      )}
     </div>
   );
 }
@@ -7943,15 +7879,11 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
           <div className="field"><label>Root (optional)</label><input value={root} onChange={e => setRoot(e.target.value)} placeholder="e.g. سجد" title="Three-letter Arabic root — used to group related words as a 'word family'" style={{ direction: "rtl", fontFamily: "'Scheherazade New','Amiri',serif", fontSize: 17 }} /></div>
           <div className="field"><label>Qur'an Reference (optional)</label><input value={ayahRef} onChange={e => setAyahRef(e.target.value)} placeholder="e.g. Surah Al-Baqarah 2:144" /></div>
           <div style={{ display: "flex", gap: 10 }}>
-            <div className="field" style={{ flex: 1 }}><label>Surah # (for audio/image)</label><input type="number" min="1" max="114" value={surahNumber} onChange={e => setSurahNumber(e.target.value)} placeholder="e.g. 2" /></div>
+            <div className="field" style={{ flex: 1 }}><label>Surah # (for audio)</label><input type="number" min="1" max="114" value={surahNumber} onChange={e => setSurahNumber(e.target.value)} placeholder="e.g. 2" /></div>
             <div className="field" style={{ flex: 1 }}><label>Ayah #</label><input type="number" min="1" value={ayahNumber} onChange={e => setAyahNumber(e.target.value)} placeholder="e.g. 144" /></div>
             <div className="field" style={{ flex: 1 }}><label>Word # in Ayah</label><input type="number" min="1" value={wordPosition} onChange={e => setWordPosition(e.target.value)} placeholder="e.g. 3" /></div>
           </div>
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: -4, marginBottom: 11 }}>Word # is this word's position (1st, 2nd, 3rd…) within the ayah text — needed for the single-word pronunciation button. Leave blank if unsure; the ayah-level audio and image will still work with just Surah/Ayah #.</p>
-          <div className="field" style={{ marginBottom: 14 }}>
-            <label>Ayah Image</label>
-            <span style={{ fontSize: 11, color: "var(--muted)" }}>Images are now uploaded per-word after saving, from the Words Table below — each word can have its own image even when several share the same ayah.</span>
-          </div>
           <button className="btn bg" onClick={add} disabled={adding}>{adding ? "Adding…" : "Add Word"}</button>
           <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 11 }}>Custom words unlock day-by-day after the built-in words.</p>
         </div>
@@ -8283,6 +8215,35 @@ function AdminNotificationCenter({ passwordChangeRequests, receiptRequests, onAp
   );
 }
 
+// ── Donate: contact-only dialog ───────────────────────────────────────────────
+// Donations are arranged directly with the admin team, so this shows a short
+// message and the contact address — no payment details. Finance, receipts and
+// the receipt-request flow do not depend on it.
+function DonateContactModal({ onClose, toast_ }) {
+  const copy = () => navigator.clipboard.writeText(DONATION_CONTACT)
+    .then(() => toast_("Email address copied!")).catch(() => toast_("Copy it manually from the screen"));
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal modal-zoom-in" style={{ maxWidth: 440 }}>
+        <div className="modal-head">
+          <h3 style={{ margin: 0 }}>🤲 Support this initiative</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body" style={{ textAlign: "center" }}>
+          <p style={{ fontSize: 14.5, lineHeight: 1.7, color: "var(--text)", marginTop: 0 }}>
+            Donations are arranged directly with our admin team. Please write to us and we'll guide you through the process and send your receipt.
+          </p>
+          <div className="qr-upiid" style={{ margin: "14px 0" }}>{DONATION_CONTACT}</div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+            <a className="btn bg" href={DONATION_MAILTO} style={{ textDecoration: "none" }}>✉ Send email</a>
+            <button className="btn bh" onClick={copy}>Copy email</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Invite a Friend modal ───────────────────────────────────────────────────
 function InviteModal({ onClose, toast_, user }) {
   const [friendName, setFriendName] = useState("");
@@ -8436,7 +8397,7 @@ function RequestReceiptModal({ onClose, toast_, user, onSubmit }) {
 // or by typing both fields in manually. Only ever returns a match when BOTH
 // the receipt number AND email match (see get_receipt_for_download() SQL) —
 // so a donor can only ever pull their own receipt, never anyone else's.
-function DownloadReceiptPage({ prefillReceiptNo, toast_, user, setView }) {
+function DownloadReceiptPage({ prefillReceiptNo, toast_, user, setView, onBack }) {
   const [receiptNo, setReceiptNo] = useState(prefillReceiptNo || "");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -8489,7 +8450,7 @@ function DownloadReceiptPage({ prefillReceiptNo, toast_, user, setView }) {
 
   return (
     <div className="page">
-      <button className="btn bh" style={{ maxWidth: 420, margin: "24px auto 0", display: "block" }} onClick={() => setView(user ? "profileHub" : "home")}>← Back</button>
+      <button className="btn bh" style={{ maxWidth: 420, margin: "24px auto 0", display: "block" }} onClick={() => (user && onBack ? onBack() : setView(user ? "profileHub" : "home"))}>{user ? "← Back to Account" : "← Back"}</button>
       {user && myReceipts && myReceipts.length > 0 && (
         <div className="card" style={{ maxWidth: 420, margin: "16px auto 16px" }}>
           <div className="lbl">🧾 Your Receipts</div>
