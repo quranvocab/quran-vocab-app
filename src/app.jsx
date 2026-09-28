@@ -1404,6 +1404,9 @@ const CSS = `
 .hero-actions{display:flex;gap:8px;justify-content:center;align-items:stretch;flex-wrap:nowrap;max-width:560px;margin:0 auto;}
 .hero-actions .btn{flex:1 1 0;min-width:0;padding:8px 10px;font-size:14px;line-height:1.25;height:46px;text-align:center;}
 @media(max-width:480px){.hero-actions .btn{font-size:12.5px;padding:6px 6px;height:44px;}}
+.fc-play{display:inline-flex;align-items:center;gap:12px;padding:8px 20px 8px 10px;border:2px solid rgba(var(--cyan-rgb),.5);border-radius:999px;background:var(--s1);}
+.fc-play span{font-size:16px;font-weight:600;color:var(--text);}
+[data-theme="light"] .fc-play{background:#ffffff;border-color:rgba(0,119,163,.65);box-shadow:var(--shadow-box);}
 .fc-word{text-align:center;padding:4px 0 12px;border-bottom:1px solid rgba(var(--cyan-rgb),.15);margin-bottom:14px;}
 .fc-word-ar{font-family:'Scheherazade New','Amiri',serif;font-size:clamp(34px,8vw,48px);color:var(--gold2);line-height:1.5;}
 .fc-word-tr{font-size:19px;font-weight:500;color:var(--text);}
@@ -2045,7 +2048,7 @@ input[type="password"]::-ms-clear{display:none;}
 
 /* ── AYAH FLASHCARD ── */
 .ayah-flashcard{
-  background:linear-gradient(160deg,var(--surface) 0%,rgba(var(--cyan-rgb),.05) 100%);
+  background:var(--surface);
   border:1px solid rgba(var(--cyan-rgb),.3);
   box-shadow:0 24px 80px rgba(var(--bg-rgb),.8),0 0 50px rgba(var(--cyan-rgb),.15);
 }
@@ -5529,12 +5532,14 @@ function AyahFlashCard({ word, onClose }) {
             </div>
           ))}
           {hasAyah && (
-            <div style={{ marginTop: 18, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <PlayPauseButton
-                resolveUrl={() => fetchAyahAudioUrl(surahNumber, ayahNumber)}
-                title="Play/stop this ayah's recitation"
-              />
-              <span style={{ fontSize: 12, color: "var(--muted)" }}>Play full ayah recitation</span>
+            <div style={{ marginTop: 18, textAlign: "center" }}>
+              <div className="fc-play">
+                <PlayPauseButton
+                  resolveUrl={() => fetchAyahAudioUrl(surahNumber, ayahNumber)}
+                  title="Play/stop this ayah's recitation"
+                />
+                <span>Play full ayah recitation</span>
+              </div>
             </div>
           )}
           {forms.length > 0 && <OtherFormsList forms={forms} />}
