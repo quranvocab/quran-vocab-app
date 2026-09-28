@@ -1386,13 +1386,13 @@ const CSS = `
 .cov-table tr.cov-me td{color:var(--gold2);font-weight:700;}
 .cov-table tr.cov-total td{color:var(--muted);border-bottom:none;font-style:italic;}
 .wforms{margin-top:10px;padding:10px 12px;border:1px solid rgba(var(--cyan-rgb),.18);border-radius:10px;background:rgba(var(--cyan-rgb),.04);}
-.wforms-title{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--cyan2);margin-bottom:6px;font-weight:600;}
+.wforms-title{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--cyan2);margin-bottom:8px;font-weight:600;}
 .wforms-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;border-top:1px solid rgba(var(--cyan-rgb),.1);}
 .wforms-row:first-of-type{border-top:none;}
-.wforms-ar{font-family:'Scheherazade New','Amiri',serif;font-size:24px;color:var(--gold2);direction:rtl;line-height:1.6;flex:0 0 auto;}
+.wforms-ar{font-family:'Scheherazade New','Amiri',serif;font-size:32px;color:var(--gold2);direction:rtl;line-height:1.6;flex:0 0 auto;}
 .wforms-mean{text-align:right;min-width:0;}
-.wforms-en{font-size:13px;color:var(--text);}
-.wforms-ur{font-family:'Noto Nastaliq Urdu',serif;font-size:15px;line-height:1.9;color:var(--teal2);direction:rtl;}
+.wforms-en{font-size:17px;color:var(--text);line-height:1.4;}
+.wforms-ur{font-family:'Noto Nastaliq Urdu',serif;font-size:21px;line-height:2;color:var(--teal2);direction:rtl;}
 .thanks-card{margin-top:14px;padding:14px 16px;border:1px solid rgba(var(--cyan-rgb),.22);border-radius:12px;background:var(--s1);}
 .thanks-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold2);font-weight:600;margin-bottom:6px;}
 .thanks-body{font-size:13.5px;line-height:1.7;color:var(--text);}
@@ -1406,8 +1406,8 @@ const CSS = `
 @media(max-width:480px){.hero-actions .btn{font-size:12.5px;padding:6px 6px;height:44px;}}
 .fc-word{text-align:center;padding:4px 0 12px;border-bottom:1px solid rgba(var(--cyan-rgb),.15);margin-bottom:14px;}
 .fc-word-ar{font-family:'Scheherazade New','Amiri',serif;font-size:clamp(34px,8vw,48px);color:var(--gold2);line-height:1.5;}
-.fc-word-tr{font-size:14px;color:var(--text);}
-.fc-word-ur{font-family:'Noto Nastaliq Urdu',serif;font-size:18px;line-height:1.9;color:var(--teal2);}
+.fc-word-tr{font-size:19px;font-weight:500;color:var(--text);}
+.fc-word-ur{font-family:'Noto Nastaliq Urdu',serif;font-size:25px;line-height:2;color:var(--teal2);}
 .instr-lang{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px;}
 .instr-lang-btn{background:var(--s2);border:1px solid var(--s3);color:var(--text);padding:6px 14px;border-radius:18px;font-size:13px;cursor:pointer;}
 .instr-lang-btn.on{background:var(--cyan);border-color:var(--cyan);color:#fff;font-weight:600;}
@@ -1448,6 +1448,11 @@ html{overflow-x:hidden;}
     linear-gradient(180deg,rgba(var(--bg-rgb),.38) 0%,rgba(var(--bg-rgb),.45) 60%,var(--bg) 100%),
     url("/images/masjid-bg.jpg");
   background-size:115% auto;background-position:center 58%;background-repeat:no-repeat;
+  /* soft left/right/bottom edges so the photo blends into the page instead of showing a box */
+  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 14%,#000 86%,transparent 100%),linear-gradient(to bottom,#000 0,#000 62%,transparent 100%);
+  -webkit-mask-composite:source-in;
+  mask-image:linear-gradient(to right,transparent 0,#000 14%,#000 86%,transparent 100%),linear-gradient(to bottom,#000 0,#000 62%,transparent 100%);
+  mask-composite:intersect;
 }
 /* Day theme uses a different photo entirely (bright daytime shot) rather
    than just re-tinting the night photo — the night image reads as murky
@@ -1455,9 +1460,17 @@ html{overflow-x:hidden;}
    ::before structure, just a different image + a lighter scrim so the
    photo's own brightness carries the "day" feeling. */
 [data-theme="light"] .page-home::before,[data-theme="light"] .page-enroll::before{
-  /* Whole photo visible (both minarets and domes): fitted, with its own edges pre-faded to white
-     inside the image file, so there are no visible borders on wide screens. */
-  background:url("/images/masjid-bg-day.webp") center top/contain no-repeat;
+  /* Wide (landscape) photo that spans the full text block — both finials, the minaret and the
+     large domes — with its edges pre-faded to transparent inside the image, so no borders show. */
+  background:url("/images/masjid-bg-day-wide.webp") center top/100% 100% no-repeat;
+  height:auto;aspect-ratio:4/3;
+  -webkit-mask-image:none;mask-image:none;
+}
+@media(max-width:700px){
+  [data-theme="light"] .page-home::before,[data-theme="light"] .page-enroll::before{
+    background:url("/images/masjid-bg-day.webp") center top/contain no-repeat;
+    height:min(640px,72vh);aspect-ratio:auto;
+  }
 }
 .page-enroll h2,.page-enroll .sub,.page-enroll .lbl{text-shadow:0 2px 10px rgba(0,0,0,.6);}
 .page-enroll > .tagline-prominent,.page-enroll > .lbl,.page-enroll > h2,.page-enroll > p.sub{text-align:center;justify-content:center;}
@@ -1813,12 +1826,12 @@ input[type="password"]::-ms-clear{display:none;}
 .war{font-family:'Scheherazade New',serif;font-size:39px;font-weight:600;color:var(--gold2);text-align:right;text-shadow:0 0 18px rgba(255,184,0,.3);display:flex;align-items:center;min-width:80px;}
 .war-wrap{display:flex;align-items:center;gap:8px;}
 .word-actions-col{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;}
-.play-btn{background:rgba(var(--cyan-rgb),.1);border:1px solid rgba(var(--cyan-rgb),.3);border-radius:50%;
-  width:28px;height:28px;font-size:13px;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:all .15s;flex-shrink:0;color:var(--cyan2);padding:0;}
-.play-btn:hover{background:rgba(var(--cyan-rgb),.2);box-shadow:0 0 10px rgba(var(--cyan-rgb),.3);}
-.play-btn.playing{background:rgba(var(--cyan-rgb),.25);border-color:var(--cyan2);}
-.play-btn.error{border-color:rgba(255,82,82,.5);color:var(--err);}
+.play-btn{background:transparent;border:2px solid var(--cyan2);border-radius:50%;
+  width:32px;height:32px;font-size:14px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:border-color .15s,color .15s;flex-shrink:0;color:var(--cyan2);padding:0;}
+.play-btn:hover{background:transparent;border-color:var(--gold2);color:var(--gold2);box-shadow:none;}
+.play-btn.playing{background:transparent;border-color:var(--gold2);color:var(--gold2);}
+.play-btn.error{border-color:rgba(255,82,82,.6);color:var(--err);}
 .ayah-ref-link{cursor:pointer;color:var(--cyan2);text-decoration:underline;text-underline-offset:2px;}
 .ayah-ref-link:hover{color:var(--cyan);}
 .ayah-img-frame{
@@ -5417,51 +5430,6 @@ function PlayPauseButton({ resolveUrl, className, title, playingLabel = "⏸", i
   );
 }
 
-// ── Plays a short lead-in portion of an ayah, word-by-word, chaining the
-// same per-word CDN clips used for single-word pronunciation — rather than
-// needing a separately trimmed audio file. wordCount is derived from how
-// many space-separated words are in the admin-pasted "partial ayah text"
-// (see WordsTable), on the assumption that text always starts from word 1.
-function PartialAyahPlayButton({ surahNumber, ayahNumber, wordCount, className, title }) {
-  const [state, setState] = useState("idle"); // idle | loading | playing | error
-  const audioRef = React.useRef(null);
-  const stoppedRef = React.useRef(false);
-
-  const stop = () => {
-    stoppedRef.current = true;
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
-    setState("idle");
-  };
-
-  const playFrom = (position) => {
-    if (position > wordCount) { setState("idle"); return; }
-    const url = getWordAudioUrl(surahNumber, ayahNumber, position);
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    audio.onended = () => { if (!stoppedRef.current) playFrom(position + 1); };
-    audio.onerror = () => { setState("error"); setTimeout(() => setState("idle"), 1800); };
-    audio.play().catch(() => { setState("error"); setTimeout(() => setState("idle"), 1800); });
-  };
-
-  const toggle = (e) => {
-    e.stopPropagation();
-    if (state === "playing" || state === "loading") { stop(); return; }
-    if (!wordCount || wordCount < 1) { setState("error"); setTimeout(() => setState("idle"), 1800); return; }
-    stoppedRef.current = false;
-    setState("playing");
-    playFrom(1);
-  };
-
-  React.useEffect(() => () => { stoppedRef.current = true; if (audioRef.current) audioRef.current.pause(); }, []);
-
-  return (
-    <button className={`play-btn ${state} ${className || ""}`} onClick={toggle} aria-label={state === "playing" ? "Stop" : "Play"} title={title}>
-      {state === "loading" ? "…" : state === "playing" ? "⏸" : state === "error" ? "⚠" : "▶"}
-    </button>
-  );
-}
-
-
 // ── Ayah reference popup — shows the actual mushaf-script image, with
 // zoom controls (since the source image is a small raster crop — stretching
 // it via CSS just blurs it, but letting the user zoom in on demand keeps it
@@ -5495,7 +5463,7 @@ function GateWarningModal({ message, onClose }) {
 // Falls back to the legacy custom-upload / CDN image path automatically for
 // any ayah not yet in ayah_texts, so nothing breaks for older words.
 function AyahFlashCard({ word, onClose }) {
-  const { dbId: wordId, surahNumber, ayahNumber, wordPosition, partialAyahText } = word;
+  const { dbId: wordId, surahNumber, ayahNumber, wordPosition } = word;
   const hasAyah = !!(surahNumber && ayahNumber);
   const forms = parseOtherForms(word.otherForms);
   const [ayahText, setAyahText] = useState(hasAyah ? undefined : null); // undefined=loading, null=not found, string=ready
@@ -5509,7 +5477,6 @@ function AyahFlashCard({ word, onClose }) {
   }, [surahNumber, ayahNumber]);
 
   const surahName = SURAH_NAMES[surahNumber] || `Surah ${surahNumber}`;
-  const partialWordCount = partialAyahText ? partialAyahText.trim().split(/\s+/).filter(Boolean).length : 0;
   const imageSrc = imgStage === "custom" ? getCustomAyahImageUrl(wordId) : getAyahImageUrl(surahNumber, ayahNumber);
   const handleImgError = () => setImgStage(s => (s === "custom" ? "cdn" : "failed"));
   const words = ayahText ? ayahText.split(/\s+/) : [];
@@ -5568,15 +5535,6 @@ function AyahFlashCard({ word, onClose }) {
                 title="Play/stop this ayah's recitation"
               />
               <span style={{ fontSize: 12, color: "var(--muted)" }}>Play full ayah recitation</span>
-            </div>
-          )}
-          {hasAyah && partialWordCount > 0 && (
-            <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <PartialAyahPlayButton
-                surahNumber={surahNumber} ayahNumber={ayahNumber} wordCount={partialWordCount}
-                title="Play/stop just the portion up to this word"
-              />
-              <span style={{ fontSize: 12, color: "var(--gold2)" }}>Play up to here ({partialWordCount} word{partialWordCount !== 1 ? "s" : ""})</span>
             </div>
           )}
           {forms.length > 0 && <OtherFormsList forms={forms} />}
