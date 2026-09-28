@@ -2218,6 +2218,8 @@ input[type="password"]::-ms-clear{display:none;}
 /* ── HISTORY LIST ── */
 /* ── HISTORY — SIDE-BY-SIDE CHARTS (Set vs All Sets Quiz) ── */
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;align-items:stretch;}
+/* the global ".card+.card" spacing must not push the 2nd chart box down inside a side-by-side row */
+.chart-row .card+.card{margin-top:0;}
 .chart-col{padding:16px 14px;display:flex;flex-direction:column;height:365px;transition:transform .25s ease,box-shadow .25s ease;}
 .chart-col:hover{transform:translateY(-3px);box-shadow:0 14px 44px rgba(0,0,0,.4),0 0 0 1px rgba(var(--cyan-rgb),.1);}
 .chart-col-teal{background:rgba(0,224,160,.16);border-color:rgba(0,224,160,.4);}
