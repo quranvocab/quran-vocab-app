@@ -273,33 +273,27 @@ function hasMetMasteryGate(setDay, allScores, allWords) {
 }
 
 // ── Word-recognition coverage estimate ──────────────────────────────────────────
-// "Coverage" here means word-OCCURRENCE recognition — the share of the
-// Qur'an's total word occurrences made up by words the learner has mastered
-// — not reading comprehension. Recognizing a word is not the same as
-// understanding a sentence; real comprehension also depends on grammar
-// (naḥw/ṣarf), morphology, and context, none of which this figure measures.
-// Vocabulary-coverage research (e.g. Hu & Nation 2000) finds ~95-98% word
-// coverage is typically needed for independent reading comprehension of a
-// text — so these milestones represent a valuable foundation, not fluency.
-// Milestones are computed directly from real per-word occurrence counts in
-// the Quranic Arabic Corpus (corpus.quran.com, Kais Dukes / University of
-// Leeds, GNU GPL) — not estimated or borrowed from a secondary source.
+// "Coverage" = the share of the Qur'an's 77,429 printed words that belong to
+// words the learner has mastered — recognition, not reading comprehension.
+// Understanding a sentence also needs grammar (naḥw/ṣarf), morphology and
+// context, none of which this figure measures. Vocabulary research (e.g. Hu &
+// Nation 2000) finds ~95-98% word coverage is typically needed for independent
+// reading comprehension, so these milestones are a foundation, not fluency.
+// Counting rule: every printed word is counted once under its main dictionary
+// word (a fused word like وَمِمَّا counts under its first word; a word that is
+// only a pronoun counts under its pronoun group), so the total is exactly
+// 77,429 and reaches 100%. Milestone word counts are computed from the Quranic
+// Arabic Corpus morphology file (corpus.quran.com — Kais Dukes, University of
+// Leeds, GNU GPL). Between milestones this interpolates linearly; beyond the
+// last one it is a labelled extrapolation toward all 4,844 words.
 function estimateQuranCoverage(wordsLearned) {
   if (wordsLearned <= 0) return 0;
-  if (wordsLearned >= 1111) return 90;
-  if (wordsLearned >= 470) {
-    return Math.round(80 + ((wordsLearned - 470) / (1111 - 470)) * 10);
-  }
-  if (wordsLearned >= 236) {
-    return Math.round(70 + ((wordsLearned - 236) / (470 - 236)) * 10);
-  }
-  if (wordsLearned >= 120) {
-    return Math.round(60 + ((wordsLearned - 120) / (236 - 120)) * 10);
-  }
-  if (wordsLearned >= 60) {
-    return Math.round(50 + ((wordsLearned - 60) / (120 - 60)) * 10);
-  }
-  return Math.round((wordsLearned / 60) * 50);
+  if (wordsLearned >= 1082) return Math.min(100, Math.round(90 + ((wordsLearned - 1082) / (4844 - 1082)) * 10));
+  if (wordsLearned >= 455) return Math.round(80 + ((wordsLearned - 455) / (1082 - 455)) * 10);
+  if (wordsLearned >= 227) return Math.round(70 + ((wordsLearned - 227) / (455 - 227)) * 10);
+  if (wordsLearned >= 115) return Math.round(60 + ((wordsLearned - 115) / (227 - 115)) * 10);
+  if (wordsLearned >= 59) return Math.round(50 + ((wordsLearned - 59) / (115 - 59)) * 10);
+  return Math.round((wordsLearned / 59) * 50);
 }
 
 // ── Words added in the last 7 days ──────────────────────────────────────────────
@@ -604,7 +598,7 @@ async function upsertProgress(dbUserId, dayProgress) {
 function mapWordRow(row) {
   return {
     dbId: row.id, arabic: row.arabic, translit: row.translit, english: row.english,
-    urdu: row.urdu, root: row.root || "",
+    urdu: row.urdu, root: row.root || "", otherForms: row.other_forms || "",
     ayahRef: row.ayah_ref || "", isCustom: !!row.is_custom,
     surahNumber: row.surah_number ?? null, ayahNumber: row.ayah_number ?? null,
     wordPosition: row.word_position ?? null,
@@ -651,7 +645,7 @@ async function insertWord(word) {
   }
   const { error } = await supabase.from("words").insert({
     arabic: word.arabic, translit: word.translit, english: word.english,
-    urdu: word.urdu, root: word.root || null,
+    urdu: word.urdu, root: word.root || null, other_forms: word.otherForms || null,
     ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
     word_position: word.wordPosition || null, partial_ayah_text: word.partialAyahText || null, set_number: setNum, order_in_set: orderNum,
     is_custom: true, is_active: true, added_by: addedBy, added_at: new Date().toISOString(),
@@ -663,7 +657,7 @@ async function insertWord(word) {
 async function updateWord(dbId, fields) {
   const { error } = await supabase.from("words").update({
     arabic: fields.arabic, translit: fields.translit, english: fields.english,
-    urdu: fields.urdu, root: fields.root || null,
+    urdu: fields.urdu, root: fields.root || null, other_forms: fields.otherForms || null,
     ayah_ref: fields.ayahRef || null, surah_number: fields.surahNumber || null, ayah_number: fields.ayahNumber || null,
     word_position: fields.wordPosition || null, partial_ayah_text: fields.partialAyahText || null,
   }).eq("id", dbId);
@@ -711,6 +705,7 @@ const CSV_HEADER_ALIASES = {
   english: ["english", "english meaning", "meaning"],
   urdu: ["urdu", "urdu meaning"],
   root: ["root", "arabic root", "three-letter root"],
+  otherForms: ["other forms", "forms", "word forms"],
   ayahRef: ["ayah reference", "ayahref", "quran reference", "reference"],
   surahNumber: ["surah number", "surah#", "surah no", "surah"],
   ayahNumber: ["ayah number", "ayah#", "ayah no", "ayah"],
@@ -766,6 +761,7 @@ function parseWordsCSV(text, existingArabicSet = new Set()) {
       rowNum: i + 1, arabic, english,
       translit: get("translit"), urdu: get("urdu") || "—",
       root: get("root"),
+      otherForms: get("otherForms"),
       ayahRef: get("ayahRef"),
       surahNumber: get("surahNumber") ? parseInt(get("surahNumber"), 10) || null : null,
       ayahNumber: get("ayahNumber") ? parseInt(get("ayahNumber"), 10) || null : null,
@@ -801,7 +797,7 @@ async function bulkInsertWords(words) {
   const rows = words.map(word => {
     const row = {
       arabic: word.arabic, translit: word.translit, english: word.english,
-      urdu: word.urdu, root: word.root || null,
+      urdu: word.urdu, root: word.root || null, other_forms: word.otherForms || null,
       ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
       word_position: word.wordPosition || null, partial_ayah_text: word.partialAyahText || null, set_number: setNum, order_in_set: orderNum,
       is_custom: true, is_active: true, added_by: addedBy, added_at: nowIso,
@@ -1341,7 +1337,7 @@ const CSS = `
    and barely visible against white, so light mode uses richer, higher-
    contrast values throughout rather than just swapping bg/text. */
 [data-theme="light"]{
-  --bg:#f4f9fb;--s1:rgba(7,28,42,.05);--s2:rgba(7,28,42,.08);--s3:rgba(7,28,42,.12);
+  --bg:#ffffff;--s1:rgba(7,28,42,.04);--s2:rgba(7,28,42,.08);--s3:rgba(7,28,42,.12);
   --cyan:#0077a3;--cyan2:#005a80;
   --teal:#00806a;--teal2:#006654;
   --gold:#b8720a;--gold2:#a3620a;--gold3:#8a5200;
@@ -1349,17 +1345,64 @@ const CSS = `
   --ok:#0077a3;--err:#c93a3a;
   --pal-rose:#c85a50;--pal-teal:#00805e;
   --glow:rgba(0,119,163,.18);--glow2:rgba(0,119,163,.1);
-  --cyan-rgb:0,119,163;--bg-rgb:244,249,251;--navbg-rgb:255,255,255;
-  --surface:#ffffff;--card-bg:rgba(13,37,54,.045);
+  --cyan-rgb:0,119,163;--bg-rgb:255,255,255;--navbg-rgb:255,255,255;
+  --surface:#ffffff;--card-bg:#ffffff;
+  --shadow-box:0 1px 3px rgba(7,28,42,.10),0 3px 10px rgba(7,28,42,.08);
 }
-.theme-toggle-btn{
-  position:fixed;top:14px;right:14px;z-index:600;
-  width:40px;height:40px;border-radius:50%;
-  background:var(--s2);border:1px solid var(--s3);
-  display:flex;align-items:center;justify-content:center;
-  font-size:18px;cursor:pointer;transition:background .2s ease;
+/* Light-theme surfaces: plain white pages (no gradient washes), and boxes
+   separated by a small soft shadow + thin border instead of the dark theme's
+   glow/frosted-glass effects (which vanish on white). */
+[data-theme="light"] .app{background:#ffffff;}
+[data-theme="light"] .card,[data-theme="light"] .sbox,[data-theme="light"] .phub-box,
+[data-theme="light"] .chart-col,[data-theme="light"] .nuser-menu{
+  background:#ffffff;border:1px solid rgba(7,28,42,.14);
+  box-shadow:var(--shadow-box);backdrop-filter:none;-webkit-backdrop-filter:none;
 }
-.theme-toggle-btn:hover{background:var(--s3);}
+[data-theme="light"] .word-card,[data-theme="light"] .opt{box-shadow:var(--shadow-box);}
+[data-theme="light"] .card:hover,[data-theme="light"] .sbox:hover,[data-theme="light"] .phub-box:hover,
+[data-theme="light"] .chart-col:hover,[data-theme="light"] .word-card:hover,
+[data-theme="light"] .opt:hover:not(:disabled){box-shadow:0 2px 6px rgba(7,28,42,.16),0 8px 20px rgba(7,28,42,.10);}
+[data-theme="light"] .sbox::before{opacity:.07;}
+[data-theme="light"] .sn{color:#8a5200;text-shadow:none;font-weight:800;}
+[data-theme="light"] .bh{background:#ffffff;border:1px solid rgba(7,28,42,.22);color:var(--text);box-shadow:var(--shadow-box);backdrop-filter:none;-webkit-backdrop-filter:none;}
+[data-theme="light"] .bh:hover{background:#f2f8fb;border-color:var(--cyan);color:var(--cyan2);}
+[data-theme="light"] .nav{box-shadow:0 1px 6px rgba(7,28,42,.14);}
+[data-theme="light"] .mobile-nav{box-shadow:0 -1px 6px rgba(7,28,42,.14);}
+[data-theme="light"] .modal{box-shadow:0 12px 40px rgba(7,28,42,.28);}
+[data-theme="light"] .ayah-flashcard{box-shadow:0 12px 40px rgba(7,28,42,.28);}
+[data-theme="light"] .bism,[data-theme="light"] .hero h2,[data-theme="light"] .tagline-prominent{
+  background:rgba(255,255,255,.88);box-shadow:0 1px 6px rgba(7,28,42,.15);text-shadow:none;
+}
+[data-theme="light"] .hero h2 em{text-shadow:none;}
+.cov-table{width:100%;border-collapse:collapse;font-size:12.5px;text-align:center;}
+.cov-table th{color:var(--muted);font-weight:500;font-size:11px;padding:6px 4px;border-bottom:1px solid rgba(var(--cyan-rgb),.25);}
+.cov-table td{padding:6px 4px;color:var(--text);border-bottom:1px solid rgba(var(--cyan-rgb),.1);}
+.cov-table tr.cov-me td{color:var(--gold2);font-weight:700;}
+.cov-table tr.cov-total td{color:var(--muted);border-bottom:none;font-style:italic;}
+.wforms{margin-top:10px;padding:10px 12px;border:1px solid rgba(var(--cyan-rgb),.18);border-radius:10px;background:rgba(var(--cyan-rgb),.04);}
+.wforms-title{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--cyan2);margin-bottom:6px;font-weight:600;}
+.wforms-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;border-top:1px solid rgba(var(--cyan-rgb),.1);}
+.wforms-row:first-of-type{border-top:none;}
+.wforms-ar{font-family:'Scheherazade New','Amiri',serif;font-size:24px;color:var(--gold2);direction:rtl;line-height:1.6;flex:0 0 auto;}
+.wforms-mean{text-align:right;min-width:0;}
+.wforms-en{font-size:13px;color:var(--text);}
+.wforms-ur{font-family:'Noto Nastaliq Urdu',serif;font-size:15px;line-height:1.9;color:var(--teal2);direction:rtl;}
+.thanks-card{margin-top:14px;padding:14px 16px;border:1px solid rgba(var(--cyan-rgb),.22);border-radius:12px;background:var(--s1);}
+.thanks-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold2);font-weight:600;margin-bottom:6px;}
+.thanks-body{font-size:13.5px;line-height:1.7;color:var(--text);}
+.thanks-body a,.credits-list a{color:var(--cyan2);text-decoration:none;font-weight:600;}
+.thanks-contact{display:inline-block;}
+.credits-list{display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.7;color:var(--muted);padding:2px 2px 8px;}
+.credits-list strong{color:var(--text);}
+[data-theme="light"] .thanks-card{background:#ffffff;border:1px solid rgba(7,28,42,.14);box-shadow:var(--shadow-box);}
+.phub-actions{display:flex;flex-direction:column;align-items:stretch;gap:8px;flex:0 0 auto;}
+.phub-theme-btn{
+  background:var(--s2);border:1px solid var(--s3);color:var(--text);
+  font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:20px;
+  cursor:pointer;white-space:nowrap;
+}
+.phub-theme-btn:hover{background:var(--s3);}
+@media(max-width:480px){.phub-theme-btn{padding:7px 10px;font-size:11px;}}
 body{background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,sans-serif;min-height:100vh;font-size:17px;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
 html{overflow-x:hidden;}
 #root{overflow-x:hidden;width:100%;max-width:100vw;}
@@ -1393,16 +1436,16 @@ html{overflow-x:hidden;}
    ::before structure, just a different image + a lighter scrim so the
    photo's own brightness carries the "day" feeling. */
 [data-theme="light"] .page-home::before,[data-theme="light"] .page-enroll::before{
-  background:
-    linear-gradient(180deg,rgba(var(--bg-rgb),.15) 0%,rgba(var(--bg-rgb),.25) 60%,var(--bg) 100%),
-    url("/images/masjid-bg-day.jpg");
-  background-size:130% auto;background-position:center 30%;
+  left:50%;right:auto;width:100vw;transform:translateX(-50%);
+  background:url("/images/masjid-bg-day.jpg") center 22%/cover no-repeat;
+  -webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 62%,transparent 100%);
+  mask-image:linear-gradient(to bottom,#000 0%,#000 62%,transparent 100%);
 }
 .page-enroll h2,.page-enroll .sub,.page-enroll .lbl{text-shadow:0 2px 10px rgba(0,0,0,.6);}
 .page-enroll > .tagline-prominent,.page-enroll > .lbl,.page-enroll > h2,.page-enroll > p.sub{text-align:center;justify-content:center;}
 .tagline-prominent{
   color:var(--text)!important;font-size:19px!important;font-weight:500!important;
-  display:inline-block;padding:9px 20px;border-radius:14px;margin-top:10px!important;
+  display:block;width:fit-content;margin-left:auto;margin-right:auto;padding:9px 20px;border-radius:14px;margin-top:10px!important;
   background:rgba(var(--bg-rgb),.55);backdrop-filter:blur(6px);
   text-shadow:0 1px 6px rgba(var(--bg-rgb),.5);
 }
@@ -1916,11 +1959,11 @@ input[type="password"]::-ms-clear{display:none;}
   @keyframes scrollHintBounce{0%,100%{transform:translateY(0);opacity:.6;}50%{transform:translateY(6px);opacity:1;}}
 }
 .bism{font-family:'Scheherazade New',serif;font-size:71px;font-weight:700;color:var(--gold2);direction:rtl;margin-bottom:20px;line-height:1.45;
-  display:inline-block;padding:6px 22px;border-radius:16px;
+  display:block;width:fit-content;margin-left:auto;margin-right:auto;padding:6px 22px;border-radius:16px;
   background:rgba(var(--bg-rgb),.55);backdrop-filter:blur(6px);
   text-shadow:0 0 40px rgba(255,184,0,.5),0 2px 8px rgba(var(--bg-rgb),.6);}
 .hero h2{font-size:44px;font-weight:500;color:var(--text);
-  display:inline-block;padding:8px 24px;border-radius:16px;margin:0 auto;
+  display:block;width:fit-content;padding:8px 24px;border-radius:16px;margin:0 auto;
   background:rgba(var(--bg-rgb),.55);backdrop-filter:blur(6px);
   text-shadow:0 2px 10px rgba(var(--bg-rgb),.6);}.hero h2 em{color:var(--cyan2);font-style:normal;text-shadow:0 0 20px rgba(var(--cyan-rgb),.35),0 2px 10px rgba(var(--bg-rgb),.6);}
 .hero .sub{max-width:500px;margin:0 auto 30px;font-size:21px;text-shadow:0 1px 8px rgba(0,0,0,.6);}
@@ -2405,6 +2448,30 @@ const DONATE = {
   form10BDFiled: false, // set true once the trust has actually filed Form 10BD for a given year
 };
 
+// Donations are arranged directly between the donor and the admin team — the
+// app shows no payment details. Finance, receipt generation and the receipt
+// request flow are unchanged and don't depend on this.
+const DONATION_CONTACT = "admin@awamibaitulmaal.org.in";
+// Thank-you credit (shown on Home and under Profile → Instructions → Credits).
+const THANKS_CREDIT = {
+  name: "Al Ilm Institute", tagline: "Online Islamic Studies", place: "Jamia Nagar, New Delhi",
+  phones: [{ label: "+91 95684 74771", tel: "+919568474771" }, { label: "+91 90584 70747", tel: "+919058470747" }],
+};
+function ThanksLine() {
+  return (
+    <>
+      <strong>{THANKS_CREDIT.name}</strong> ({THANKS_CREDIT.tagline}), {THANKS_CREDIT.place} — for helping with the Urdu meanings and ayah corrections.{" "}
+      <span className="thanks-contact">📞{" "}
+        {THANKS_CREDIT.phones.map((p, i) => (
+          <React.Fragment key={p.tel}>{i > 0 && " · "}<a href={`tel:${p.tel}`}>{p.label}</a></React.Fragment>
+        ))}
+      </span>
+    </>
+  );
+}
+const DONATION_MAILTO = `mailto:${DONATION_CONTACT}?subject=${encodeURIComponent("Donation enquiry — Quranic Vocab")}`;
+
+
 // ── GateScreen — shown to everyone until they enter the access code ──────────
 function GateScreen({ onUnlock }) {
   const [code, setCode]     = React.useState("");
@@ -2481,7 +2548,7 @@ export default function App() {
   const [optsVisible, setOptsVisible] = useState(true);
   const [toast, setToast] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
-  const [showDonate, setShowDonate] = useState(false);
+  const openDonate = () => { window.location.href = DONATION_MAILTO; };
   const [showInvite, setShowInvite] = useState(false);
   const [gateWarning, setGateWarning] = useState(null);
   const [pendingResetEmail, setPendingResetEmail] = useState(""); // carries email into the "Enter Reset Code" screen
@@ -3636,7 +3703,7 @@ export default function App() {
               <button className={`nbtn ${view === "home" ? "on" : ""}`} onClick={() => setView("home")}>🏠 Home</button>
               <button className={`nbtn ${view === "history" ? "on" : ""}`} onClick={() => setView("history")}>History</button>
               <button className={`nbtn ${view === "leaderboard" ? "on" : ""}`} onClick={() => setView("leaderboard")}>Ranks</button>
-              <button className="ndonate" onClick={() => setShowDonate(true)}>🤲 Donate</button>
+              <button className="ndonate" onClick={openDonate}>🤲 Donate</button>
               <button className={`ncta ${view === "learn" ? "on" : ""}`} onClick={() => setView("learn")}>📚 Learn</button>
               {user && <button className="ncta" onClick={() => setShowInvite(true)}>✉ Invite</button>}
               {!user && <button className="ncta" onClick={() => setView("enroll")}>Login / Join Now</button>}
@@ -3661,23 +3728,22 @@ export default function App() {
             : <FinanceGate onLogin={loginUser} />
         ) : (
           <>
-            {view === "home" && <HomePage user={user} allWords={allWords} totalWordCount={totalWordCount} participants={participants} onStart={startQuiz} setView={setView} onDonate={() => setShowDonate(true)} onInvite={() => setShowInvite(true)} onReview={reviewSession} toast_={toast_} setGateWarning={setGateWarning} />}
+            {view === "home" && <HomePage user={user} allWords={allWords} totalWordCount={totalWordCount} participants={participants} onStart={startQuiz} setView={setView} onDonate={openDonate} onInvite={() => setShowInvite(true)} onReview={reviewSession} toast_={toast_} setGateWarning={setGateWarning} />}
             {view === "enroll" && <EnrollPage onRegister={registerUser} onLogin={loginUser} participants={participants} onForgotPassword={submitForgotPasswordRequest} onResendVerification={resendVerificationEmail} setView={setView} onGoToResetCode={(email) => { setPendingResetEmail(email); setView("resetPassword"); }} />}
             {view === "learn" && <LearnPage user={user} allWords={allWords} onQuiz={startQuiz} setView={setView} selectedDay={selectedDay} setSelectedDay={setSelectedDay} />}
             {view === "quiz" && quiz && <QuizPage quiz={quiz} onAnswer={answer} onCancel={cancelQuiz} onTimeUp={finishQuizEarly} optsVisible={optsVisible} />}
-            {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={() => setShowDonate(true)} onReview={reviewSession} setSelectedDay={setSelectedDay} />}
+            {view === "results" && quiz?.done && <ResultsPage quiz={quiz} user={user} onRetry={() => startQuiz(quiz.day)} setView={setView} onDonate={openDonate} onReview={reviewSession} setSelectedDay={setSelectedDay} />}
             {view === "history" && <HistoryPage user={user} setView={setView} onReview={reviewSession} allWords={allWords} onStart={startQuiz} />}
             {view === "review" && reviewing && <ReviewPage rec={reviewing} setView={setView} allWords={allWords} />}
             {view === "leaderboard" && <LBPage participants={participants} user={user} allWords={allWords} />}
             {view === "resetPassword" && <ResetPasswordPage onSetPassword={verifyResetCodeAndSetPassword} initialEmail={pendingResetEmail} setView={setView} />}
             {view === "profile" && user && <ProfilePage user={user} saveUser={saveUser} setView={setView} toast_={toast_} />}
-            {view === "profileHub" && user && <ProfileHub user={user} saveUser={saveUser} setView={setView} toast_={toast_} onRequestReceipt={() => setShowRequestReceipt(true)} onLogout={logout} allWords={allWords} />}
+            {view === "profileHub" && user && <ProfileHub user={user} saveUser={saveUser} setView={setView} toast_={toast_} onRequestReceipt={() => setShowRequestReceipt(true)} onLogout={logout} allWords={allWords} themePref={themePref} resolvedTheme={resolvedTheme} onCycleTheme={cycleTheme} />}
             {view === "downloadReceipt" && <DownloadReceiptPage prefillReceiptNo="" toast_={toast_} user={user} setView={setView} />}
             {/* Email verification handled automatically by Supabase via onAuthStateChange */}
           </>
         )}
 
-        {!isAdminRoute && !isFinanceRoute && showDonate && <DonateModal onClose={() => setShowDonate(false)} toast_={toast_} user={user} onRequestReceipt={() => { setShowDonate(false); setShowRequestReceipt(true); }} />}
         {!isAdminRoute && !isFinanceRoute && showInvite && <InviteModal onClose={() => setShowInvite(false)} toast_={toast_} user={user} />}
         {gateWarning && <GateWarningModal message={gateWarning} onClose={() => setGateWarning(null)} />}
         {!isAdminRoute && !isFinanceRoute && showRequestReceipt && <RequestReceiptModal onClose={() => setShowRequestReceipt(false)} toast_={toast_} user={user} onSubmit={submitRequestReceipt} />}
@@ -3696,7 +3762,7 @@ export default function App() {
             <button className={`mnav-btn ${view === "leaderboard" ? "on" : ""}`} onClick={() => setView("leaderboard")}>
               <span className="mnav-icon">🏆</span>Ranks
             </button>
-            <button className="mnav-btn" onClick={() => setShowDonate(true)}>
+            <button className="mnav-btn" onClick={openDonate}>
               <span className="mnav-icon">🤲</span>Donate
             </button>
           </nav>
@@ -3718,13 +3784,6 @@ export default function App() {
           />
         )}
         {toast && <div className="toast">{toast}</div>}
-        <button
-          className="theme-toggle-btn"
-          onClick={cycleTheme}
-          title={`Theme: ${themePref === "auto" ? `Auto (currently ${resolvedTheme})` : themePref === "light" ? "Light" : "Dark"} — tap to change`}
-        >
-          {themePref === "auto" ? "🌗" : resolvedTheme === "light" ? "☀️" : "🌙"}
-        </button>
       </div>
     </>
   );
@@ -3739,12 +3798,14 @@ export default function App() {
 // Reuses estimateQuranCoverage() — the exact function already driving the
 // Home page's "Word Recognition" stat — so the number here always matches
 // what's shown elsewhere, never a second, different-sounding estimate.
+const QURAN_TOTAL_OCCURRENCES = 77429;   // printed words in the Qur'an (corpus.quran.com count)
+const QURAN_UNIQUE_WORDS = 4844;         // distinct words when every printed word is counted once
 const COVERAGE_MILESTONES = [
-  { words: 60, pct: 50 },
-  { words: 120, pct: 60 },
-  { words: 236, pct: 70 },
-  { words: 470, pct: 80 },
-  { words: 1111, pct: 90 },
+  { words: 59,   pct: 50, occ: 38765 },
+  { words: 115,  pct: 60, occ: 46472 },
+  { words: 227,  pct: 70, occ: 54221 },
+  { words: 455,  pct: 80, occ: 61965 },
+  { words: 1082, pct: 90, occ: 69687 },
 ];
 
 function CoverageScienceModal({ user, allWords, onClose }) {
@@ -3820,8 +3881,24 @@ function CoverageScienceModal({ user, allWords, onClose }) {
             </svg>
           </div>
 
+          <div style={{ overflowX: "auto", margin: "4px 0 10px" }}>
+            <table className="cov-table">
+              <thead><tr><th>Words learned</th><th>Times they appear</th><th>Of the Qur'an</th></tr></thead>
+              <tbody>
+                {COVERAGE_MILESTONES.map((m, i) => (
+                  <tr key={m.words} className={masteredCount >= m.words && (!COVERAGE_MILESTONES[i + 1] || masteredCount < COVERAGE_MILESTONES[i + 1].words) ? "cov-me" : ""}>
+                    <td>{m.words.toLocaleString("en-US")}</td><td>{m.occ.toLocaleString("en-US")}</td><td>{m.pct}%</td>
+                  </tr>
+                ))}
+                <tr className="cov-total"><td>{QURAN_UNIQUE_WORDS.toLocaleString("en-US")} (all)</td><td>{QURAN_TOTAL_OCCURRENCES.toLocaleString("en-US")}</td><td>100%</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style={{ fontSize: 11, lineHeight: 1.6, color: "var(--muted)", marginTop: 0 }}>
+            "Times they appear" counts each of the Qur'an's {QURAN_TOTAL_OCCURRENCES.toLocaleString("en-US")} printed words once, pronouns included. A word's count covers all of its forms — for example every form of <span className="arabic">قَالَ</span>.
+          </p>
           <p style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--muted)" }}>
-            The Quran uses roughly 4,800 unique words total. Master this app's word sets, and you're covering a meaningful share of everything the Quran says — not memorizing an unrelated foreign-language dictionary.
+            The Quran uses {QURAN_UNIQUE_WORDS.toLocaleString("en-US")} unique words in total. Master this app's word sets, and you're covering a meaningful share of everything the Quran says — not memorizing an unrelated foreign-language dictionary.
           </p>
           <p style={{ fontSize: 11, lineHeight: 1.6, color: "var(--muted)", marginTop: 10 }}>
             <strong>Word recognition is not the same as full comprehension.</strong> Understanding a sentence also depends on grammar, sentence structure, and context — skills this app doesn't yet teach. Think of this vocabulary as the essential foundation that future study of Arabic grammar (naḥw/ṣarf) builds on.
@@ -4134,8 +4211,8 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
 
       {/* Compact donate strip — moved below, no longer the dominant element */}
       <div className="donate-strip" onClick={onDonate}>
-        <span>🤲 Support this initiative — every rupee helps Quranic education continue</span>
-        <span className="donate-strip-cta">Donate →</span>
+        <span>🤲 Support this initiative — to donate, email {DONATION_CONTACT}</span>
+        <span className="donate-strip-cta">Email →</span>
       </div>
 
       {user && (
@@ -4144,6 +4221,10 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
           <span className="donate-strip-cta">Invite →</span>
         </div>
       )}
+      <div className="thanks-card">
+        <div className="thanks-title">🤝 With thanks</div>
+        <div className="thanks-body"><ThanksLine /></div>
+      </div>
       {showScienceModal && <CoverageScienceModal user={user} allWords={allWords} onClose={() => setShowScienceModal(false)} />}
     </div>
   );
@@ -4593,7 +4674,7 @@ function AdminAvatarThumb({ authId, name }) {
   );
 }
 
-function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogout, allWords }) {
+function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogout, allWords, themePref, resolvedTheme, onCycleTheme }) {
   const [tab, setTab] = useState("progress"); // "progress" | "account" | "instructions"
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetVal, setTargetVal] = useState(user.monthlyTarget || 30);
@@ -4645,7 +4726,12 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
           <h2 style={{ margin: 0 }}>{user.name}</h2>
           <p className="sub" style={{ margin: "2px 0 0" }}>{user.userId ? `@${user.userId}` : user.email}</p>
         </div>
-        <button className="phub-logout-btn" onClick={onLogout}>↪ Log Out</button>
+        <div className="phub-actions">
+          <button className="phub-logout-btn" onClick={onLogout}>↪ Log Out</button>
+          <button className="phub-theme-btn" onClick={onCycleTheme} title={themePref === "auto" ? `Auto — follows your device clock (now ${resolvedTheme})` : "Tap to change"}>
+            {themePref === "auto" ? "🌗 Theme: Auto" : themePref === "light" ? "☀️ Theme: Light" : "🌙 Theme: Dark"}
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -4713,7 +4799,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
           {[
             { icon: "📖", title: "Learn in Sets of 10", body: "Words are grouped into Sets, starting with the most frequently-used words in the Qur'an. Complete Set 1 to unlock Set 2, and so on." },
             { icon: "🔊", title: "Listen to Every Word", body: "Tap the play button on any word card to hear its correct pronunciation, straight from the Qur'an's recitation." },
-            { icon: "📜", title: "See the Word in Context", body: "Tap \"Details\" on a word card to see exactly where it appears in the Qur'an — with the actual mushaf image and audio for that verse." },
+            { icon: "📜", title: "See the Word in Context", body: "Tap \"Details\" on a word card to see exactly where it appears in the Qur'an — with the full ayah text and its recitation." },
             { icon: "❓", title: "Quiz Yourself", body: "Once you've studied a set, quiz yourself on it. Answer correctly 3 times in a row (even across different quizzes) and a word is marked Mastered." },
             { icon: "🎯", title: "Track Your Monthly Target", body: "Set a personal monthly goal for how many words to master. Your Profile page shows your progress against it, month by month." },
             { icon: "🔁", title: "Practice Weak Words", body: "The app quietly tracks which words you get wrong most often, so you can focus your practice where it actually helps." },
@@ -4729,6 +4815,13 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
               </div>
             </div>
           ))}
+          <div className="phub-section-label">Credits</div>
+          <div className="credits-list">
+            <div>🤝 <ThanksLine /></div>
+            <div>📊 Word-frequency and grammar data: <a href="https://corpus.quran.com" target="_blank" rel="noopener noreferrer">The Quranic Arabic Corpus</a> — Kais Dukes, University of Leeds; maintained by the Quran.com team; used under the GNU GPL.</div>
+            <div>📜 Qur'an text: <a href="https://tanzil.net" target="_blank" rel="noopener noreferrer">Tanzil.net</a> (Uthmani text).</div>
+            <div>🔊 Recitation audio: Al Quran Cloud (islamic.network) and Quran.com word-by-word audio.</div>
+          </div>
         </div>
       ) : (
         <div className="phub-grid" style={{ marginTop: 16 }}>
@@ -5462,8 +5555,35 @@ function AyahFlashCard({ wordId, surahNumber, ayahNumber, wordPosition, partialA
 // ── Shared expandable word card — used on Day Words page and History's ──────
 // Strong/Weak word breakdown, so both show identical detail (Urdu,
 // Qur'an reference).
+// "Other forms" are stored as one text cell: `form = English ; form = English = Urdu`
+// (Urdu optional). Parsed here so the CSV/DB stay a single plain column.
+function parseOtherForms(str) {
+  return (str || "").split(" ; ").map(s => s.trim()).filter(Boolean).map(item => {
+    const [ar, en, ur] = item.split(" = ").map(x => x.trim());
+    return { ar, en: en || "", ur: ur || "" };
+  }).filter(f => f.ar);
+}
+function OtherFormsList({ forms }) {
+  return (
+    <div className="wforms">
+      <div className="wforms-title">Other forms of this word</div>
+      {forms.map((f, i) => (
+        <div className="wforms-row" key={i}>
+          <span className="wforms-ar">{f.ar}</span>
+          <span className="wforms-mean">
+            <div className="wforms-en">{f.en}</div>
+            {f.ur && <div className="wforms-ur">{f.ur}</div>}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false, allWords }) {
   const [showAyahPopup, setShowAyahPopup] = useState(false);
+  const forms = parseOtherForms(word.otherForms);
+  const hasDetails = !!word.ayahRef || forms.length > 0;
   const hasAyahRef = !!(word.surahNumber && word.ayahNumber);
   const hasWordAudio = !!(word.surahNumber && word.ayahNumber && word.wordPosition);
 
@@ -5488,7 +5608,7 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false, allW
               title="Play word pronunciation"
             />
           )}
-          {word.ayahRef && (
+          {hasDetails && (
             <button className="word-toggle" onClick={onToggle}>
               {isOpen ? "Hide ▲" : "Details ▼"}
             </button>
@@ -5505,6 +5625,7 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false, allW
           )}
         </div>
       )}
+      {isOpen && forms.length > 0 && <OtherFormsList forms={forms} />}
       {showAyahPopup && hasAyahRef && (
         <AyahFlashCard wordId={word.dbId} surahNumber={word.surahNumber} ayahNumber={word.ayahNumber} wordPosition={word.wordPosition} partialAyahText={word.partialAyahText} onClose={() => setShowAyahPopup(false)} />
       )}
@@ -7428,12 +7549,12 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   // re-uploading — the upload step itself skips anything matching an
   // existing Arabic word, so re-uploading the existing rows is harmless.
   const downloadExistingWords = () => {
-    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text";
+    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Root,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text,Other Forms";
     const lines = allWords.map(w => [
       csvField(w.arabic), csvField(w.translit), csvField(w.english), csvField(w.urdu),
-      csvField(w.ayahRef),
+      csvField(w.root ?? ""), csvField(w.ayahRef),
       csvField(w.surahNumber ?? ""), csvField(w.ayahNumber ?? ""), csvField(w.wordPosition ?? ""),
-      csvField(w.partialAyahText ?? ""),
+      csvField(w.partialAyahText ?? ""), csvField(w.otherForms ?? ""),
     ].join(","));
     const csv = UTF8_BOM + [header, ...lines].join("\n") + "\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -7444,8 +7565,8 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   };
 
   const downloadBlankTemplate = () => {
-    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text\n'
-      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,"Surah Al-Baqarah 2:144",2,144,13,\n';
+    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Root,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text,Other Forms\n'
+      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,س ج د,"Surah Al-Baqarah 2:144",2,144,13,,"ٱلْمَسْجِدِ = the mosque"\n';
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -8158,171 +8279,6 @@ function AdminNotificationCenter({ passwordChangeRequests, receiptRequests, onAp
       {pendingPasswordReqs.length === 0 && pendingReceiptReqs.length === 0 && (
         <div style={{ padding: "16px 14px", textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>You're all caught up.</div>
       )}
-    </div>
-  );
-}
-
-// ─── Donate Modal ─────────────────────────────────────────────────────────────
-function DonateModal({ onClose, toast_, user, onRequestReceipt }) {
-  const [frequency, setFrequency] = useState("once"); // once | monthly | yearly
-
-  const copy = (text, label) => {
-    navigator.clipboard.writeText(text).then(() => toast_(`${label} copied!`)).catch(() => toast_("Copy manually from screen"));
-  };
-
-  // Donations aren't wired up until the real UPI ID replaces the placeholder
-  // — this automatically shows a clean "opening soon" message instead of
-  // fake payment details, and switches back to the real payment UI the
-  // moment DONATE.upiId is filled in for real. No flag to remember to flip.
-  const donationsConfigured = DONATE.upiId && DONATE.upiId !== "yourcharity@upi";
-  const displayCharityName = DONATE.charityName && DONATE.charityName !== "Your Charity Name Here"
-    ? DONATE.charityName
-    : "Awami Baitulmaal Committee (Reg.)";
-
-  // Generate UPI payment deep-link (works on mobile with UPI apps).
-  // Note: standard UPI deep-links only support one-time payments — there's no
-  // universal cross-app deep-link for recurring UPI (that needs a registered
-  // UPI AutoPay/e-mandate merchant integration). For Monthly/Yearly, we guide
-  // the user to set it up themselves via their banking app instead of
-  // pretending a one-tap link can create a recurring payment.
-  const upiLink = `upi://pay?pa=${encodeURIComponent(DONATE.upiId)}&pn=${encodeURIComponent(DONATE.charityName)}&tn=${encodeURIComponent(DONATE.purpose)}&cu=INR`;
-
-  // Close on overlay click
-  const handleOverlay = (e) => { if (e.target === e.currentTarget) onClose(); };
-
-  return (
-    <div className="modal-overlay" onClick={handleOverlay}>
-      <div className="modal">
-        <div className="modal-head">
-          <h3>🤲 Support Quranic Education</h3>
-          <button className="modal-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-
-          <div style={{ textAlign: "center", marginBottom: 16, fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
-            Your donation supports <strong style={{ color: "var(--gold2)" }}>{displayCharityName}</strong> — enabling free Quranic learning for all.
-          </div>
-
-          {!donationsConfigured ? (
-            <div style={{ textAlign: "center", padding: "28px 16px" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
-              <p style={{ fontSize: 15, color: "var(--text)", fontWeight: 600, marginBottom: 8 }}>Donations are opening soon</p>
-              <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, maxWidth: 360, margin: "0 auto" }}>
-                We're finishing setup so every donation gets a proper receipt. Check back shortly — thank you for your patience!
-              </p>
-            </div>
-          ) : (
-          <>
-          {/* ── FREQUENCY SELECTOR ── */}
-          <div className="freq-row">
-            <button className={`freq-pill ${frequency === "once" ? "on" : ""}`} onClick={() => setFrequency("once")}>One-time</button>
-            <button className={`freq-pill ${frequency === "monthly" ? "on" : ""}`} onClick={() => setFrequency("monthly")}>Monthly</button>
-            <button className={`freq-pill ${frequency === "yearly" ? "on" : ""}`} onClick={() => setFrequency("yearly")}>Yearly</button>
-          </div>
-
-          <div className="dtabs">
-            <button className={`dtab on`} style={{ flex: 1 }}>📱 UPI Payment</button>
-          </div>
-
-          {/* ── UPI TAB (the only payment method — see note below on why) ── */}
-          {true && (
-            <div>
-              {frequency === "once" ? (
-              <div className="qr-box">
-                {/* QR Placeholder — replace the SVG below with your actual QR image */}
-                <div className="qr-placeholder">
-                  <div className="qr-corner tl"/><div className="qr-corner tr"/>
-                  <div className="qr-corner bl"/><div className="qr-corner br"/>
-                  <div className="qr-inner">
-                    <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
-                      <rect x="4" y="4" width="28" height="28" rx="2" stroke="#b8860b" strokeWidth="3"/>
-                      <rect x="12" y="12" width="12" height="12" fill="#b8860b"/>
-                      <rect x="48" y="4" width="28" height="28" rx="2" stroke="#b8860b" strokeWidth="3"/>
-                      <rect x="56" y="12" width="12" height="12" fill="#b8860b"/>
-                      <rect x="4" y="48" width="28" height="28" rx="2" stroke="#b8860b" strokeWidth="3"/>
-                      <rect x="12" y="56" width="12" height="12" fill="#b8860b"/>
-                      <rect x="48" y="48" width="8" height="8" fill="#b8860b"/>
-                      <rect x="60" y="48" width="8" height="8" fill="#b8860b"/>
-                      <rect x="48" y="60" width="8" height="8" fill="#b8860b"/>
-                      <rect x="60" y="60" width="8" height="8" fill="#b8860b"/>
-                    </svg>
-                    <div style={{ fontSize: 10, color: "#888", marginTop: 6 }}>Replace with your<br/>actual UPI QR image</div>
-                  </div>
-                </div>
-
-                <div className="qr-upi">Scan with any UPI app</div>
-                <div className="qr-upi" style={{ marginTop: 10 }}>Or pay directly to UPI ID:</div>
-                <div className="qr-upiid">{DONATE.upiId}</div>
-                <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 10, flexWrap: "wrap" }}>
-                  <button className="copy-btn" onClick={() => copy(DONATE.upiId, "UPI ID")}>Copy UPI ID</button>
-                  <a href={upiLink} style={{ textDecoration: "none" }}>
-                    <button className="copy-btn" style={{ color: "var(--teal2)", borderColor: "rgba(34,139,112,.35)" }}>
-                      Open UPI App ↗
-                    </button>
-                  </a>
-                </div>
-              </div>
-              ) : (
-                <div className="recurring-box">
-                  <div className="recurring-icon">🔁</div>
-                  <h4>Set up {frequency === "monthly" ? "Monthly" : "Yearly"} UPI AutoPay</h4>
-                  <p>UPI doesn't support one-tap recurring payments across apps yet — but setting up an AutoPay mandate takes under a minute in your own banking app:</p>
-                  <ol className="recurring-steps">
-                    <li>Open your UPI app (GPay, PhonePe, Paytm, BHIM)</li>
-                    <li>Go to <strong>Mandates / AutoPay / Subscriptions</strong></li>
-                    <li>Choose <strong>"Pay to UPI ID"</strong> and enter:
-                      <div className="qr-upiid" style={{ margin: "8px 0" }}>{DONATE.upiId}</div>
-                    </li>
-                    <li>Set frequency to <strong>{frequency === "monthly" ? "Monthly" : "Yearly"}</strong> and your preferred amount</li>
-                    <li>Confirm with your UPI PIN — done!</li>
-                  </ol>
-                  <button className="copy-btn" onClick={() => copy(DONATE.upiId, "UPI ID")} style={{ marginTop: 4 }}>Copy UPI ID</button>
-                </div>
-              )}
-
-              <div className="callout" style={{ background: "rgba(26,107,90,.08)", border: "1px solid rgba(26,107,90,.2)", borderRadius: 7, padding: "10px 14px", fontSize: 12, color: "var(--teal2)", marginTop: 12 }}>
-                💡 Works with <strong>GPay, PhonePe, Paytm, BHIM</strong> and all UPI-enabled bank apps
-              </div>
-            </div>
-          )}
-
-          {/* ── BANK TRANSFER — by request only, screened by admin ── */}
-          {/* UPI is the only self-service payment method app-wide. Direct bank
-              transfer is intentionally never shown automatically — a donor
-              who wants it must email admin first, so admin can have a quick
-              conversation with the donor before sharing account details and
-              accepting a transfer. This keeps the in-app flow domestic-leaning
-              (UPI requires an Indian bank account to exist at all) and adds a
-              human checkpoint for the one channel that doesn't have that
-              built-in restriction. */}
-          <div className="bank-login-prompt">
-            Prefer a direct bank transfer instead of UPI? Email <strong>admin@awamibaitulmaal.org.in</strong> and the admin will get in touch to arrange it.
-          </div>
-
-          {onRequestReceipt && (
-            <div className="bank-login-prompt" style={{ marginTop: 8 }}>
-              Already donated? <span style={{ color: "var(--cyan)", cursor: "pointer", textDecoration: "underline" }} onClick={onRequestReceipt}>Request your receipt</span>
-            </div>
-          )}
-
-          <p style={{ fontSize: 10.5, color: "var(--muted)", textAlign: "center", marginTop: 12, lineHeight: 1.6, opacity: .75 }}>
-            🔒 Your name, email, and payment reference are used only to verify your donation and issue your receipt — never shared or used for anything else.
-          </p>
-          </>
-          )}
-
-          {/* ── FOOTER AYAH ── */}
-          <div className="donate-ayah">
-            <div className="arabic" style={{ fontFamily: "'Scheherazade New',serif", fontSize: 22, color: "var(--gold2)", direction: "rtl", marginBottom: 6 }}>
-              مَن ذَا الَّذِي يُقْرِضُ اللَّهَ قَرْضًا حَسَنًا
-            </div>
-            <p style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>
-              "Who is it that will lend to Allah a goodly loan?" — Al-Baqarah 2:245
-            </p>
-          </div>
-
-        </div>
-      </div>
     </div>
   );
 }
