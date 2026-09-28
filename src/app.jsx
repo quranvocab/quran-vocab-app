@@ -190,67 +190,57 @@ function buildWordStrengthBreakdown(scores, allWords = []) {
 // than wrong) — mastery here requires every single attempt at a word to have
 // been correct, with no exceptions. A single wrong answer, even if followed
 // by many correct ones, means the word is NOT mastered yet under this rule.
-// Word mastery: requires the most recent MASTERY_STREAK_REQUIRED attempts of
-// a word to all be correct, in a row — older mistakes don't permanently block
-// mastery once that many consecutive correct answers follow. A wrong answer
-// at any point resets the streak back to zero for that word.
+// Word mastery (keyed by the English meaning, which has stayed stable even when
+// a word's Arabic display text changed):
+//  • A word becomes MASTERED after MASTERY_STREAK_REQUIRED (3) correct answers in
+//    a row, across any quiz type (set quiz, All Sets Quiz, weak-words practice).
+//  • Once mastered it stays mastered through one slip: a single wrong answer only
+//    marks it as "slipping", and the next correct answer clears that. Two wrong
+//    answers IN A ROW reset it — it is no longer mastered and needs 3 correct
+//    answers in a row again.
+//  • While not mastered, any wrong answer sets the streak back to zero.
 const MASTERY_STREAK_REQUIRED = 3;
+const MASTERY_RESET_WRONGS = 2;
 
-function buildStrictMastery(scores) {
-  const streaks = {}; // key: english meaning -> current consecutive-correct streak.
-  // Keyed by english, not arabic — arabic display text has been deliberately
-  // changed for some words (pronunciation-accuracy work), so keying by arabic
-  // would fragment one word's streak into two whenever its display text changes.
-  // english has stayed stable throughout, so it's the reliable key.
+function walkMastery(scores, onFirstMastered) {
+  const st = {}; // english -> { streak, mastered, slips }
   const attempted = new Set();
-  // scores is chronological (oldest first, since it's built by appending each
-  // new attempt) — process in that order so the streak reflects recency.
+  // scores is chronological (oldest first) — process in that order so recency counts.
   for (const s of scores) {
     if (!s.detail) continue;
     for (const d of s.detail) {
       const key = d.english;
       attempted.add(key);
-      if (d.isCorrect) {
-        streaks[key] = (streaks[key] || 0) + 1;
+      const w = st[key] || (st[key] = { streak: 0, mastered: false, slips: 0 });
+      if (w.mastered) {
+        if (d.isCorrect) w.slips = 0;
+        else if (++w.slips >= MASTERY_RESET_WRONGS) { w.mastered = false; w.streak = 0; w.slips = 0; }
+      } else if (d.isCorrect) {
+        if (++w.streak >= MASTERY_STREAK_REQUIRED) { w.mastered = true; w.slips = 0; if (onFirstMastered) onFirstMastered(key, s); }
       } else {
-        streaks[key] = 0; // any wrong answer resets the streak
+        w.streak = 0;
       }
     }
   }
-  const masteredSet = new Set(
-    Object.entries(streaks).filter(([, streak]) => streak >= MASTERY_STREAK_REQUIRED).map(([key]) => key)
-  );
+  return { st, attempted };
+}
+
+function buildStrictMastery(scores) {
+  const { st, attempted } = walkMastery(scores);
+  const masteredSet = new Set(Object.entries(st).filter(([, w]) => w.mastered).map(([key]) => key));
   return { masteredSet, attemptedSet: attempted };
 }
 
 // ── Monthly mastery counts (for the monthly-target feature) ─────────────────
-// Walks scores chronologically (same order as buildStrictMastery) and records
-// the FIRST time each word's streak reaches MASTERY_STREAK_REQUIRED, bucketed
-// by calendar month of that attempt's date. A word is only ever attributed to
-// one month — the month it was first mastered — even if a later wrong answer
-// resets its streak and it's re-mastered afterward. This matches how mastery
-// is counted everywhere else in the app (a word "mastered" stays counted).
+// A word is attributed to the calendar month in which it FIRST reached mastery,
+// and only ever to that one month — even if it is later reset and re-mastered.
 function buildMonthlyMasteryCounts(scores) {
-  const streaks = {};
   const firstMasteredMonth = {}; // key -> "YYYY-MM"
-  for (const s of scores) {
-    if (!s.detail || !s.date) continue;
-    for (const d of s.detail) {
-      const key = d.english;
-      if (d.isCorrect) {
-        streaks[key] = (streaks[key] || 0) + 1;
-        if (streaks[key] === MASTERY_STREAK_REQUIRED && !firstMasteredMonth[key]) {
-          firstMasteredMonth[key] = new Date(s.date).toISOString().slice(0, 7);
-        }
-      } else {
-        streaks[key] = 0;
-      }
-    }
-  }
+  walkMastery(scores.filter(s => s.date), (key, s) => {
+    if (!firstMasteredMonth[key]) firstMasteredMonth[key] = new Date(s.date).toISOString().slice(0, 7);
+  });
   const counts = {};
-  for (const month of Object.values(firstMasteredMonth)) {
-    counts[month] = (counts[month] || 0) + 1;
-  }
+  for (const month of Object.values(firstMasteredMonth)) counts[month] = (counts[month] || 0) + 1;
   return counts; // e.g. { "2026-07": 12, "2026-06": 34 }
 }
 
@@ -1407,6 +1397,13 @@ const CSS = `
 .fc-play{display:inline-flex;align-items:center;gap:12px;padding:8px 20px 8px 10px;border:2px solid rgba(var(--cyan-rgb),.5);border-radius:999px;background:var(--s1);}
 .fc-play span{font-size:16px;font-weight:600;color:var(--text);}
 [data-theme="light"] .fc-play{background:#ffffff;border-color:rgba(0,119,163,.65);box-shadow:var(--shadow-box);}
+.fc-trans{margin:10px 0 4px;text-align:center;}
+.fc-trans-toggle{display:inline-flex;border:1px solid rgba(var(--cyan-rgb),.4);border-radius:999px;overflow:hidden;margin-bottom:8px;}
+.fc-trans-toggle button{background:transparent;border:none;color:var(--muted);font-size:12px;padding:4px 14px;cursor:pointer;}
+.fc-trans-toggle button.on{background:var(--cyan);color:#fff;font-weight:600;}
+.fc-trans-text{font-size:13.5px;line-height:1.65;color:var(--text);padding:0 6px;}
+.fc-trans-text.ur{font-family:'Noto Nastaliq Urdu',serif;font-size:17px;line-height:2.1;}
+.fc-trans-credit{font-size:10.5px;color:var(--muted);margin-top:4px;}
 .fc-word{text-align:center;padding:4px 0 12px;border-bottom:1px solid rgba(var(--cyan-rgb),.15);margin-bottom:14px;}
 .fc-word-ar{font-family:'Scheherazade New','Amiri',serif;font-size:clamp(34px,8vw,48px);color:var(--gold2);line-height:1.5;}
 .fc-word-tr{font-size:19px;font-weight:500;color:var(--text);}
@@ -1414,6 +1411,9 @@ const CSS = `
 .instr-lang{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px;}
 .instr-lang-btn{background:var(--s2);border:1px solid var(--s3);color:var(--text);padding:6px 14px;border-radius:18px;font-size:13px;cursor:pointer;}
 .instr-lang-btn.on{background:var(--cyan);border-color:var(--cyan);color:#fff;font-weight:600;}
+.instr-ur .instr-credits,.instr-ar .instr-credits{text-align:center;}
+.instr-ur .instr-credits .phub-section-label,.instr-ar .instr-credits .phub-section-label{justify-content:center;text-align:center;}
+.instr-ur .instr-credits .credits-list,.instr-ar .instr-credits .credits-list{align-items:center;text-align:center;}
 .instr-note{font-size:11.5px;color:var(--muted);margin:0 0 10px;}
 .instr-ur .phub-instr-title,.instr-ur .phub-instr-body,.instr-ur .phub-section-label{font-family:'Noto Nastaliq Urdu',serif;line-height:2.1;text-align:right;}
 .instr-ar .phub-instr-title,.instr-ar .phub-instr-body,.instr-ar .phub-section-label{font-family:'Scheherazade New','Amiri',serif;font-size:1.15em;line-height:1.9;text-align:right;}
@@ -1480,6 +1480,15 @@ html{overflow-x:hidden;}
 .tagline-prominent{
   color:var(--text)!important;font-size:19px!important;font-weight:500!important;
   text-shadow:0 2px 12px rgba(0,0,0,.7),0 0 20px rgba(var(--cyan-rgb),.15);
+}
+@media(max-width:700px){
+  .tagline-prominent{
+    font-size:14px!important;font-weight:500!important;line-height:1.55!important;
+    display:block;max-width:94%;margin:12px auto 14px!important;padding:10px 14px;border-radius:12px;
+    background:rgba(var(--navbg-rgb),.9);border:1px solid rgba(var(--cyan-rgb),.4);
+    text-shadow:none!important;color:var(--text)!important;box-shadow:0 2px 8px rgba(0,0,0,.25);
+  }
+  [data-theme="light"] .tagline-prominent{background:rgba(255,255,255,.95);border:1.5px solid rgba(0,119,163,.5);box-shadow:var(--shadow-box);color:#0a1f2e!important;}
 }
 .nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:13px 28px;
   background:rgba(var(--navbg-rgb),.82);backdrop-filter:blur(28px) saturate(1.6);
@@ -1893,8 +1902,8 @@ input[type="password"]::-ms-clear{display:none;}
     inset 0 1px 0 rgba(255,255,255,.08);
   background-image:url("${bgUrl}");background-size:180px;
 }
-.qdir{font-family:'Poppins',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--teal2);margin-bottom:18px;font-weight:500;}
-.qq{font-size:80px;color:var(--gold2);line-height:1.18;margin-bottom:6px;font-weight:700;text-shadow:0 0 30px rgba(255,184,0,.45),0 2px 8px rgba(0,0,0,.4);}
+.qdir{font-family:'Poppins',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--teal2);margin-bottom:24px;font-weight:500;}
+.qq{font-size:80px;color:var(--gold2);line-height:1.75;padding:8px 0 0;margin-bottom:4px;font-weight:700;text-shadow:0 0 30px rgba(255,184,0,.45),0 2px 8px rgba(0,0,0,.4);}
 .qtr{font-size:16px;color:var(--muted);font-style:italic;margin-bottom:38px;}
 .opts{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .opt{
@@ -4685,7 +4694,7 @@ const INSTRUCTION_ITEMS = [
             { icon: "📖", title: "Learn in Sets of 10", body: "Words are grouped into Sets, starting with the most frequently-used words in the Qur'an. Complete Set 1 to unlock Set 2, and so on." },
             { icon: "🔊", title: "Listen to Every Word", body: "Tap the play button on any word card to hear its correct pronunciation, straight from the Qur'an's recitation." },
             { icon: "📜", title: "See the Word in Context", body: "Tap \"Details\" on a word card to see where it appears in the Qur'an — the full ayah with the word highlighted, its recitation, and other forms of the word." },
-            { icon: "❓", title: "Quiz Yourself", body: "Once you've studied a set, quiz yourself on it. Answer correctly 3 times in a row (even across different quizzes) and a word is marked Mastered." },
+            { icon: "❓", title: "Quiz Yourself", body: "Once you've studied a set, quiz yourself on it. Answer correctly 3 times in a row (even across different quizzes) and a word is marked Mastered. If you later get a mastered word wrong twice in a row, it goes back to practice and needs 3 correct answers again." },
             { icon: "🎯", title: "Track Your Monthly Target", body: "Set a personal monthly goal for how many words to master. Your Profile page shows your progress against it, month by month." },
             { icon: "🔁", title: "Practice Weak Words", body: "The app quietly tracks which words you get wrong most often, so you can focus your practice where it actually helps." },
             { icon: "🏆", title: "All Sets Quiz & Leaderboard", body: "Once you've completed a few sets, test yourself across everything you've learned, and see how you compare with other learners." },
@@ -4701,7 +4710,7 @@ const INSTRUCTION_TR = {
     { title: "10 الفاظ کے سیٹ میں سیکھیں", body: "الفاظ کو سیٹس میں تقسیم کیا گیا ہے، جن کا آغاز قرآن کے سب سے زیادہ استعمال ہونے والے الفاظ سے ہوتا ہے۔ سیٹ 1 مکمل کریں تو سیٹ 2 کھل جائے گا، اور اسی طرح آگے۔" },
     { title: "ہر لفظ سنیں", body: "کسی بھی لفظ کے کارڈ پر پلے کا بٹن دبائیں اور قرآن کی تلاوت سے اس کا صحیح تلفظ سنیں۔" },
     { title: "لفظ کو آیت میں دیکھیں", body: "لفظ کے کارڈ پر \"Details\" دبائیں تاکہ دیکھ سکیں کہ یہ لفظ قرآن میں کہاں آیا ہے — پوری آیت (متعلقہ لفظ نمایاں)، اس کی تلاوت، اور اس لفظ کی دیگر صورتیں۔" },
-    { title: "خود کو آزمائیں", body: "کوئی سیٹ پڑھنے کے بعد اس کا کوئز حل کریں۔ کسی لفظ کا جواب مسلسل تین بار درست دیں (خواہ مختلف کوئزز میں ہی) تو وہ لفظ \"Mastered\" (مہارت یافتہ) شمار ہوگا۔" },
+    { title: "خود کو آزمائیں", body: "کوئی سیٹ پڑھنے کے بعد اس کا کوئز حل کریں۔ کسی لفظ کا جواب مسلسل تین بار درست دیں (خواہ مختلف کوئزز میں ہی) تو وہ لفظ \"Mastered\" (مہارت یافتہ) شمار ہوگا۔ اگر بعد میں کسی مہارت یافتہ لفظ کا جواب مسلسل دو بار غلط ہو جائے تو وہ دوبارہ مشق میں چلا جاتا ہے اور اسے پھر سے مسلسل تین بار درست جواب دینا ہوگا۔" },
     { title: "ماہانہ ہدف مقرر کریں", body: "ہر ماہ کتنے الفاظ پر عبور حاصل کرنا ہے، اس کا ذاتی ہدف مقرر کریں۔ آپ کا پروفائل صفحہ مہینہ بہ مہینہ آپ کی پیش رفت دکھاتا ہے۔" },
     { title: "کمزور الفاظ کی مشق", body: "ایپ خاموشی سے یاد رکھتی ہے کہ آپ سے کن الفاظ میں سب سے زیادہ غلطیاں ہوتی ہیں، تاکہ آپ اپنی مشق وہیں کریں جہاں واقعی فائدہ ہو۔" },
     { title: "تمام سیٹس کا کوئز اور لیڈر بورڈ", body: "کچھ سیٹس مکمل کرنے کے بعد اب تک سیکھے ہوئے تمام الفاظ پر خود کو آزمائیں، اور دیکھیں کہ دوسرے سیکھنے والوں کے مقابلے میں آپ کہاں ہیں۔" },
@@ -4712,7 +4721,7 @@ const INSTRUCTION_TR = {
     { title: "10-10 शब्दों के सेट में सीखें", body: "शब्दों को सेट में बाँटा गया है, जिनकी शुरुआत क़ुरआन के सबसे ज़्यादा इस्तेमाल होने वाले शब्दों से होती है। सेट 1 पूरा करने पर सेट 2 खुल जाता है, और इसी तरह आगे।" },
     { title: "हर शब्द सुनें", body: "किसी भी शब्द के कार्ड पर प्ले बटन दबाएँ और क़ुरआन की तिलावत से उसका सही उच्चारण सुनें।" },
     { title: "शब्द को आयत में देखें", body: "शब्द के कार्ड पर \"Details\" दबाएँ और देखें कि वह क़ुरआन में कहाँ आया है — पूरी आयत (वह शब्द उभरा हुआ), उसकी तिलावत, और उस शब्द के अन्य रूप।" },
-    { title: "खुद को परखें", body: "कोई सेट पढ़ने के बाद उसका क्विज़ हल करें। किसी शब्द का जवाब लगातार तीन बार सही दें (अलग-अलग क्विज़ में भी) तो वह शब्द \"Mastered\" (महारत हासिल) माना जाएगा।" },
+    { title: "खुद को परखें", body: "कोई सेट पढ़ने के बाद उसका क्विज़ हल करें। किसी शब्द का जवाब लगातार तीन बार सही दें (अलग-अलग क्विज़ में भी) तो वह शब्द \"Mastered\" (महारत हासिल) माना जाएगा। अगर बाद में किसी महारत वाले शब्द का जवाब लगातार दो बार ग़लत हो जाए तो वह फिर अभ्यास में चला जाता है और उसे दोबारा लगातार तीन बार सही जवाब देना होगा।" },
     { title: "मासिक लक्ष्य तय करें", body: "हर महीने कितने शब्दों में महारत हासिल करनी है, इसका अपना लक्ष्य तय करें। आपका प्रोफ़ाइल पेज महीने-दर-महीने आपकी प्रगति दिखाता है।" },
     { title: "कमज़ोर शब्दों का अभ्यास", body: "ऐप चुपचाप याद रखता है कि आप किन शब्दों में सबसे ज़्यादा ग़लती करते हैं, ताकि आप अपना अभ्यास वहीं करें जहाँ सचमुच फ़ायदा हो।" },
     { title: "ऑल सेट्स क्विज़ और लीडरबोर्ड", body: "कुछ सेट पूरे करने के बाद अब तक सीखे हुए सभी शब्दों पर खुद को परखें, और देखें कि दूसरे सीखने वालों के मुक़ाबले आप कहाँ हैं।" },
@@ -4723,7 +4732,7 @@ const INSTRUCTION_TR = {
     { title: "تعلّم في مجموعات من 10 كلمات", body: "تُقسَّم الكلمات إلى مجموعات تبدأ بأكثر الكلمات تكرارًا في القرآن الكريم. أكمل المجموعة الأولى لتُفتح الثانية، وهكذا." },
     { title: "استمع إلى كل كلمة", body: "اضغط زر التشغيل على بطاقة أي كلمة لتسمع نطقها الصحيح من تلاوة القرآن." },
     { title: "شاهد الكلمة في سياقها", body: "اضغط «Details» على بطاقة الكلمة لترى موضعها في القرآن: الآية كاملة مع إبراز الكلمة، وتلاوتها، وصيغ الكلمة الأخرى." },
-    { title: "اختبر نفسك", body: "بعد دراسة مجموعة، اختبر نفسك فيها. إذا أجبتَ إجابة صحيحة ثلاث مرات متتالية (ولو في اختبارات مختلفة) تُعلَّم الكلمة بأنها «متقنة» (Mastered)." },
+    { title: "اختبر نفسك", body: "بعد دراسة مجموعة، اختبر نفسك فيها. إذا أجبتَ إجابة صحيحة ثلاث مرات متتالية (ولو في اختبارات مختلفة) تُعلَّم الكلمة بأنها «متقنة» (Mastered). وإذا أخطأتَ لاحقًا في كلمة متقنة مرتين متتاليتين فإنها تعود إلى التدريب وتحتاج إلى ثلاث إجابات صحيحة متتالية من جديد." },
     { title: "حدّد هدفك الشهري", body: "حدّد هدفًا شخصيًا شهريًا لعدد الكلمات التي تريد إتقانها. تعرض صفحة ملفك الشخصي تقدّمك شهرًا بعد شهر." },
     { title: "تدرّب على الكلمات الضعيفة", body: "يتتبّع التطبيق بهدوء الكلمات التي تخطئ فيها أكثر، لتركّز تدريبك حيث يفيدك فعلًا." },
     { title: "اختبار كل المجموعات ولوحة المتصدرين", body: "بعد إكمال عدة مجموعات، اختبر نفسك في كل ما تعلّمته، وانظر كيف تقارن بغيرك من المتعلمين." },
@@ -4888,12 +4897,14 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
                 </div>
               </div>
             ))}
+          <div className="instr-credits" dir="ltr">
             <div className="phub-section-label">{instrTr ? instrTr.credits : "Credits"}</div>
           <div className="credits-list">
             <div><ThanksLine icon /></div>
             <div>📊 Word-frequency and grammar data: <a href="https://corpus.quran.com" target="_blank" rel="noopener noreferrer">The Quranic Arabic Corpus</a> — Kais Dukes, University of Leeds; maintained by the Quran.com team; used under the GNU GPL.</div>
             <div>📜 Qur'an text: <a href="https://tanzil.net" target="_blank" rel="noopener noreferrer">Tanzil.net</a> (Uthmani text).</div>
             <div>🔊 Recitation audio: Al Quran Cloud (islamic.network) and Quran.com word-by-word audio.</div>
+          </div>
           </div>
           </div>
         </div>
@@ -5309,13 +5320,22 @@ const _ayahTextCache = {};
 async function fetchAyahText(surahNumber, ayahNumber) {
   const key = `${surahNumber}:${ayahNumber}`;
   if (_ayahTextCache[key] !== undefined) return _ayahTextCache[key];
-  const { data, error } = await supabase.from("ayah_texts").select("arabic_text")
+  // Translations live in optional columns; if they are not added yet, fall back to the Arabic text alone.
+  let res = await supabase.from("ayah_texts").select("arabic_text, translation_en, translation_ur")
     .eq("surah_number", surahNumber).eq("ayah_number", ayahNumber).maybeSingle();
-  if (error) { console.error("fetchAyahText error:", error.message); return null; }
-  const text = data?.arabic_text || null;
-  _ayahTextCache[key] = text;
-  return text;
+  if (res.error) {
+    res = await supabase.from("ayah_texts").select("arabic_text")
+      .eq("surah_number", surahNumber).eq("ayah_number", ayahNumber).maybeSingle();
+  }
+  if (res.error) { console.error("fetchAyahText error:", res.error.message); return null; }
+  const d = res.data;
+  const out = d?.arabic_text ? { ar: d.arabic_text, en: d.translation_en || "", ur: d.translation_ur || "" } : null;
+  _ayahTextCache[key] = out;
+  return out;
 }
+// Source line shown under a translation. Update with the translator's name once chosen
+// (e.g. "Saheeh International" / "Fateh Muhammad Jalandhry") — Tanzil's terms ask for attribution.
+const AYAH_TR_CREDIT = { en: "English translation via Tanzil.net", ur: "Urdu translation via Tanzil.net" };
 
 // ── Admin-uploaded ayah images (Supabase Storage) ───────────────────────────
 // Per-WORD, not per-ayah — even when several words share the same ayah,
@@ -5471,13 +5491,16 @@ function AyahFlashCard({ word, onClose }) {
   const { dbId: wordId, surahNumber, ayahNumber, wordPosition } = word;
   const hasAyah = !!(surahNumber && ayahNumber);
   const forms = parseOtherForms(word.otherForms);
-  const [ayahText, setAyahText] = useState(hasAyah ? undefined : null); // undefined=loading, null=not found, string=ready
+  const [ayahData, setAyahData] = useState(hasAyah ? undefined : null); // undefined=loading, null=not found, {ar,en,ur}
+  const ayahText = ayahData ? ayahData.ar : ayahData;
+  const [trPref, setTrPref] = useState(() => storageGet("qv_ayah_tr") || "en");
+  const trLang = ayahData ? (ayahData[trPref] ? trPref : (ayahData.en ? "en" : (ayahData.ur ? "ur" : null))) : null;
   const [imgStage, setImgStage] = useState("custom"); // fallback path only
 
   useEffect(() => {
     if (!hasAyah) return;
     let cancelled = false;
-    fetchAyahText(surahNumber, ayahNumber).then(text => { if (!cancelled) setAyahText(text); });
+    fetchAyahText(surahNumber, ayahNumber).then(d => { if (!cancelled) setAyahData(d); });
     return () => { cancelled = true; };
   }, [surahNumber, ayahNumber]);
 
@@ -5533,6 +5556,16 @@ function AyahFlashCard({ word, onClose }) {
               />
             </div>
           ))}
+          {trLang && (
+            <div className="fc-trans">
+              <div className="fc-trans-toggle">
+                {ayahData.en && <button className={trLang === "en" ? "on" : ""} onClick={() => { setTrPref("en"); storageSet("qv_ayah_tr", "en"); }}>English</button>}
+                {ayahData.ur && <button className={trLang === "ur" ? "on" : ""} onClick={() => { setTrPref("ur"); storageSet("qv_ayah_tr", "ur"); }}>اردو</button>}
+              </div>
+              <div className={`fc-trans-text ${trLang === "ur" ? "ur" : ""}`} dir={trLang === "ur" ? "rtl" : "ltr"}>{ayahData[trLang]}</div>
+              <div className="fc-trans-credit">{AYAH_TR_CREDIT[trLang]}</div>
+            </div>
+          )}
           {hasAyah && (
             <div style={{ marginTop: 18, textAlign: "center" }}>
               <div className="fc-play">
