@@ -1446,7 +1446,7 @@ html{overflow-x:hidden;}
    Light scrim only — the photo itself should read clearly (like a WhatsApp
    chat wallpaper); text readability comes from the existing glass/card
    components' own semi-opaque backgrounds, not from darkening the whole page. */
-.page-home,.page-enroll{position:relative;margin:-44px -22px;padding:44px 22px;isolation:isolate;}
+.page-home,.page-enroll{position:relative;margin:-44px -22px;padding:130px 22px 44px;isolation:isolate;}
 .page-home::before,.page-enroll::before{
   content:"";position:absolute;top:0;left:0;right:0;height:min(640px,72vh);z-index:-1;
   background:
@@ -1984,7 +1984,7 @@ input[type="password"]::-ms-clear{display:none;}
 .tbl th{text-align:left;padding:7px 10px;color:var(--muted);font-weight:400;font-size:12px;letter-spacing:.01em;border-bottom:1px solid rgba(var(--cyan-rgb),.1);}
 .tbl td{padding:9px 10px;border-bottom:1px solid rgba(0,0,0,.05);vertical-align:middle;}
 .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;}.del:hover{color:var(--err);}
-.hero{text-align:center;padding:78px 18px 38px;}
+.hero{text-align:center;padding:110px 18px 38px;}
 .scroll-hint{display:none;}
 @media(max-width:600px){
   .anon-hero-fold{
@@ -2295,8 +2295,8 @@ input[type="password"]::-ms-clear{display:none;}
   .ntext h1{font-size:16px;}
   h2{font-size:28px;}
   .page{padding:28px 16px;}
-  .page-home,.page-enroll{margin:-28px -16px;padding:28px 16px;}
-  .hero{padding:56px 14px 26px;}
+  .page-home,.page-enroll{margin:-28px -16px;padding:110px 16px 28px;}
+  .hero{padding:100px 14px 26px;}
   .bism{font-size:44px;}
   .hero h2{font-size:30px;}
   .chart-row{grid-template-columns:1fr;}
@@ -2319,8 +2319,8 @@ input[type="password"]::-ms-clear{display:none;}
 
   /* PAGE & HERO */
   .page{padding:18px 12px;}
-  .page-home,.page-enroll{margin:-18px -12px;padding:18px 12px;}
-  .hero{padding:40px 12px 18px;}
+  .page-home,.page-enroll{margin:-18px -12px;padding:90px 12px 18px;}
+  .hero{padding:90px 12px 18px;}
   .bism{font-size:39px;}
   .hero h2{font-size:25px;}
   .hero .sub{font-size:17px;margin-bottom:20px;}
@@ -2529,6 +2529,11 @@ export default function App() {
   const [user, setUser] = useState(() => storageGet("qv_user") || null); // instant restore on PWA reload — Supabase session reconciles async
   const userRef = React.useRef(null);
   React.useEffect(() => { userRef.current = user; }, [user]);
+  // Single-active-session prompt: set only when a fresh (non-silent) learner
+  // login finds an existing, recent active_session_id already on the account.
+  // Resolving it (Continue/Cancel) lets loadUserProfile's paused await continue.
+  const [sessionPrompt, setSessionPrompt] = useState(null); // { resolve }
+  const confirmSessionTakeover = () => new Promise((resolve) => setSessionPrompt({ resolve }));
   // allWords: instant-painted from the last successful Supabase fetch (cached
   // in qv_words_cache, same pattern as qv_user), then reconciled for real via
   // fetchAllWords() in the init effect below. Built-in and custom words are
@@ -2811,13 +2816,53 @@ export default function App() {
       if (profile.role === "admin") {
         setAdminUnlocked(true);
         sessionStorage.setItem("qv_admin_unlocked", "1");
+        // A genuine sign-in is itself activity — write this now so the idle-
+        // timeout effect's "was this session already idle when it mounted?"
+        // check (which runs right after, since it depends on adminUnlocked)
+        // never compares against a stale timestamp left over from a much
+        // earlier, unrelated session and logs the person straight back out.
+        storageSet("qv_last_activity_admin", Date.now());
         if (!opts.silent) setView("admin");
       } else {
         setFinanceUnlocked(true);
         sessionStorage.setItem("qv_finance_unlocked", "1");
+        storageSet("qv_last_activity_finance", Date.now());
         if (!opts.silent) setView("finance");
       }
       return;
+    }
+
+    // ── Single active session ────────────────────────────────────────────
+    // Only checked on a genuine, explicit login (never a silent background
+    // restore/token-refresh — those are the same device continuing, not a
+    // new one). A session marker written more than 24h ago is treated as
+    // abandoned (browser closed without logging out) rather than "active",
+    // so this never nags someone over a stale, long-dead tab.
+    if (!opts.silent) {
+      // "Recently active" = the other device's own heartbeat (see the polling
+      // effect below) landed within this window. A closed laptop or a phone
+      // that's been sitting idle stops heartbeating, so its last-seen time
+      // quickly falls outside this window — a normal device switch, even a
+      // fairly quick one, silently takes over with no prompt. Only two
+      // devices genuinely in use at close to the same moment both show as
+      // "recent" and trigger the warning.
+      const SESSION_RECENT_MS = 2 * 60 * 1000;
+      const existing = profile.active_session_id;
+      const existingAt = profile.active_session_at ? new Date(profile.active_session_at).getTime() : 0;
+      const isRecent = existing && (Date.now() - existingAt < SESSION_RECENT_MS);
+      if (isRecent) {
+        const proceed = await confirmSessionTakeover();
+        if (!proceed) {
+          await supabase.auth.signOut();
+          toast_("Login cancelled.");
+          return;
+        }
+      }
+      const mySessionId = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      await supabase.from("users").update({
+        active_session_id: mySessionId, active_session_at: new Date().toISOString(),
+      }).eq("id", profile.id);
+      storageSet("qv_session_id", mySessionId);
     }
 
     // Detect re-created account using Supabase auth UUID (always unique per account)
@@ -2847,6 +2892,12 @@ export default function App() {
     };
     setUser(u);
     storageSet("qv_user", u);
+    // Same reasoning as the admin/finance branches above — a real sign-in
+    // (or a verified session restore) counts as activity, so the idle-timeout
+    // effect that's about to mount for this user doesn't see a stale
+    // left-over timestamp from a previous session and log them straight
+    // back out on what looks to them like their very first attempt.
+    storageSet("qv_last_activity_learner", Date.now());
     if (!opts.silent) {
       toast_(`✅ Welcome, ${u.name}! 🕌`);
       setView("home");
@@ -3008,9 +3059,14 @@ export default function App() {
   };
 
   const logout = async () => {
+    if (user?.dbId) {
+      await supabase.from("users").update({ active_session_id: null }).eq("id", user.dbId)
+        .then(({ error }) => { if (error) console.error("clear active_session_id error:", error.message); });
+    }
     await supabase.auth.signOut();
     setUser(null);
     storageRemove("qv_user");
+    storageRemove("qv_session_id");
     setQuiz(null);
     setSelectedDay(null);
     setView("home");
@@ -3633,6 +3689,40 @@ export default function App() {
       events.forEach(ev => window.removeEventListener(ev, reset));
     };
   }, [user, adminUnlocked, financeUnlocked, isAdminRoute, isFinanceRoute]); // re-run when session changes
+
+  // ── Single active session — detect being superseded from another device ────
+  // Polls rather than using Supabase Realtime, so this works with no extra
+  // project configuration. Every 45s, compares this browser's own session
+  // marker (written at login, see loadUserProfile) against whatever is
+  // currently on the account — if a later login elsewhere overwrote it, this
+  // one signs itself out with a clear reason instead of just silently
+  // failing the next request.
+  React.useEffect(() => {
+    if (!user?.dbId) return;
+    const mySessionId = storageGet("qv_session_id");
+    if (!mySessionId) return; // nothing to compare against — e.g. account created before this feature
+    const check = async () => {
+      const { data, error } = await supabase.from("users")
+        .update({ active_session_at: new Date().toISOString() })
+        .eq("id", user.dbId).eq("active_session_id", mySessionId)
+        .select("id");
+      if (error) return;
+      if (!data || data.length === 0) {
+        // The WHERE clause matched nothing — our session_id is no longer
+        // what's on the account, so a later login elsewhere superseded us.
+        setUser(null);
+        storageRemove("qv_user");
+        storageRemove("qv_session_id");
+        setQuiz(null);
+        setSelectedDay(null);
+        setView("home");
+        await supabase.auth.signOut();
+        toast_("You were signed out because this account was logged in on another device.");
+      }
+    };
+    const iv = setInterval(check, 45 * 1000);
+    return () => clearInterval(iv);
+  }, [user?.dbId]);
   // ── End idle timeout ──────────────────────────────────────────────────────
 
   return (
@@ -3740,6 +3830,7 @@ export default function App() {
         )}
 
         {!isAdminRoute && !isFinanceRoute && showDonate && <DonateContactModal onClose={() => setShowDonate(false)} toast_={toast_} />}
+        {sessionPrompt && <SessionConflictModal onCancel={() => { sessionPrompt.resolve(false); setSessionPrompt(null); }} onContinue={() => { sessionPrompt.resolve(true); setSessionPrompt(null); }} />}
         {!isAdminRoute && !isFinanceRoute && showInvite && <InviteModal onClose={() => setShowInvite(false)} toast_={toast_} user={user} />}
         {gateWarning && <GateWarningModal message={gateWarning} onClose={() => setGateWarning(null)} />}
         {!isAdminRoute && !isFinanceRoute && showRequestReceipt && <RequestReceiptModal onClose={() => setShowRequestReceipt(false)} toast_={toast_} user={user} onSubmit={submitRequestReceipt} />}
@@ -8238,6 +8329,28 @@ function DonateContactModal({ onClose, toast_ }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function SessionConflictModal({ onCancel, onContinue }) {
+  return ReactDOM.createPortal(
+    <div className="modal-overlay">
+      <div className="modal modal-zoom-in" style={{ maxWidth: 420 }}>
+        <div className="modal-head">
+          <h3 style={{ margin: 0 }}>⚠️ Already signed in elsewhere</h3>
+        </div>
+        <div className="modal-body">
+          <p style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text)", marginTop: 0 }}>
+            This account is currently signed in on another device. Continuing here will sign that device out.
+          </p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
+            <button className="btn bh" onClick={onCancel}>Cancel</button>
+            <button className="btn bg" onClick={onContinue}>Continue &amp; sign out other device</button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
