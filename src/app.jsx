@@ -1355,7 +1355,7 @@ const CSS = `
 [data-theme="light"] .chart-col:hover,[data-theme="light"] .word-card:hover,
 [data-theme="light"] .opt:hover:not(:disabled){box-shadow:0 2px 6px rgba(7,28,42,.16),0 8px 20px rgba(7,28,42,.10);}
 [data-theme="light"] .sbox::before{opacity:.07;}
-[data-theme="light"] .sn{color:#8a5200;text-shadow:none;font-weight:800;}
+[data-theme="light"] .sn{color:#007a80;text-shadow:none;font-weight:800;}
 [data-theme="light"] .bh{background:#ffffff;border:1px solid rgba(7,28,42,.22);color:var(--text);box-shadow:var(--shadow-box);backdrop-filter:none;-webkit-backdrop-filter:none;}
 [data-theme="light"] .bh:hover{background:#f2f8fb;border-color:var(--cyan);color:var(--cyan2);}
 [data-theme="light"] .nav{box-shadow:0 1px 6px rgba(7,28,42,.14);}
@@ -1369,7 +1369,9 @@ const CSS = `
   text-shadow:0 0 5px #fff,0 0 12px #fff,0 0 22px rgba(255,255,255,.95),0 0 36px rgba(255,255,255,.8);
 }
 [data-theme="light"] .page-enroll .sub{color:#173a50;font-weight:500;}
-[data-theme="light"] .preview-heading{text-align:center;font-size:14px;font-weight:600;color:var(--text);margin-bottom:14px;letter-spacing:.01em;}
+.preview-card-arabic{font-size:36px;font-weight:700;color:var(--gold2);text-shadow:0 0 16px rgba(255,184,0,.35);}
+[data-theme="light"] .preview-card-arabic{color:#006d75;text-shadow:none;}
+.preview-heading{text-align:center;font-size:14px;font-weight:600;color:var(--text);margin-bottom:14px;letter-spacing:.01em;}
 [data-theme="light"] .preview-heading{color:#0a1f2e;}
 .tagline-prominent{color:#0a1f2e!important;}
 .cov-table{width:100%;border-collapse:collapse;font-size:12.5px;text-align:center;}
@@ -1388,6 +1390,8 @@ const CSS = `
 .thanks-card{margin-top:14px;padding:14px 16px;border:1px solid rgba(var(--cyan-rgb),.22);border-radius:12px;background:var(--s1);}
 .thanks-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold2);font-weight:600;margin-bottom:6px;}
 .thanks-body{font-size:13.5px;line-height:1.7;color:var(--text);}
+.thanks-lines{text-align:center;}
+.thanks-lines>div{margin-bottom:2px;}
 .thanks-body a,.credits-list a{color:var(--cyan2);text-decoration:none;font-weight:600;}
 .thanks-contact{display:block;}
 .credits-list{display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.7;color:var(--muted);padding:2px 2px 8px;}
@@ -1416,6 +1420,7 @@ const CSS = `
 .instr-ur .instr-credits,.instr-ar .instr-credits{text-align:center;}
 .instr-ur .instr-credits .phub-section-label,.instr-ar .instr-credits .phub-section-label{justify-content:center;text-align:center;}
 .instr-ur .instr-credits .credits-list,.instr-ar .instr-credits .credits-list{align-items:center;text-align:center;}
+.credits-list .thanks-lines{width:100%;}
 .instr-note{font-size:11.5px;color:var(--muted);margin:0 0 10px;}
 .instr-ur .phub-instr-title,.instr-ur .phub-instr-body,.instr-ur .phub-section-label{font-family:'Noto Nastaliq Urdu',serif;line-height:2.1;text-align:right;}
 .instr-ar .phub-instr-title,.instr-ar .phub-instr-body,.instr-ar .phub-section-label{font-family:'Scheherazade New','Amiri',serif;font-size:1.15em;line-height:1.9;text-align:right;}
@@ -1483,6 +1488,7 @@ html{overflow-x:hidden;}
   color:var(--text)!important;font-size:19px!important;font-weight:500!important;
   text-shadow:0 2px 12px rgba(0,0,0,.7),0 0 20px rgba(var(--cyan-rgb),.15);
 }
+.tagline-compact{font-size:15px!important;line-height:1.4!important;padding:8px 16px!important;}
 @media(max-width:700px){
   .tagline-prominent{
     font-size:14px!important;font-weight:500!important;line-height:1.55!important;
@@ -1602,6 +1608,9 @@ input[type="password"]::-ms-clear{display:none;}
 }
 .auth-mode-tab:hover{border-color:rgba(var(--cyan-rgb),.35);color:var(--gold3);}
 .auth-mode-tab.on{background:rgba(0,150,190,.35);border-color:var(--cyan2);color:var(--cyan2);}
+[data-theme="light"] .auth-mode-tab{background:#ffffff;border-color:rgba(0,119,163,.4);color:#173a50;font-weight:600;box-shadow:var(--shadow-box);}
+[data-theme="light"] .auth-mode-tab:hover{border-color:var(--cyan);color:var(--cyan2);}
+[data-theme="light"] .auth-mode-tab.on{background:var(--cyan);border-color:var(--cyan);color:#ffffff;}
 @keyframes tagIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 
 /* ── ENROLLMENT — TYPO WARNING ── */
@@ -1984,7 +1993,7 @@ input[type="password"]::-ms-clear{display:none;}
 .tbl th{text-align:left;padding:7px 10px;color:var(--muted);font-weight:400;font-size:12px;letter-spacing:.01em;border-bottom:1px solid rgba(var(--cyan-rgb),.1);}
 .tbl td{padding:9px 10px;border-bottom:1px solid rgba(0,0,0,.05);vertical-align:middle;}
 .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;}.del:hover{color:var(--err);}
-.hero{text-align:center;padding:110px 18px 38px;}
+.hero{text-align:center;padding:110px 18px 16px;}
 .scroll-hint{display:none;}
 @media(max-width:600px){
   .anon-hero-fold{
@@ -2296,7 +2305,7 @@ input[type="password"]::-ms-clear{display:none;}
   h2{font-size:28px;}
   .page{padding:28px 16px;}
   .page-home,.page-enroll{margin:-28px -16px;padding:110px 16px 28px;}
-  .hero{padding:100px 14px 26px;}
+  .hero{padding:100px 14px 12px;}
   .bism{font-size:44px;}
   .hero h2{font-size:30px;}
   .chart-row{grid-template-columns:1fr;}
@@ -2320,7 +2329,7 @@ input[type="password"]::-ms-clear{display:none;}
   /* PAGE & HERO */
   .page{padding:18px 12px;}
   .page-home,.page-enroll{margin:-18px -12px;padding:90px 12px 18px;}
-  .hero{padding:90px 12px 18px;}
+  .hero{padding:90px 12px 8px;}
   .bism{font-size:39px;}
   .hero h2{font-size:25px;}
   .hero .sub{font-size:17px;margin-bottom:20px;}
@@ -2505,15 +2514,16 @@ const THANKS_CREDIT = {
 };
 function ThanksLine({ icon = false }) {
   return (
-    <>
-      <div>{icon ? "🤝 " : ""}<strong>{THANKS_CREDIT.name}</strong> ({THANKS_CREDIT.tagline}), {THANKS_CREDIT.place}</div>
+    <div className="thanks-lines">
+      <div>{icon ? "🤝 " : ""}<strong>{THANKS_CREDIT.name}</strong> ({THANKS_CREDIT.tagline})</div>
+      <div>{THANKS_CREDIT.place}</div>
       <div>for helping with the Urdu meanings and ayah corrections.</div>
-      <div className="thanks-contact">📞{" "}
+      <div className="thanks-contact">
         {THANKS_CREDIT.phones.map((p, i) => (
-          <React.Fragment key={p.tel}>{i > 0 && " · "}<a href={`tel:${p.tel}`}>{p.label}</a></React.Fragment>
+          <React.Fragment key={p.tel}>{i > 0 && " \u00B7 "}<a href={`tel:${p.tel}`}>{p.label}</a></React.Fragment>
         ))}
       </div>
-    </>
+    </div>
   );
 }
 const DONATION_MAILTO = `mailto:${DONATION_CONTACT}?subject=${encodeURIComponent("Donation enquiry — Quranic Vocab")}`;
@@ -4111,7 +4121,6 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
           defensive belt-and-suspenders in case allWords ever contains more). */}
       {!user && (
         <div style={{ margin: "8px 0 24px" }}>
-          <p className="preview-heading">A taste of what you'll learn — Set 1:</p>
           <div style={{ position: "relative" }}>
             <button className="preview-arrow" style={{ left: -14 }} aria-label="Scroll left"
               onClick={() => { const el = document.getElementById("set1-preview-strip"); if (el) el.scrollBy({ left: -300, behavior: "smooth" }); }}>‹</button>
@@ -4130,7 +4139,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
                     )}
                   </div>
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                    <div className="arabic" style={{ fontSize: 32, color: "var(--gold2)", marginBottom: 8, textShadow: "0 0 16px rgba(255,184,0,.35)" }}>{w.arabic}</div>
+                    <div className="arabic preview-card-arabic" style={{ marginBottom: 8 }}>{w.arabic}</div>
                     <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 6 }}>{w.english}</div>
                     <div className="word-urdu" style={{ fontSize: 15, textAlign: "center", textShadow: "none" }}>{w.urdu || "—"}</div>
                   </div>
@@ -4140,7 +4149,8 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
             <button className="preview-arrow" style={{ right: -14 }} aria-label="Scroll right"
               onClick={() => { const el = document.getElementById("set1-preview-strip"); if (el) el.scrollBy({ left: 300, behavior: "smooth" }); }}>›</button>
           </div>
-          <p className="sub tagline-prominent" style={{ marginTop: 18 }}>Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>
+          <p className="preview-heading" style={{ marginTop: 14 }}>A taste of what you'll learn — Set 1:</p>
+          <p className="sub tagline-prominent tagline-compact" style={{ marginTop: 10 }}>Learn the most frequent Qur'an vocabulary in sets of 10 — unlocking the next set as you complete each one, at your own pace.</p>
           <p style={{ textAlign: "center", fontSize: 12.5, color: "var(--muted)", marginTop: 4, marginBottom: 0 }}>
             <span className="forgot-link" onClick={() => setView("enroll")}>Sign up free to unlock all {totalWordCount ?? "100+"} words →</span>
           </p>
