@@ -613,6 +613,7 @@ function mapWordRow(row) {
     surahNumber: row.surah_number ?? null, ayahNumber: row.ayah_number ?? null,
     wordPosition: row.word_position ?? null,
     partialAyahText: row.partial_ayah_text || "",
+    trHlEn: row.tr_hl_en || "", trHlUr: row.tr_hl_ur || "",
   };
 }
 
@@ -658,6 +659,7 @@ async function insertWord(word) {
     urdu: word.urdu, root: word.root || null, other_forms: word.otherForms || null, occurrences: word.occurrences || null,
     ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
     word_position: word.wordPosition || null, partial_ayah_text: word.partialAyahText || null, set_number: setNum, order_in_set: orderNum,
+    ...(word.trHlEn ? { tr_hl_en: word.trHlEn } : {}), ...(word.trHlUr ? { tr_hl_ur: word.trHlUr } : {}),
     is_custom: true, is_active: true, added_by: addedBy, added_at: new Date().toISOString(),
   });
   if (error) console.error("insertWord error:", error.message);
@@ -670,6 +672,8 @@ async function updateWord(dbId, fields) {
     urdu: fields.urdu, root: fields.root || null, other_forms: fields.otherForms || null, occurrences: fields.occurrences || null,
     ayah_ref: fields.ayahRef || null, surah_number: fields.surahNumber || null, ayah_number: fields.ayahNumber || null,
     word_position: fields.wordPosition || null, partial_ayah_text: fields.partialAyahText || null,
+    ...(fields.trHlEn !== undefined ? { tr_hl_en: fields.trHlEn || null } : {}),
+    ...(fields.trHlUr !== undefined ? { tr_hl_ur: fields.trHlUr || null } : {}),
   }).eq("id", dbId);
   if (error) console.error("updateWord error:", error.message);
   return !error;
@@ -722,6 +726,8 @@ const CSV_HEADER_ALIASES = {
   ayahNumber: ["ayah number", "ayah#", "ayah no", "ayah"],
   wordPosition: ["word position", "word#", "word no", "word number in ayah"],
   partialAyahText: ["partial ayah text", "partial ayah", "partial text", "play up to"],
+  trHlEn: ["translation highlight en", "highlight en", "english highlight"],
+  trHlUr: ["translation highlight ur", "highlight ur", "urdu highlight"],
 };
 
 function mapCSVHeaders(headerRow) {
@@ -779,6 +785,7 @@ function parseWordsCSV(text, existingArabicSet = new Set()) {
       ayahNumber: get("ayahNumber") ? parseInt(get("ayahNumber"), 10) || null : null,
       wordPosition: get("wordPosition") ? parseInt(get("wordPosition"), 10) || null : null,
       partialAyahText: get("partialAyahText"),
+      trHlEn: get("trHlEn"), trHlUr: get("trHlUr"),
       errors, isDuplicate,
     });
   }
@@ -812,6 +819,7 @@ async function bulkInsertWords(words) {
       urdu: word.urdu, root: word.root || null, other_forms: word.otherForms || null, occurrences: word.occurrences || null,
       ayah_ref: word.ayahRef || null, surah_number: word.surahNumber || null, ayah_number: word.ayahNumber || null,
       word_position: word.wordPosition || null, partial_ayah_text: word.partialAyahText || null, set_number: setNum, order_in_set: orderNum,
+      ...(word.trHlEn ? { tr_hl_en: word.trHlEn } : {}), ...(word.trHlUr ? { tr_hl_ur: word.trHlUr } : {}),
       is_custom: true, is_active: true, added_by: addedBy, added_at: nowIso,
     };
     orderNum += 1;
@@ -5541,8 +5549,24 @@ function findTranslationHighlights(text, meaning, lang) {
   }
   return [];
 }
-function renderTranslationWithHighlight(text, meaning, lang) {
-  const ranges = findTranslationHighlights(text, meaning, lang);
+// Curated highlight: words.tr_hl_en / tr_hl_ur hold the exact phrase(s) as they
+// appear in THAT ayah's translation (several separated by "|"). When set, they
+// win over the automatic match — this is how words whose meaning isn't written
+// literally in the translation (e.g. particles like إِنَّ, قَدْ) get highlighted.
+function findCuratedHighlights(text, phrases, lang) {
+  if (!text || !phrases) return [];
+  const hay = lang === "en" ? text.toLowerCase() : trNormUr(text);
+  const ranges = [];
+  String(phrases).split("|").map(p => p.trim()).filter(Boolean).forEach(p => {
+    const needle = lang === "en" ? p.toLowerCase() : trNormUr(p);
+    const at = hay.indexOf(needle);
+    if (at >= 0) ranges.push([at, at + needle.length]);
+  });
+  return ranges.sort((a, b) => a[0] - b[0]).filter((r, i, arr) => i === 0 || r[0] >= arr[i - 1][1]);
+}
+function renderTranslationWithHighlight(text, meaning, lang, curated) {
+  const picked = findCuratedHighlights(text, curated, lang);
+  const ranges = picked.length ? picked : findTranslationHighlights(text, meaning, lang);
   if (!ranges.length) return text;
   const out = [];
   let pos = 0;
@@ -5785,7 +5809,7 @@ function AyahFlashCard({ word, onClose }) {
                 {ayahData.en && <button className={trLang === "en" ? "on" : ""} onClick={() => { setTrPref("en"); storageSet("qv_ayah_tr", "en"); }}>English</button>}
                 {ayahData.ur && <button className={trLang === "ur" ? "on" : ""} onClick={() => { setTrPref("ur"); storageSet("qv_ayah_tr", "ur"); }}>اردو</button>}
               </div>
-              <div className={`fc-trans-text ${trLang === "ur" ? "ur" : ""}`} dir={trLang === "ur" ? "rtl" : "ltr"}>{renderTranslationWithHighlight(ayahData[trLang], trLang === "ur" ? word.urdu : word.english, trLang)}</div>
+              <div className={`fc-trans-text ${trLang === "ur" ? "ur" : ""}`} dir={trLang === "ur" ? "rtl" : "ltr"}>{renderTranslationWithHighlight(ayahData[trLang], trLang === "ur" ? word.urdu : word.english, trLang, trLang === "ur" ? word.trHlUr : word.trHlEn)}</div>
               <div className="fc-trans-credit">{AYAH_TR_CREDIT[trLang]}</div>
             </div>
           )}
@@ -7770,12 +7794,13 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   // re-uploading — the upload step itself skips anything matching an
   // existing Arabic word, so re-uploading the existing rows is harmless.
   const downloadExistingWords = () => {
-    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Root,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text,Other Forms,Occurrences";
+    const header = "Arabic,Transliteration,English Meaning,Urdu Meaning,Root,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text,Other Forms,Occurrences,Translation Highlight EN,Translation Highlight UR";
     const lines = allWords.map(w => [
       csvField(w.arabic), csvField(w.translit), csvField(w.english), csvField(w.urdu),
       csvField(w.root ?? ""), csvField(w.ayahRef),
       csvField(w.surahNumber ?? ""), csvField(w.ayahNumber ?? ""), csvField(w.wordPosition ?? ""),
       csvField(w.partialAyahText ?? ""), csvField(w.otherForms ?? ""), csvField(w.occurrences ?? ""),
+      csvField(w.trHlEn ?? ""), csvField(w.trHlUr ?? ""),
     ].join(","));
     const csv = UTF8_BOM + [header, ...lines].join("\n") + "\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -7786,8 +7811,8 @@ function BulkUploadPanel({ onBulkAddWords, allWords, toast_ }) {
   };
 
   const downloadBlankTemplate = () => {
-    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Root,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text,Other Forms,Occurrences\n'
-      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,س ج د,"Surah Al-Baqarah 2:144",2,144,13,,"ٱلْمَسْجِدِ = the mosque",\n';
+    const csv = UTF8_BOM + 'Arabic,Transliteration,English Meaning,Urdu Meaning,Root,Ayah Reference,Surah Number,Ayah Number,Word Position,Partial Ayah Text,Other Forms,Occurrences,Translation Highlight EN,Translation Highlight UR\n'
+      + '"مَسْجِدٌ",Masjid,Mosque,مسجد,س ج د,"Surah Al-Baqarah 2:144",2,144,13,,"ٱلْمَسْجِدِ = the mosque",,Masjid,مسجد\n';
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
