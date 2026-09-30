@@ -6463,8 +6463,11 @@ function MonthlyTargetChart({ scores, user, compact = false }) {
       count: monthlyCounts[key] || 0, isCurrent: offset === 0, target: getMonthTarget(user, key),
     });
   }
-  // The dashed line shows the CURRENT month's target; each past bar is
-  // coloured against that month's own target.
+  // Each month gets its OWN gold target marker and a "done/target" label, so
+  // past months show what was achieved against that month's target (not the
+  // current month's). Months before the learner enrolled show no target.
+  const enrolledKey = user && user.enrolledAt ? localMonthKey(user.enrolledAt) : null;
+  months.forEach(m => { m.hasTarget = !enrolledKey || m.key >= enrolledKey; });
   const target = months[months.length - 1].target;
 
   useEffect(() => {
@@ -6498,8 +6501,7 @@ function MonthlyTargetChart({ scores, user, compact = false }) {
   const barW = Math.min(maxBarW, (chartW - barGap * (months.length - 1)) / months.length);
   const startX = padL;
 
-  const maxVal = Math.max(target, ...months.map(m => m.count), ...months.map(m => m.target), 1) * 1.15;
-  const targetY = padT + chartH - (target / maxVal) * chartH;
+  const maxVal = Math.max(...months.map(m => m.count), ...months.filter(m => m.hasTarget).map(m => m.target), 1) * 1.15;
 
   return (
     <svg ref={containerRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%", maxWidth: compact ? 340 : 440, display: "block" }}>
@@ -6513,23 +6515,32 @@ function MonthlyTargetChart({ scores, user, compact = false }) {
           </g>
         );
       })}
-      {/* Target reference line */}
-      <line x1={padL} y1={targetY} x2={W - padR} y2={targetY} stroke="var(--gold2)" strokeWidth="1.5" strokeDasharray="5 4" opacity={grown ? 0.7 : 0}
-        style={{ transition: "opacity .6s ease 1.1s" }} />
-      <text x={W - padR} y={targetY - 6} fontSize={compact ? 9 : 10.5} fill="var(--gold2)" textAnchor="end" fontFamily="Poppins, sans-serif" opacity={grown ? 1 : 0}
-        style={{ transition: "opacity .6s ease 1.1s" }}>Target: {target}</text>
+      {/* Legend: the gold dashes above/through each bar are that month's target */}
+      <g opacity={grown ? 1 : 0} style={{ transition: "opacity .6s ease 1.1s" }}>
+        <line x1={W - padR - 62} y1={padT - 8} x2={W - padR - 46} y2={padT - 8} stroke="var(--gold2)" strokeWidth="2" strokeDasharray="4 3" />
+        <text x={W - padR} y={padT - 5} fontSize={compact ? 9 : 10.5} fill="var(--gold2)" textAnchor="end" fontFamily="Poppins, sans-serif">Target</text>
+      </g>
       {months.map((m, i) => {
         const x = startX + i * (barW + barGap);
         const fullBarH = (m.count / maxVal) * chartH;
         const barH = grown ? fullBarH : 0;
         const y = padT + chartH - barH;
-        const color = m.isCurrent ? "var(--cyan2)" : m.count >= m.target ? "var(--pal-teal)" : "var(--pal-rose)";
+        const color = m.isCurrent ? "var(--cyan2)" : (m.hasTarget && m.count >= m.target) ? "var(--pal-teal)" : "var(--pal-rose)";
+        const tY = padT + chartH - (m.target / maxVal) * chartH;
+        // Label sits above whichever is higher — the bar top or the target marker.
+        const labelY = Math.min(y, m.hasTarget ? tY : y) - 7;
         return (
           <g key={i}>
             <rect x={x} y={y} width={barW} height={barH} rx="3" fill={color} opacity="0.85"
               style={{ transition: `height 1.1s cubic-bezier(.22,1,.36,1) ${i * 0.09}s, y 1.1s cubic-bezier(.22,1,.36,1) ${i * 0.09}s` }} />
-            <text x={x + barW / 2} y={y - 7} fontSize={compact ? 10.5 : 13} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif"
-              style={{ transition: `opacity .5s ease ${i * 0.09 + 0.7}s`, opacity: grown ? 1 : 0 }}>{m.count}</text>
+            {m.hasTarget && (
+              <line x1={x - 4} y1={tY} x2={x + barW + 4} y2={tY} stroke="var(--gold2)" strokeWidth="2" strokeDasharray="4 3"
+                opacity={grown ? 0.9 : 0} style={{ transition: `opacity .5s ease ${i * 0.09 + 0.9}s` }} />
+            )}
+            <text x={x + barW / 2} y={labelY} fontSize={compact ? 10 : 12} fontWeight="600" fill="var(--text)" textAnchor="middle" fontFamily="Poppins, sans-serif"
+              style={{ transition: `opacity .5s ease ${i * 0.09 + 0.7}s`, opacity: grown ? 1 : 0 }}>
+              {m.count}{m.hasTarget && <tspan fill="var(--gold2)" fontWeight="500">/{m.target}</tspan>}
+            </text>
             <text x={x + barW / 2} y={H - 10} fontSize={compact ? 10 : 12} fill={m.isCurrent ? "var(--cyan2)" : "var(--muted)"} textAnchor="middle" fontFamily="Poppins, sans-serif" fontWeight={m.isCurrent ? "600" : "400"}>{m.label}</text>
           </g>
         );
