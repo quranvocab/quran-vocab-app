@@ -1430,6 +1430,8 @@ const CSS = `
 .fc-trans-text{font-size:13.5px;line-height:1.65;color:var(--text);padding:0 6px;}
 .fc-trans-text.ur{font-family:'Noto Nastaliq Urdu',serif;font-size:17px;line-height:2.1;}
 .fc-trans-credit{font-size:10.5px;color:var(--muted);margin-top:4px;}
+.fc-trans-hl{color:var(--gold2);font-weight:700;text-shadow:0 0 10px rgba(255,217,107,.35);}
+[data-theme="light"] .fc-trans-hl{color:#8a5200;text-shadow:none;background:#fff1c7;border-radius:3px;padding:0 2px;}
 .fc-word{text-align:center;padding:4px 0 12px;border-bottom:1px solid rgba(var(--cyan-rgb),.15);margin-bottom:14px;}
 .fc-word-ar{font-family:'Scheherazade New','Amiri',serif;font-size:clamp(34px,8vw,48px);color:var(--gold2);line-height:1.5;}
 .fc-word-tr{font-size:19px;font-weight:500;color:var(--text);}
@@ -5467,6 +5469,92 @@ async function fetchAyahText(surahNumber, ayahNumber) {
   _ayahTextCache[key] = out;
   return out;
 }
+// Finds where a word's meaning appears inside an ayah's translation, so it can
+// be highlighted in gold. Translations are sentence-level (not word-aligned),
+// so this is a best-effort text match: it tries each meaning variant (split on
+// "/", ",", ";", "or"), allows simple English endings (believe → believers),
+// and for very short words only highlights when there's exactly one match —
+// never a guess among several. No match simply means no highlight.
+const TR_HL_STOP = new Set(["the", "a", "an", "of", "and", "is", "be", "to"]);
+// Small function words appear many times in one ayah — highlight them only
+// when there is exactly one occurrence, so we never guess the wrong one.
+const TR_HL_FUNC = new Set(["in", "on", "at", "by", "for", "he", "she", "it", "we", "you", "they", "him", "her", "them", "his", "its", "who", "not", "no", "that", "this", "those", "these", "from", "with", "upon", "so", "if", "then", "or", "but", "what", "which",
+  "میں", "سے", "کو", "نے", "کا", "کی", "کے", "پر", "وہ", "یہ", "نہ", "جو", "تو", "بھی", "ان", "اس", "ہم", "تم"]);
+// Jalandhry usually writes "خدا" where the Arabic has Allah.
+const TR_UR_ALIASES = { "اللہ": ["خدا"], "الله": ["خدا"] };
+function trMeaningVariants(meaning) {
+  if (!meaning || meaning === "—") return [];
+  return String(meaning)
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, " ")
+    .split(/[\/,;،؛]|\s+or\s+/i)
+    .map(v => v.trim().replace(/^(to|the|a|an)\s+/i, "").replace(/[.!?:]+$/, "").trim())
+    .filter(v => v && !TR_HL_STOP.has(v.toLowerCase()))
+    .sort((a, b) => b.length - a.length);
+}
+function trEscape(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+function trStem(t) {
+  const w = t.toLowerCase();
+  for (const suf of ["ies", "ing", "ed", "es", "s", "e"]) {
+    if (w.endsWith(suf) && w.length - suf.length >= 3) return w.slice(0, -suf.length);
+  }
+  return w;
+}
+// Urdu/Arabic letters that are typed differently in different sources
+// (ہ/ه/ة, ی/ي/ى, ک/ك) are treated as the same letter, and vowel marks in the
+// translation are ignored, so "اللہ" still matches "الله".
+const TR_UR_NORM = { "ه": "ہ", "ة": "ہ", "ۃ": "ہ", "ي": "ی", "ى": "ی", "ې": "ی", "ك": "ک" };
+function trNormUr(s) { return s.replace(/[هةۃيىېك]/g, c => TR_UR_NORM[c]); }
+const TR_MARKS = "[\\u064B-\\u0652\\u0670\\u0654\\u0655]*";
+function trBuildBody(tokens, lang) {
+  if (lang === "en") {
+    return tokens.map((t, i) => (i === tokens.length - 1 && t.length >= 4) ? trEscape(trStem(t)) + "[a-z]*" : trEscape(t)).join("\\s+") + "(?![a-z])";
+  }
+  // Urdu: letter-by-letter with optional vowel marks; a following suffix is
+  // allowed (دل → دلوں), short words are guarded by the one-match rule below.
+  return tokens.map(t => [...trNormUr(t)].map(c => trEscape(c) + TR_MARKS).join("")).join("\\s+");
+}
+function findTranslationHighlights(text, meaning, lang) {
+  if (!text) return [];
+  const hay = lang === "en" ? text : trNormUr(text); // same length, so indices line up
+  const variants = trMeaningVariants(meaning);
+  // Try whole meanings first, then single content words from them
+  // ("have faith" → "faith", "کفر کرنا" → "کفر").
+  const singles = [];
+  variants.forEach(v => v.split(/\s+/).forEach(t => {
+    if (t.length >= 3 && !TR_HL_STOP.has(t.toLowerCase()) && !variants.includes(t) && !singles.includes(t)) singles.push(t);
+  }));
+  const aliases = lang === "en" ? [] : variants.flatMap(v => TR_UR_ALIASES[v] || []);
+  for (const v of [...variants, ...singles, ...aliases]) {
+    let re;
+    try { re = new RegExp("(^|[\\s\\p{P}])(" + trBuildBody(v.split(/\s+/), lang) + ")", lang === "en" ? "giu" : "gu"); } catch (e) { continue; }
+    const ranges = [];
+    let m;
+    while ((m = re.exec(hay)) !== null) {
+      const start = m.index + m[1].length;
+      ranges.push([start, start + m[2].length]);
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (!ranges.length) continue;
+    const isFunc = TR_HL_FUNC.has(v.toLowerCase()) || v.replace(/\s+/g, "").length <= 2;
+    if (isFunc && ranges.length > 1) continue; // function word: only if unambiguous
+    return ranges;
+  }
+  return [];
+}
+function renderTranslationWithHighlight(text, meaning, lang) {
+  const ranges = findTranslationHighlights(text, meaning, lang);
+  if (!ranges.length) return text;
+  const out = [];
+  let pos = 0;
+  ranges.forEach(([s, e], i) => {
+    if (s > pos) out.push(text.slice(pos, s));
+    out.push(<span key={i} className="fc-trans-hl">{text.slice(s, e)}</span>);
+    pos = e;
+  });
+  if (pos < text.length) out.push(text.slice(pos));
+  return out;
+}
+
 // Source line shown under a translation — Tanzil's terms ask for attribution.
 // Data: en.sahih (Saheeh International) and ur.jalandhry (Fateh Muhammad Jalandhry),
 // copied unmodified from the Tanzil.net text files into ayah_texts.
@@ -5697,7 +5785,7 @@ function AyahFlashCard({ word, onClose }) {
                 {ayahData.en && <button className={trLang === "en" ? "on" : ""} onClick={() => { setTrPref("en"); storageSet("qv_ayah_tr", "en"); }}>English</button>}
                 {ayahData.ur && <button className={trLang === "ur" ? "on" : ""} onClick={() => { setTrPref("ur"); storageSet("qv_ayah_tr", "ur"); }}>اردو</button>}
               </div>
-              <div className={`fc-trans-text ${trLang === "ur" ? "ur" : ""}`} dir={trLang === "ur" ? "rtl" : "ltr"}>{ayahData[trLang]}</div>
+              <div className={`fc-trans-text ${trLang === "ur" ? "ur" : ""}`} dir={trLang === "ur" ? "rtl" : "ltr"}>{renderTranslationWithHighlight(ayahData[trLang], trLang === "ur" ? word.urdu : word.english, trLang)}</div>
               <div className="fc-trans-credit">{AYAH_TR_CREDIT[trLang]}</div>
             </div>
           )}
