@@ -234,10 +234,30 @@ function buildStrictMastery(scores) {
 // ── Monthly mastery counts (for the monthly-target feature) ─────────────────
 // A word is attributed to the calendar month in which it FIRST reached mastery,
 // and only ever to that one month — even if it is later reset and re-mastered.
+// "YYYY-MM" in the learner's OWN local time. toISOString() converts to UTC,
+// which for any timezone ahead of UTC (e.g. Gulf/India) turned local midnight
+// on the 1st into the previous month — shifting every month's count by one.
+function localMonthKey(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// Target for a given month. Targets are stored per month (users.monthly_targets,
+// e.g. {"2026-09":10,"2026-10":26}) so editing this month never rewrites a
+// past month. A month with no entry inherits the most recent earlier entry;
+// before any entry exists it falls back to the legacy single target.
+function getMonthTarget(user, monthKey) {
+  const map = (user && user.monthlyTargets) || {};
+  if (map[monthKey] != null) return map[monthKey];
+  const earlier = Object.keys(map).filter(k => k < monthKey).sort();
+  if (earlier.length) return map[earlier[earlier.length - 1]];
+  return (user && user.monthlyTarget) || 30;
+}
+
 function buildMonthlyMasteryCounts(scores) {
-  const firstMasteredMonth = {}; // key -> "YYYY-MM"
+  const firstMasteredMonth = {}; // key -> "YYYY-MM" (local time)
   walkMastery(scores.filter(s => s.date), (key, s) => {
-    if (!firstMasteredMonth[key]) firstMasteredMonth[key] = new Date(s.date).toISOString().slice(0, 7);
+    if (!firstMasteredMonth[key]) firstMasteredMonth[key] = localMonthKey(s.date);
   });
   const counts = {};
   for (const month of Object.values(firstMasteredMonth)) counts[month] = (counts[month] || 0) + 1;
@@ -2899,6 +2919,7 @@ export default function App() {
       dayProgress: progressRow?.day_progress || {},
       emailVerified: !!profile.verified, supabaseId: authId,
       monthlyTarget: profile.monthly_word_target || 30,
+      monthlyTargets: profile.monthly_targets || {},
     };
     setUser(u);
     storageSet("qv_user", u);
@@ -4862,17 +4883,15 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
   const instrRtl = !!INSTR_LANGS.find(l => l.code === instrLang && l.rtl);
   useEffect(() => { if (initialTab && onTabApplied) onTabApplied(); }, []);
   const [editingTarget, setEditingTarget] = useState(false);
-  const [targetVal, setTargetVal] = useState(user.monthlyTarget || 30);
+  const [targetVal, setTargetVal] = useState(() => getMonthTarget(user, localMonthKey(new Date())));
   const [savingTarget, setSavingTarget] = useState(false);
 
   const monthlyCounts = React.useMemo(() => buildMonthlyMasteryCounts(user.scores || []), [user.scores]);
-  const target = user.monthlyTarget || 30;
-
   const now = new Date();
   const monthInfo = (offset) => {
     const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-    const key = d.toISOString().slice(0, 7);
-    return { key, label: d.toLocaleDateString("en-GB", { month: "short" }), count: monthlyCounts[key] || 0 };
+    const key = localMonthKey(d);
+    return { key, label: d.toLocaleDateString("en-GB", { month: "short" }), count: monthlyCounts[key] || 0, target: getMonthTarget(user, key) };
   };
   const lastMonth = monthInfo(-1);
   const thisMonth = monthInfo(0);
@@ -4890,10 +4909,12 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
     const n = parseInt(targetVal, 10);
     if (!n || n < 1 || n > 500) { toast_("Enter a valid target between 1 and 500."); return; }
     setSavingTarget(true);
-    const { error } = await supabase.from("users").update({ monthly_word_target: n }).eq("auth_id", user.supabaseId);
+    // Only THIS month's entry changes; past months keep their own targets.
+    const newTargets = { ...(user.monthlyTargets || {}), [thisMonth.key]: n };
+    const { error } = await supabase.from("users").update({ monthly_word_target: n, monthly_targets: newTargets }).eq("auth_id", user.supabaseId);
     setSavingTarget(false);
     if (error) { toast_("Failed to save target — please try again."); return; }
-    saveUser({ ...user, monthlyTarget: n });
+    saveUser({ ...user, monthlyTarget: n, monthlyTargets: newTargets });
     setEditingTarget(false);
     toast_(`✅ Monthly target set to ${n} words`);
   };
@@ -4943,7 +4964,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
             </div>
             <div className="phub-stat-card month">
               <span className="phub-stat-icon">🎯</span>
-              <div><div className="phub-stat-num">{thisMonth.count}/{target}</div><div className="phub-stat-label">This Month</div></div>
+              <div><div className="phub-stat-num">{thisMonth.count}/{thisMonth.target}</div><div className="phub-stat-label">This Month</div></div>
             </div>
             <div className="phub-stat-card best">
               <span className="phub-stat-icon">🏆</span>
@@ -4962,21 +4983,21 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
           <div className="phub-section-label">Monthly Challenge</div>
           <div className="phub-challenge-row">
             <div className="phub-badge-card past">
-              <div className={`phub-badge-shape ${lastMonth.count >= target ? "met" : "missed"}`}>
-                {lastMonth.count >= target ? "🏅" : "📕"}
+              <div className={`phub-badge-shape ${lastMonth.count >= lastMonth.target ? "met" : "missed"}`}>
+                {lastMonth.count >= lastMonth.target ? "🏅" : "📕"}
               </div>
               <div className="phub-badge-month">{lastMonth.label}</div>
-              <div className="phub-badge-sub">{lastMonth.count}/{target}</div>
+              <div className="phub-badge-sub">{lastMonth.count}/{lastMonth.target}</div>
             </div>
             <div className="phub-badge-card current">
               <div className="phub-badge-shape active">🎯</div>
               <div className="phub-badge-month">{thisMonth.label}</div>
-              <div className="phub-badge-sub">{thisMonth.count}/{target}</div>
+              <div className="phub-badge-sub">{thisMonth.count}/{thisMonth.target}</div>
               {editingTarget ? (
                 <div className="phub-target-edit">
                   <input type="number" min="1" max="500" value={targetVal} onChange={e => setTargetVal(e.target.value)} />
                   <button className="btn bh bsm" disabled={savingTarget} onClick={saveTarget}>{savingTarget ? "…" : "Save"}</button>
-                  <button className="btn bh bsm" onClick={() => { setEditingTarget(false); setTargetVal(user.monthlyTarget || 30); }}>✕</button>
+                  <button className="btn bh bsm" onClick={() => { setEditingTarget(false); setTargetVal(thisMonth.target); }}>✕</button>
                 </div>
               ) : (
                 <button className="phub-target-btn" onClick={() => setEditingTarget(true)}>🎯 Edit Target</button>
@@ -6425,7 +6446,7 @@ function WordStrengthPieChart({ strong, weak, even, compact = false }) {
 // ScoreBarChart/WordStrengthPieChart: scroll-into-view animation, same
 // palette (teal = target met, coral = missed, cyan = current month still in
 // progress), same growth duration/stagger/easing.
-function MonthlyTargetChart({ scores, target, compact = false }) {
+function MonthlyTargetChart({ scores, user, compact = false }) {
   const containerRef = useRef(null);
   const [inView, setInView] = useState(false);
   const [grown, setGrown] = useState(false);
@@ -6436,12 +6457,15 @@ function MonthlyTargetChart({ scores, target, compact = false }) {
   const months = [];
   for (let offset = -5; offset <= 0; offset++) {
     const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-    const key = d.toISOString().slice(0, 7);
+    const key = localMonthKey(d);
     months.push({
       key, label: d.toLocaleDateString("en-GB", { month: "short" }),
-      count: monthlyCounts[key] || 0, isCurrent: offset === 0,
+      count: monthlyCounts[key] || 0, isCurrent: offset === 0, target: getMonthTarget(user, key),
     });
   }
+  // The dashed line shows the CURRENT month's target; each past bar is
+  // coloured against that month's own target.
+  const target = months[months.length - 1].target;
 
   useEffect(() => {
     if (inView) return;
@@ -6474,7 +6498,7 @@ function MonthlyTargetChart({ scores, target, compact = false }) {
   const barW = Math.min(maxBarW, (chartW - barGap * (months.length - 1)) / months.length);
   const startX = padL;
 
-  const maxVal = Math.max(target, ...months.map(m => m.count), 1) * 1.15;
+  const maxVal = Math.max(target, ...months.map(m => m.count), ...months.map(m => m.target), 1) * 1.15;
   const targetY = padT + chartH - (target / maxVal) * chartH;
 
   return (
@@ -6499,7 +6523,7 @@ function MonthlyTargetChart({ scores, target, compact = false }) {
         const fullBarH = (m.count / maxVal) * chartH;
         const barH = grown ? fullBarH : 0;
         const y = padT + chartH - barH;
-        const color = m.isCurrent ? "var(--cyan2)" : m.count >= target ? "var(--pal-teal)" : "var(--pal-rose)";
+        const color = m.isCurrent ? "var(--cyan2)" : m.count >= m.target ? "var(--pal-teal)" : "var(--pal-rose)";
         return (
           <g key={i}>
             <rect x={x} y={y} width={barW} height={barH} rx="3" fill={color} opacity="0.85"
@@ -6556,7 +6580,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
           <div className="card chart-col chart-col-teal" style={{ marginBottom: 18 }}>
             <div className="chart-col-head"><div className="lbl" style={{ marginBottom: 0 }}>Monthly Mastery Target — Last 6 Months</div></div>
             <div className="chart-col-inner">
-              <MonthlyTargetChart scores={user.scores || []} target={user.monthlyTarget || 30} />
+              <MonthlyTargetChart scores={user.scores || []} user={user} />
             </div>
           </div>
 
