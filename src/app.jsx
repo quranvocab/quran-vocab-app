@@ -5553,18 +5553,27 @@ function findTranslationHighlights(text, meaning, lang) {
 // appear in THAT ayah's translation (several separated by "|"). When set, they
 // win over the automatic match — this is how words whose meaning isn't written
 // literally in the translation (e.g. particles like إِنَّ, قَدْ) get highlighted.
+// Braces mark the part to highlight inside a longer phrase that pins down the
+// right occurrence: "ہدایت {پر}" highlights only پر, and only the one after
+// ہدایت. A single "-" means "not expressed in this translation" — no highlight
+// and no automatic guess.
 function findCuratedHighlights(text, phrases, lang) {
   if (!text || !phrases) return [];
   const hay = lang === "en" ? text.toLowerCase() : trNormUr(text);
   const ranges = [];
   String(phrases).split("|").map(p => p.trim()).filter(Boolean).forEach(p => {
-    const needle = lang === "en" ? p.toLowerCase() : trNormUr(p);
+    const full = p.replace(/[{}]/g, "");
+    const needle = lang === "en" ? full.toLowerCase() : trNormUr(full);
     const at = hay.indexOf(needle);
-    if (at >= 0) ranges.push([at, at + needle.length]);
+    if (at < 0) return;
+    const open = p.indexOf("{"), close = p.indexOf("}");
+    if (open >= 0 && close > open) ranges.push([at + open, at + close - 1]);
+    else ranges.push([at, at + needle.length]);
   });
   return ranges.sort((a, b) => a[0] - b[0]).filter((r, i, arr) => i === 0 || r[0] >= arr[i - 1][1]);
 }
 function renderTranslationWithHighlight(text, meaning, lang, curated) {
+  if (curated && String(curated).trim() === "-") return text; // marked: not expressed in this translation
   const picked = findCuratedHighlights(text, curated, lang);
   const ranges = picked.length ? picked : findTranslationHighlights(text, meaning, lang);
   if (!ranges.length) return text;
