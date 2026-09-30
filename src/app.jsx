@@ -94,7 +94,7 @@ function getMasteredWords(scores, allWords = []) {
 // from the set currently in progress (that set's own dedicated quiz is the
 // only way to first encounter and complete it).
 function getCompletedWords(dayProgress = {}, allWords = []) {
-  const completedDays = Object.keys(dayProgress || {}).filter(k => k !== "free" && dayProgress[k]).map(Number);
+  const completedDays = Object.keys(dayProgress || {}).filter(k => /^\d+$/.test(k) && dayProgress[k]).map(Number);
   const seen = new Set();
   const result = [];
   completedDays.forEach(d => {
@@ -3438,7 +3438,10 @@ export default function App() {
         const allScoresForGate = [...(user.scores || []), rec];
         const masteryGateMet = quiz.day ? hasMetMasteryGate(quiz.day, allScoresForGate, allWords) : false;
         const unlockedNow = passed || masteryGateMet;
-        const dp = (!quiz.day || unlockedNow)
+        // Weak Words Practice (quiz.day === "weak-practice") is not a set, so it
+        // must never write a completion key — that key was inflating "Completed".
+        const isWeakPractice = quiz.day === "weak-practice";
+        const dp = (!isWeakPractice && (!quiz.day || unlockedNow))
           ? { ...user.dayProgress, [String(quiz.day || "free")]: new Date().toISOString() }
           : user.dayProgress;
         const updated = { ...user, scores: allScoresForGate, dayProgress: dp };
@@ -3501,7 +3504,8 @@ export default function App() {
     const allScoresForGate = [...(user.scores || []), rec];
     const masteryGateMet = quiz.day ? hasMetMasteryGate(quiz.day, allScoresForGate, allWords) : false;
     const unlockedNow = passed || masteryGateMet;
-    const dp = (!quiz.day || unlockedNow)
+    const isWeakPractice = quiz.day === "weak-practice";
+    const dp = (!isWeakPractice && (!quiz.day || unlockedNow))
       ? { ...user.dayProgress, [String(quiz.day || "free")]: new Date().toISOString() }
       : user.dayProgress;
     const updated = { ...user, scores: allScoresForGate, dayProgress: dp };
@@ -4075,7 +4079,10 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
   const streak = calcStreak(user?.scores || []);
   // Actual quiz completion = distinct numbered days completed / total days in programme
   // (deliberately excludes "free" quick-quiz attempts and is 0 for a brand-new user)
-  const daysCompleted = user ? Object.keys(user.dayProgress || {}).filter(k => k !== "free").length : 0;
+  // Only real set numbers count as completed sets — the dayProgress map also
+  // holds non-set keys ("free" for the All Sets Quiz, and older accounts may
+  // carry a stray "weak-practice" key), which must never inflate this count.
+  const daysCompleted = user ? Object.keys(user.dayProgress || {}).filter(k => /^\d+$/.test(k) && user.dayProgress[k]).length : 0;
   const recentSessions = [...(user?.scores || [])].reverse().slice(0, 4);
   const wordsAddedLastWeek = countWordsAddedLastWeek(allWords);
   const quranCoverage = estimateQuranCoverage(totalWordCount ?? allWords.length);
@@ -4243,11 +4250,17 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
               trapping this modal inside the card's own stacking context
               instead of letting it escape to the true top of the page. */}
           <div style={{ overflow: "hidden", marginTop: 4, direction: "ltr" }}>
-            <div style={{ display: "inline-flex", whiteSpace: "nowrap", animation: "marquee 22s linear infinite", fontSize: 11, color: "var(--muted)" }}>
-              <span>Keep going — each quiz unlocks more words on your path to the Quran.</span>
-              <span style={{ margin: "0 20px", color: "var(--cyan2)", opacity: .5 }}>✦</span>
-              <span>Keep going — each quiz unlocks more words on your path to the Quran.</span>
-              <span style={{ margin: "0 20px", color: "var(--cyan2)", opacity: .5 }}>✦</span>
+            {/* Two identical halves, each with 4 copies of the message, so each
+                half is always wider than the card even on a wide PC screen —
+                translateX(-50%) then loops seamlessly with no blank gap. The
+                duration scales with the copy count to keep the same speed. */}
+            <div style={{ display: "inline-flex", whiteSpace: "nowrap", animation: "marquee 88s linear infinite", fontSize: 11, color: "var(--muted)" }}>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <React.Fragment key={i}>
+                  <span>Keep going — each quiz unlocks more words on your path to the Quran.</span>
+                  <span style={{ margin: "0 20px", color: "var(--cyan2)", opacity: .5 }}>✦</span>
+                </React.Fragment>
+              ))}
             </div>
           </div>
         </div>
