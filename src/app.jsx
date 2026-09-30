@@ -5467,9 +5467,10 @@ async function fetchAyahText(surahNumber, ayahNumber) {
   _ayahTextCache[key] = out;
   return out;
 }
-// Source line shown under a translation. Update with the translator's name once chosen
-// (e.g. "Saheeh International" / "Fateh Muhammad Jalandhry") — Tanzil's terms ask for attribution.
-const AYAH_TR_CREDIT = { en: "English translation via Tanzil.net", ur: "Urdu translation via Tanzil.net" };
+// Source line shown under a translation — Tanzil's terms ask for attribution.
+// Data: en.sahih (Saheeh International) and ur.jalandhry (Fateh Muhammad Jalandhry),
+// copied unmodified from the Tanzil.net text files into ayah_texts.
+const AYAH_TR_CREDIT = { en: "Saheeh International · via Tanzil.net", ur: "Fateh Muhammad Jalandhry · via Tanzil.net" };
 
 // ── Admin-uploaded ayah images (Supabase Storage) ───────────────────────────
 // Per-WORD, not per-ayah — even when several words share the same ayah,
