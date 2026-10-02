@@ -6305,7 +6305,7 @@ function ContentReviewPage({ isAdmin, reviewerName, onExit, toast_, initialWordI
   );
 }
 
-function AyahFlashCard({ word, onClose }) {
+function AyahFlashCard({ word, onClose, allWords }) {
   const { dbId: wordId, surahNumber, ayahNumber, wordPosition } = word;
   const hasAyah = !!(surahNumber && ayahNumber);
   const forms = parseOtherForms(word.otherForms);
@@ -6401,6 +6401,7 @@ function AyahFlashCard({ word, onClose }) {
             </div>
           )}
           {forms.length > 0 && <OtherFormsList forms={forms} />}
+          {allWords && <WordFamilySection word={word} allWords={allWords} />}
           {hasAyah && (
             <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 14 }}>
               {ayahText
@@ -6446,7 +6447,8 @@ function OtherFormsList({ forms }) {
 function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false, allWords, progressTag = null }) {
   const [showAyahPopup, setShowAyahPopup] = useState(false);
   const forms = parseOtherForms(word.otherForms);
-  const hasDetails = !!word.ayahRef || forms.length > 0;
+  const hasFamily = !!(allWords && normalizeRoot(word.root) && getRelatedWordsByRoot(word, allWords).length > 0);
+  const hasDetails = !!word.ayahRef || forms.length > 0 || hasFamily;
   const hasAyahRef = !!(word.surahNumber && word.ayahNumber);
   const hasWordAudio = !!(word.surahNumber && word.ayahNumber && word.wordPosition);
   const reviewAccess = React.useContext(ReviewAccessContext);
@@ -6482,8 +6484,7 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false, allW
           )}
         </div>
       </div>
-      {showAyahPopup && hasDetails && <AyahFlashCard word={word} onClose={() => setShowAyahPopup(false)} />}
-      {allWords && <WordFamilySection word={word} allWords={allWords} />}
+      {showAyahPopup && hasDetails && <AyahFlashCard word={word} allWords={allWords} onClose={() => setShowAyahPopup(false)} />}
     </div>
   );
 }
@@ -6498,7 +6499,7 @@ function WordFamilySection({ word, allWords }) {
   if (!normalizeRoot(word.root) || related.length === 0) return null;
 
   return (
-    <div style={{ marginTop: 8 }}>
+    <div style={{ marginTop: 12, textAlign: "center" }}>
       <button className="word-toggle" onClick={() => setOpen(o => !o)}>
         {open ? "Hide Word Family ▲" : `See ${related.length} related word${related.length !== 1 ? "s" : ""} from this root ▼`}
       </button>
