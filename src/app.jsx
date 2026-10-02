@@ -225,6 +225,25 @@ function walkMastery(scores, onFirstMastered) {
   return { st, attempted };
 }
 
+// "Nearly there" nudges, from the same walk as mastery itself:
+//  • nearlySet — not mastered, MASTERY_STREAK_REQUIRED-1 (2) correct in a row:
+//    one more correct answer masters it.
+//  • atRiskSet — mastered, with MASTERY_RESET_WRONGS-1 (1) wrong since: one more
+//    wrong answer in a row un-masters it.
+function buildMasteryProgress(scores) {
+  const { st, attempted } = walkMastery(scores);
+  const masteredSet = new Set(), nearlySet = new Set(), atRiskSet = new Set();
+  for (const [key, w] of Object.entries(st)) {
+    if (w.mastered) {
+      masteredSet.add(key);
+      if (w.slips >= MASTERY_RESET_WRONGS - 1) atRiskSet.add(key);
+    } else if (w.streak >= MASTERY_STREAK_REQUIRED - 1) {
+      nearlySet.add(key);
+    }
+  }
+  return { masteredSet, nearlySet, atRiskSet, attemptedSet: attempted };
+}
+
 function buildStrictMastery(scores) {
   const { st, attempted } = walkMastery(scores);
   const masteredSet = new Set(Object.entries(st).filter(([, w]) => w.mastered).map(([key]) => key));
@@ -614,6 +633,11 @@ function mapWordRow(row) {
     wordPosition: row.word_position ?? null,
     partialAyahText: row.partial_ayah_text || "",
     trHlEn: row.tr_hl_en || "", trHlUr: row.tr_hl_ur || "",
+    reviewStatus: row.review_status || "",
+    // Fixed pronunciation source: the word's own exact form in the Qur'an. Kept
+    // separate from the (Alim-chosen) display ayah, so the play button always
+    // pronounces exactly the Arabic shown, whichever ayah the card displays.
+    audioRef: row.audio_ref && row.audio_ref.s ? row.audio_ref : null,
   };
 }
 
@@ -1438,6 +1462,55 @@ const CSS = `
 .fc-trans-text{font-size:13.5px;line-height:1.65;color:var(--text);padding:0 6px;}
 .fc-trans-text.ur{font-family:'Noto Nastaliq Urdu',serif;font-size:17px;line-height:2.1;}
 .fc-trans-credit{font-size:10.5px;color:var(--muted);margin-top:4px;}
+.wbw-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:6px 0 4px;}
+.wbw-cell{display:flex;flex-direction:column;align-items:center;min-width:58px;max-width:150px;padding:6px 8px 5px;border:1px solid rgba(var(--cyan-rgb),.22);border-radius:9px;background:rgba(255,255,255,.03);}
+.wbw-ar{font-family:'Scheherazade New',serif;font-size:27px;line-height:1.55;color:var(--text);}
+.wbw-gl{font-size:12.5px;line-height:1.35;color:var(--muted);text-align:center;margin-top:2px;}
+.wbw-gl.ur{font-family:'Noto Nastaliq Urdu',serif;font-size:14px;line-height:1.9;}
+.wbw-cell.target{border-color:var(--gold2);background:rgba(255,217,107,.12);box-shadow:0 0 14px rgba(255,217,107,.18);}
+.wbw-cell.target .wbw-ar,.wbw-cell.target .wbw-gl{color:var(--gold2);font-weight:600;}
+[data-theme="light"] .wbw-cell{background:#fff;border-color:rgba(7,28,42,.15);}
+[data-theme="light"] .wbw-cell.target{background:#fff1c7;border-color:#b8720a;box-shadow:none;}
+[data-theme="light"] .wbw-cell.target .wbw-ar,[data-theme="light"] .wbw-cell.target .wbw-gl{color:#8a5200;}
+.rv-page{max-width:760px;}
+.rv-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+.rv-sub{font-size:13px;color:var(--muted);}
+.rv-progress{font-size:15px;color:var(--muted);}
+.rv-progress b{color:var(--gold2);font-size:20px;}
+.rv-tabs,.rv-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.rv-tabs button,.rv-filters button{background:transparent;border:1px solid rgba(var(--cyan-rgb),.3);color:var(--muted);border-radius:999px;padding:5px 14px;font-size:13px;cursor:pointer;}
+.rv-tabs button.on,.rv-filters button.on{background:var(--cyan);color:#fff;border-color:var(--cyan);}
+.rv-nav{display:flex;gap:8px;align-items:center;margin-bottom:12px;}
+.rv-nav select{flex:1;min-width:0;background:rgba(255,255,255,.06);color:var(--text);border:1px solid rgba(var(--cyan-rgb),.25);border-radius:8px;padding:7px;font-size:14px;}
+.rv-word{text-align:center;margin-bottom:10px;}
+.rv-chip{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:999px;border:1px solid rgba(var(--cyan-rgb),.3);color:var(--muted);margin-inline-start:6px;}
+.rv-chip.verified{color:#22c55e;border-color:rgba(34,197,94,.5);}
+.rv-chip.flagged{color:#f59e0b;border-color:rgba(245,158,11,.5);}
+.rv-chip.draft{color:var(--cyan2);}
+.rv-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.rv-ur{font-family:'Noto Nastaliq Urdu',serif !important;line-height:1.9;}
+.rv-label{font-size:13px;color:var(--muted);margin:8px 0 6px;letter-spacing:.04em;display:flex;align-items:center;flex-wrap:wrap;}
+.rv-opts{margin-top:6px;}
+.rv-opt{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid rgba(var(--cyan-rgb),.2);border-radius:9px;margin-bottom:6px;cursor:pointer;font-size:14px;}
+.rv-opt.on{border-color:var(--cyan);background:rgba(var(--cyan-rgb),.08);}
+.rv-opt-form{font-family:'Scheherazade New',serif;font-size:20px;color:var(--gold2);margin-inline-start:auto;}
+.rv-wbw{display:flex;flex-direction:column;gap:6px;}
+.rv-wbw-row{display:grid;grid-template-columns:minmax(70px,1fr) 1.3fr 1.3fr;gap:6px;align-items:center;padding:4px 6px;border-radius:8px;}
+.rv-wbw-row.target{background:rgba(255,217,107,.10);outline:1px solid rgba(255,217,107,.45);}
+.rv-wbw-ar{font-family:'Scheherazade New',serif;font-size:23px;text-align:right;direction:rtl;}
+.rv-wbw-row input,.rv-note{width:100%;min-width:0;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(var(--cyan-rgb),.2);color:var(--text);padding:6px 8px;border-radius:7px;font-size:14px;}
+.rv-note{min-height:70px;font-family:'Poppins',sans-serif;}
+.rv-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px;}
+.rv-flag{color:#f59e0b !important;border-color:rgba(245,158,11,.5) !important;}
+.rv-log{display:flex;flex-direction:column;gap:8px;}
+.rv-log-row{border-bottom:1px solid rgba(var(--cyan-rgb),.12);padding:6px 0;display:flex;flex-direction:column;gap:4px;align-items:flex-start;}
+.rv-log-row.undone{opacity:.5;}
+.rv-log-meta{font-size:12px;color:var(--muted);}
+.rv-log-word{font-family:'Scheherazade New',serif;font-size:17px;color:var(--text);}
+.rv-log-vals{font-size:13.5px;word-break:break-word;}
+.rv-log-vals .old{color:#f87171;text-decoration:line-through;}
+.rv-log-vals .new{color:#22c55e;}
+@media (max-width:600px){.rv-fields{grid-template-columns:1fr;}.rv-wbw-row{grid-template-columns:1fr 1fr;}.rv-wbw-ar{grid-column:1 / -1;text-align:center;}.wbw-ar{font-size:24px;}.wbw-cell{min-width:52px;}}
 .fc-trans-hl{color:var(--gold2);font-weight:700;text-shadow:0 0 10px rgba(255,217,107,.35);}
 [data-theme="light"] .fc-trans-hl{color:#8a5200;text-shadow:none;background:#fff1c7;border-radius:3px;padding:0 2px;}
 .fc-word{text-align:center;padding:4px 0 12px;border-bottom:1px solid rgba(var(--cyan-rgb),.15);margin-bottom:14px;}
@@ -1502,13 +1575,14 @@ html{overflow-x:hidden;}
 [data-theme="light"] .page-home::before,[data-theme="light"] .page-enroll::before{
   /* Wide (landscape) photo that spans the full text block — both finials, the minaret and the
      large domes — with its edges pre-faded to transparent inside the image, so no borders show. */
-  background:url("/images/masjid-bg-day-wide.webp") center top/100% 100% no-repeat;
+  /* Edge fades (thin: ~3% sides, ~9% bottom) are baked into the image files. */
+  background:url("/images/masjid-bg-day-wide.webp?v=2") center top/100% 100% no-repeat;
   height:auto;aspect-ratio:4/3;
   -webkit-mask-image:none;mask-image:none;
 }
 @media(max-width:700px){
   [data-theme="light"] .page-home::before,[data-theme="light"] .page-enroll::before{
-    background:url("/images/masjid-bg-day.webp") center top/contain no-repeat;
+    background:url("/images/masjid-bg-day.webp?v=2") center top/contain no-repeat;
     height:min(640px,72vh);aspect-ratio:auto;
   }
 }
@@ -1874,6 +1948,23 @@ input[type="password"]::-ms-clear{display:none;}
   box-shadow:0 10px 36px rgba(0,0,0,.45),0 0 24px rgba(var(--cyan-rgb),.14),inset 0 1px 0 rgba(255,255,255,.09);
 }
 .word-card-unmastered{background:rgba(255,82,82,.05);border-color:rgba(255,82,82,.25);}
+.mtag{display:inline-block;margin-top:6px;font-size:12px;line-height:1.3;padding:3px 10px;border-radius:999px;border:1px solid;font-weight:600;}
+.mtag-nearly{color:var(--gold2);border-color:rgba(255,217,107,.5);background:rgba(255,217,107,.10);}
+.mtag-risk{color:#f59e0b;border-color:rgba(245,158,11,.5);background:rgba(245,158,11,.10);}
+.mtag-summary{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+.mtag-summary .mtag{margin-top:0;}
+.mnudge{text-align:left;border-radius:10px;padding:12px 14px;margin:0 0 16px;border:1px solid;}
+.mnudge-nearly{background:rgba(255,217,107,.08);border-color:rgba(255,217,107,.4);}
+.mnudge-risk{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.4);}
+.mnudge-head{font-size:15px;font-weight:700;color:var(--gold2);margin-bottom:3px;}
+.mnudge-risk .mnudge-head{color:#f59e0b;}
+.mnudge-sub{font-size:13px;color:var(--muted);margin-bottom:9px;line-height:1.45;}
+.mnudge-list{display:flex;flex-wrap:wrap;gap:6px;}
+.mnudge-chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text);background:rgba(255,255,255,.05);border:1px solid rgba(var(--cyan-rgb),.2);border-radius:999px;padding:3px 11px;}
+.mnudge-chip .arabic{font-size:18px;color:var(--gold3);}
+[data-theme="light"] .mtag-nearly,[data-theme="light"] .mnudge-nearly .mnudge-head{color:#8a5200;}
+[data-theme="light"] .mtag-risk,[data-theme="light"] .mnudge-risk .mnudge-head{color:#a85d00;}
+[data-theme="light"] .mnudge-chip{background:#fff;}
 .word-card-unmastered:hover{border-color:rgba(255,82,82,.45);}
 .word-card-main{display:grid;grid-template-columns:auto 1fr auto;align-items:stretch;gap:14px;}
 .war{font-family:'Scheherazade New',serif;font-size:39px;font-weight:600;color:var(--gold2);text-align:right;text-shadow:0 0 18px rgba(255,184,0,.3);display:flex;align-items:center;min-width:80px;}
@@ -1908,6 +1999,7 @@ input[type="password"]::-ms-clear{display:none;}
 .wen{font-size:20px;font-weight:400;color:var(--text);text-align:center;}
 .word-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1;min-width:0;}
 .word-urdu{font-family:'Noto Nastaliq Urdu',serif;font-size:22px;line-height:1.9;color:var(--teal2);direction:rtl;text-align:right;text-shadow:0 0 12px rgba(0,212,168,.25);}
+.rv-edit-btn{color:var(--gold2) !important;border-color:rgba(255,217,107,.45) !important;}
 .word-toggle{
   background:rgba(var(--cyan-rgb),.08);border:1px solid rgba(var(--cyan-rgb),.28);
   color:var(--muted);font-size:13px;padding:5px 10px;border-radius:8px;
@@ -2095,6 +2187,23 @@ input[type="password"]::-ms-clear{display:none;}
 .modal-close{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:var(--muted);font-size:21px;cursor:pointer;line-height:1;padding:3px 8px;border-radius:6px;transition:all .15s;}
 .modal-close:hover{color:var(--text);background:rgba(255,255,255,.1);}
 .modal-body{padding:22px 24px 26px;}
+.terms-check{display:flex;align-items:flex-start;gap:9px;font-size:13px;line-height:1.5;color:var(--text);margin:12px 0 12px;cursor:pointer;text-align:left;}
+.terms-check input{margin-top:3px;width:16px;height:16px;flex:0 0 auto;accent-color:var(--cyan);}
+.legal-link{background:none;border:none;padding:0;color:var(--cyan2);font:inherit;text-decoration:underline;cursor:pointer;}
+.legal-foot{text-align:center;font-size:11.5px;color:var(--muted);padding:22px 12px 14px;opacity:.85;}
+.legal-body{max-height:min(70vh,640px);overflow-y:auto;}
+.legal-meta{font-size:12px;color:var(--muted);margin:0 0 10px;}
+.legal-sec h4{font-size:14.5px;color:var(--gold2);margin:14px 0 4px;font-weight:600;}
+.legal-sec p{font-size:13.5px;line-height:1.65;color:var(--text);margin:0 0 6px;}
+[data-theme="light"] .legal-sec h4{color:#8a5200;}
+.beta-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.beta-stats div{text-align:center;background:rgba(var(--cyan-rgb),.07);border:1px solid rgba(var(--cyan-rgb),.22);border-radius:10px;padding:10px 4px;}
+.beta-stats b{display:block;font-size:24px;color:var(--gold2);font-weight:700;line-height:1.2;}
+.beta-stats span{font-size:11.5px;color:var(--muted);}
+.beta-later{display:block;margin:12px auto 0;background:none;border:none;color:var(--muted);font-size:12.5px;text-decoration:underline;cursor:pointer;}
+.ft-badge{display:inline-block;margin-top:6px;font-size:12px;font-weight:600;color:var(--gold2);background:rgba(255,217,107,.12);border:1px solid rgba(255,217,107,.45);border-radius:999px;padding:3px 10px;}
+[data-theme="light"] .ft-badge,[data-theme="light"] .beta-stats b{color:#8a5200;}
+[data-theme="light"] .ft-badge{background:#fff4d6;}
 
 /* ── AYAH FLASHCARD ── */
 .ayah-flashcard{
@@ -2562,10 +2671,11 @@ const DONATION_MAILTO = `mailto:${DONATION_CONTACT}?subject=${encodeURIComponent
 export default function App() {
   const isAdminRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/admin";
   const isFinanceRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/finance";
+  const isReviewerRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/reviewer";
   // ?receipt=ABM-2026-001 in the URL (from the receipt email's "Download as
   // PDF" link) opens the no-login-required download page, pre-filled.
   const receiptParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("receipt") : null;
-  const [view, setView] = useState(isAdminRoute ? "admin" : isFinanceRoute ? "finance" : "home");
+  const [view, setView] = useState(isAdminRoute ? "admin" : isFinanceRoute ? "finance" : isReviewerRoute ? "contentReview" : "home");
   const [user, setUser] = useState(() => storageGet("qv_user") || null); // instant restore on PWA reload — Supabase session reconciles async
   const userRef = React.useRef(null);
   React.useEffect(() => { userRef.current = user; }, [user]);
@@ -2574,6 +2684,20 @@ export default function App() {
   // Resolving it (Continue/Cancel) lets loadUserProfile's paused await continue.
   const [sessionPrompt, setSessionPrompt] = useState(null); // { resolve }
   const confirmSessionTakeover = () => new Promise((resolve) => setSessionPrompt({ resolve }));
+  // Welcome-back offer for former test users (see beta_archive_* RPCs).
+  const [betaOffer, setBetaOffer] = useState(null);
+  // Terms & Privacy: which policy is open (null/"terms"/"privacy"), and whether
+  // this learner still has to accept the current version.
+  const [legalDoc, setLegalDoc] = useState(() => {
+    const path = typeof window !== "undefined" ? window.location.pathname.replace(/\/+$/, "") : "";
+    return path === "/terms" ? "terms" : path === "/privacy" ? "privacy" : null;
+  });
+  const [needTerms, setNeedTerms] = useState(false);
+  useEffect(() => {
+    const h = (e) => setLegalDoc(e.detail || null);
+    window.addEventListener("qv-legal", h);
+    return () => window.removeEventListener("qv-legal", h);
+  }, []);
   // allWords: instant-painted from the last successful Supabase fetch (cached
   // in qv_words_cache, same pattern as qv_user), then reconciled for real via
   // fetchAllWords() in the init effect below. Built-in and custom words are
@@ -2611,6 +2735,10 @@ export default function App() {
   // per-user login (that's #5, for learners).
   const [adminUnlocked, setAdminUnlocked] = useState(() => sessionStorage.getItem("qv_admin_unlocked") === "1");
   const [financeUnlocked, setFinanceUnlocked] = useState(() => sessionStorage.getItem("qv_finance_unlocked") === "1");
+  // Content reviewer (the Alim): a real Supabase account with users.role = 'reviewer'.
+  const [reviewer, setReviewer] = useState(null); // { dbId, name } while signed in
+  const [reviewWordId, setReviewWordId] = useState(null);   // word to open first (from a ✎ button)
+  const [reviewReturnView, setReviewReturnView] = useState("home");
   const [messages, setMessages] = useState([]);
   const [receipts, setReceipts] = useState([]);
   const [receiptRequests, setReceiptRequests] = useState([]);
@@ -2852,6 +2980,14 @@ export default function App() {
     // own panel instead of Home. Handle here, centrally, so it works no matter
     // which screen the login happened from (main login form, /admin, /finance,
     // or a restored session on page reload).
+    // A reviewer is ALSO a normal learner (test user): flag the extra access and
+    // carry on with the regular learner load below. On /reviewer they land in
+    // Content Review; everywhere else they use the app normally (✎ on word cards).
+    if (profile.role === "reviewer") {
+      setReviewer({ dbId: profile.id, name: profile.name || profile.user_id });
+    } else {
+      setReviewer(null);
+    }
     if (profile.role === "admin" || profile.role === "finance") {
       if (profile.role === "admin") {
         setAdminUnlocked(true);
@@ -2930,9 +3066,16 @@ export default function App() {
       emailVerified: !!profile.verified, supabaseId: authId,
       monthlyTarget: profile.monthly_word_target || 30,
       monthlyTargets: profile.monthly_targets || {},
+      foundingTester: !!profile.founding_tester,
     };
     setUser(u);
+    setNeedTerms(profile.terms_version !== TERMS_VERSION && "terms_version" in profile);
     storageSet("qv_user", u);
+    // Former test user signing up again after launch? Offer their test progress
+    // back (matched server-side to their VERIFIED login email; null otherwise).
+    supabase.rpc("beta_archive_check").then(({ data, error: archErr }) => {
+      if (!archErr && data && Array.isArray(data.scores)) setBetaOffer(data);
+    });
     // Same reasoning as the admin/finance branches above — a real sign-in
     // (or a verified session restore) counts as activity, so the idle-timeout
     // effect that's about to mount for this user doesn't see a stale
@@ -2941,8 +3084,47 @@ export default function App() {
     storageSet("qv_last_activity_learner", Date.now());
     if (!opts.silent) {
       toast_(`✅ Welcome, ${u.name}! 🕌`);
-      setView("home");
+      // Signing in on /reviewer as a reviewer opens Content Review directly.
+      setView(isReviewerRoute && profile.role === "reviewer" ? "contentReview" : "home");
     }
+  };
+
+  const acceptTerms = async () => {
+    const { error } = await supabase.rpc("accept_terms", { p_version: TERMS_VERSION });
+    if (error) { console.error("accept_terms error:", error.message); return false; }
+    setNeedTerms(false);
+    toast_("✅ Thank you — Terms & Privacy accepted.");
+    return true;
+  };
+
+  // Restore (true) or start fresh (false) — one-time choice; the archive is
+  // deleted server-side either way and the Founding Tester badge is set.
+  const claimBetaArchive = async (restore) => {
+    const { data, error } = await supabase.rpc("beta_archive_claim", { p_restore: restore });
+    if (error || !data || !data.ok) {
+      console.error("beta_archive_claim error:", error?.message || data?.reason);
+      return false;
+    }
+    if (user?.dbId) {
+      const [{ data: scoreRows }, { data: progressRow }, { data: prof }] = await Promise.all([
+        supabase.from("scores").select("*").eq("user_id", user.dbId).order("quiz_date", { ascending: true }),
+        supabase.from("progress").select("day_progress").eq("user_id", user.dbId).maybeSingle(),
+        supabase.from("users").select("monthly_targets, monthly_word_target, founding_tester").eq("id", user.dbId).maybeSingle(),
+      ]);
+      const updated = {
+        ...user,
+        scores: (scoreRows || []).map(mapScoreRow),
+        dayProgress: progressRow?.day_progress || {},
+        monthlyTargets: prof?.monthly_targets || user.monthlyTargets || {},
+        monthlyTarget: prof?.monthly_word_target || user.monthlyTarget || 30,
+        foundingTester: prof ? !!prof.founding_tester : true,
+      };
+      setUser(updated);
+      storageSet("qv_user", updated);
+    }
+    setBetaOffer(null);
+    toast_(restore ? "🌟 Welcome back! Your test progress is restored." : "🌟 Welcome! Fresh start — Founding Tester badge added.");
+    return true;
   };
 
   const lockAdmin = async () => {
@@ -2951,6 +3133,18 @@ export default function App() {
     await supabase.auth.signOut();
     if (isAdminRoute) { window.location.href = "/"; } else { setView("home"); }
   };
+
+  // Leaving Content Review: Admin goes back to the Admin panel; a reviewer goes
+  // back to the learner app (they stay signed in — they're a test user too).
+  const exitContentReview = async () => {
+    setReviewWordId(null);
+    if (adminUnlocked && !reviewer) { setView("admin"); return; }
+    if (isReviewerRoute) { window.location.href = "/"; return; }
+    setView(reviewReturnView || "home");
+  };
+  const reviewAccess = React.useMemo(() => (reviewer ? {
+    openReview: (wordDbId) => { setReviewReturnView(view === "contentReview" ? "home" : view); setReviewWordId(wordDbId); setView("contentReview"); },
+  } : null), [reviewer, view]);
 
   const lockFinance = async () => {
     setFinanceUnlocked(false);
@@ -3039,8 +3233,21 @@ export default function App() {
         enrolled_at: new Date().toISOString(),
         role: "learner",
         verified: false,
+        terms_version: TERMS_VERSION,
+        terms_accepted_at: new Date().toISOString(),
       });
-      if (profileErr) console.error("Profile insert error:", profileErr.message);
+      if (profileErr) {
+        console.error("Profile insert error:", profileErr.message);
+        // If the terms columns aren't in the database yet, don't lose the
+        // account — save the profile without them (they'll be asked to accept at login).
+        if (/terms_/.test(profileErr.message || "")) {
+          const { error: retryErr } = await supabase.from("users").insert({
+            auth_id: data.user.id, user_id: userId.trim().toLowerCase(), name: name.trim(),
+            email: emailLower, enrolled_at: new Date().toISOString(), role: "learner", verified: false,
+          });
+          if (retryErr) console.error("Profile insert retry error:", retryErr.message);
+        }
+      }
     }
 
     return { ok: true, userId: userId.trim(), email: emailLower };
@@ -3175,17 +3382,12 @@ export default function App() {
       console.warn("Blocked attempt to delete a protected staff account:", idLower);
       return { ok: false, reason: "protected" };
     }
-    // Delete from Supabase users table (cascades to auth via trigger if set)
-    const { data: profile } = await supabase.from("users")
-      .select("id, auth_id").eq("user_id", idLower).maybeSingle();
-    // scores/progress reference users.id (Phase 3) — must clear those rows
-    // first or the users delete below fails on the foreign key.
-    if (profile?.id) {
-      await supabase.from("scores").delete().eq("user_id", profile.id);
-      await supabase.from("progress").delete().eq("user_id", profile.id);
-    }
-    if (profile?.auth_id) {
-      await supabase.from("users").delete().eq("auth_id", profile.auth_id);
+    // One server-side call removes scores, progress, the profile AND the login
+    // (protected roles are refused there too), so the email can sign up again.
+    const { data: delRes, error: delErr } = await supabase.rpc("admin_delete_participant", { p_user_id: idLower });
+    if (delErr || !delRes?.ok) {
+      console.error("admin_delete_participant error:", delErr?.message || delRes?.reason);
+      return { ok: false, reason: delRes?.reason || "db-delete-failed" };
     }
     setParticipants(prev => prev.filter(p => (p.userId || "").toLowerCase() !== idLower));
     if (user && (user.userId || "").toLowerCase() === idLower) {
@@ -3193,6 +3395,7 @@ export default function App() {
       setUser(null);
       storageRemove("qv_user");
     }
+    return { ok: true, loginDeleted: !!delRes.login_deleted };
   };
 
   // Pre-launch cleanup: wipes every piece of test data accumulated during
@@ -3200,34 +3403,32 @@ export default function App() {
   // Admin/Finance are real Supabase accounts now (as of the session-security
   // fix) and are excluded from the wipe by role — their login is untouched.
   const resetAllTestData = async () => {
-    // Clear Supabase users table (auth users remain — admin can delete manually)
-    await supabase.from("users").delete().neq("role", "admin").neq("role", "finance");
-    await supabase.from("scores").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await supabase.from("progress").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await supabase.from("messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    // Words (built-in AND custom — single-added or Bulk Uploaded) are
-    // deliberately NOT touched by this reset. They're real content once
-    // added, not disposable test data — this only clears learner accounts,
-    // scores, and progress.
-    // Sign out current user if any
-    await supabase.auth.signOut();
-    // Clear localStorage
+    // One server-side transaction: archive each tester's progress (for the
+    // welcome-back offer) → wipe scores/progress/messages → delete learner
+    // profiles → delete learner LOGINS (admin/finance/reviewer always kept).
+    const { data, error } = await supabase.rpc("admin_reset_test_data");
+    if (error) {
+      console.error("admin_reset_test_data error:", error.message);
+      return { ok: false, message: error.message };
+    }
+    // Words are never touched — they're real content, not test data.
     storageRemove("qv_user");
     storageRemove("qv_messages");
     storageRemove("qv_reset_tokens");
     storageRemove("qv_verify_tokens");
+    setParticipants([]);
+    setMessages([]);
+    setQuiz(null);
+    return { ok: true, ...data };
+  };
+  // After the admin has read the reset summary.
+  const finishResetAllTestData = async () => {
+    await supabase.auth.signOut();
     sessionStorage.removeItem("qv_admin_unlocked");
     sessionStorage.removeItem("qv_finance_unlocked");
-
-    setParticipants([]);
     setUser(null);
-    setMessages([]);
-    const words = await fetchAllWords();
-    if (words) setAllWords(words);
     setAdminUnlocked(false);
     setFinanceUnlocked(false);
-    setQuiz(null);
-
     window.location.href = "/admin";
   };
 
@@ -3771,7 +3972,7 @@ export default function App() {
   // ── End idle timeout ──────────────────────────────────────────────────────
 
   return (
-    <>
+    <ReviewAccessContext.Provider value={reviewAccess}>
       <style>{CSS}</style>
       <div className="app">
         <nav className="nav">
@@ -3779,7 +3980,12 @@ export default function App() {
             <div className="nicon">📖</div>
             <div className="ntext"><h1>Quranic Vocab</h1><span>{isAdminRoute || view === "admin" ? "Admin Panel" : isFinanceRoute || view === "finance" ? "Finance Panel" : "Daily Memorization Series"}</span></div>
           </div>
-          {isAdminRoute || view === "admin" ? (
+          {view === "contentReview" && (reviewer || adminUnlocked) ? (
+            <div className="nright">
+              <span className="nuser" style={{ cursor: "default" }}>📝 {reviewer ? reviewer.name : "Admin"}</span>
+              <button className="nbtn" onClick={exitContentReview}>{reviewer ? "← Back to app" : "← Admin"}</button>
+            </div>
+          ) : isAdminRoute || view === "admin" ? (
             <div className="nright">
               {adminUnlocked && (() => {
                 const pendingCount = passwordChangeRequests.filter(r => r.status === "pending").length
@@ -3807,6 +4013,7 @@ export default function App() {
                   <button className="nuser" onClick={e => { e.stopPropagation(); setShowAdminMenu(s => !s); }}>🔧 Admin <span style={{ fontSize: 9, marginLeft: 4 }}>▾</span></button>
                   {showAdminMenu && (
                     <div className="nuser-menu" onMouseLeave={() => setShowAdminMenu(false)}>
+                      <button className="nuser-menu-item" onClick={() => { setShowAdminMenu(false); setView("contentReview"); }}>📝 Content Review</button>
                       <button className="nuser-menu-item" onClick={() => { setShowAdminMenu(false); setAdminProfileOpen(true); }}>⚙ Profile Settings</button>
                       <button className="nuser-menu-item logout" onClick={() => { setShowAdminMenu(false); lockAdmin(); }}>👤 Logoff</button>
                     </div>
@@ -3848,9 +4055,14 @@ export default function App() {
 
         {receiptParam ? (
           <DownloadReceiptPage prefillReceiptNo={receiptParam} toast_={toast_} user={user} />
+        ) : view === "contentReview" && (reviewer || adminUnlocked) ? (
+          <ContentReviewPage isAdmin={adminUnlocked && !reviewer} reviewerName={reviewer?.name} toast_={toast_}
+            initialWordId={reviewWordId} onExit={() => exitContentReview()} />
+        ) : view === "contentReview" && isReviewerRoute ? (
+          <ReviewerGate onLogin={loginUser} signedInNonReviewer={!!user && !reviewer} onGoHome={() => { window.location.href = "/"; }} />
         ) : isAdminRoute || view === "admin" ? (
           adminUnlocked
-            ? <AdminPage allWords={allWords} onAddWord={addWord} onBulkAddWords={bulkAddWords} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} onClearAllReceipts={clearAllReceipts} passwordChangeRequests={passwordChangeRequests} onApprovePasswordChange={approvePasswordChangeRequest} onRejectPasswordChange={rejectPasswordChangeRequest} />
+            ? <AdminPage allWords={allWords} onAddWord={addWord} onBulkAddWords={bulkAddWords} onEditWord={editWord} onDeleteWord={removeWord} participants={participants} toast_={toast_} onSendResetLink={sendResetLinkToUser} messages={messages} onMarkRead={onMarkMessageRead} onMarkResolved={onMarkMessageResolved} onUpdateParticipant={updateParticipantDetails} onDeleteParticipant={deleteParticipant} onResendVerification={resendVerificationEmail} onResetAllTestData={resetAllTestData} onFinishReset={finishResetAllTestData} onClearAllReceipts={clearAllReceipts} passwordChangeRequests={passwordChangeRequests} onApprovePasswordChange={approvePasswordChangeRequest} onRejectPasswordChange={rejectPasswordChangeRequest} />
             : <AdminGate onLogin={loginUser} />
         ) : isFinanceRoute || view === "finance" ? (
           financeUnlocked
@@ -3871,10 +4083,14 @@ export default function App() {
             {view === "profileHub" && user && <ProfileHub user={user} saveUser={saveUser} setView={setView} toast_={toast_} onRequestReceipt={() => setShowRequestReceipt(true)} onLogout={logout} allWords={allWords} themePref={themePref} resolvedTheme={resolvedTheme} onCycleTheme={cycleTheme} initialTab={hubTab} onTabApplied={() => setHubTab(null)} />}
             {view === "downloadReceipt" && <DownloadReceiptPage prefillReceiptNo="" toast_={toast_} user={user} setView={setView} onBack={goAccount} />}
             {/* Email verification handled automatically by Supabase via onAuthStateChange */}
+            {view !== "quiz" && <LegalFooter />}
           </>
         )}
 
         {!isAdminRoute && !isFinanceRoute && showDonate && <DonateContactModal onClose={() => setShowDonate(false)} toast_={toast_} />}
+        {needTerms && user && !sessionPrompt && <TermsAcceptModal onAccept={acceptTerms} onLogout={() => { setNeedTerms(false); logout(); }} />}
+        {legalDoc && <LegalModal doc={legalDoc} onClose={() => { setLegalDoc(null); if (/^\/(terms|privacy)\/?$/.test(window.location.pathname)) window.history.replaceState(null, "", "/"); }} onSwitch={setLegalDoc} />}
+        {betaOffer && user && !sessionPrompt && !needTerms && <BetaWelcomeModal offer={betaOffer} onClaim={claimBetaArchive} onLater={() => setBetaOffer(null)} />}
         {sessionPrompt && <SessionConflictModal onCancel={() => { sessionPrompt.resolve(false); setSessionPrompt(null); }} onContinue={() => { sessionPrompt.resolve(true); setSessionPrompt(null); }} />}
         {!isAdminRoute && !isFinanceRoute && showInvite && <InviteModal onClose={() => setShowInvite(false)} toast_={toast_} user={user} />}
         {gateWarning && <GateWarningModal message={gateWarning} onClose={() => setGateWarning(null)} />}
@@ -3917,7 +4133,7 @@ export default function App() {
         )}
         {toast && <div className="toast">{toast}</div>}
       </div>
-    </>
+    </ReviewAccessContext.Provider>
   );
 }
 
@@ -4171,7 +4387,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
                   <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 26, marginBottom: 8 }}>
                     {w.surahNumber && w.ayahNumber && w.wordPosition && (
                       <PlayPauseButton
-                        resolveUrl={() => Promise.resolve(getWordAudioUrl(w.surahNumber, w.ayahNumber, w.wordPosition))}
+                        resolveUrl={() => Promise.resolve(wordAudioUrl(w))}
                         title="Play word pronunciation"
                       />
                     )}
@@ -4412,6 +4628,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
   const [typoWarning, setTypoWarning] = useState(null);
   const [ignoreTypo, setIgnoreTypo] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState(null);
+  const [agreeTerms, setAgreeTerms] = useState(false);
   const [turnstileKey, setTurnstileKey] = useState(0); // bump to force widget remount/reset
 
   // Inline availability hints — checked onBlur, cleared when user edits the field
@@ -4493,6 +4710,7 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
     // alias-warning (hotmail/outlook/yahoo) — shown inline below the field already, don't block signup
 
     if (!turnstileToken) { setError("Please complete the verification check below."); return; }
+    if (!agreeTerms) { setError("Please tick the box to agree to the Terms of Use and Privacy Policy."); return; }
 
     setChecking(true);
     const regResult = await onRegister(userId, suPw, name, email, turnstileToken);
@@ -4708,7 +4926,11 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
               onVerify={(token) => setTurnstileToken(token)}
               onExpire={() => setTurnstileToken(null)}
             />
-            <button className="btn bg bfw" onClick={submitSignup} disabled={checking || !turnstileToken}>
+            <label className="terms-check">
+              <input type="checkbox" checked={agreeTerms} onChange={e => { setAgreeTerms(e.target.checked); setError(""); }} />
+              <span>I agree to the <button type="button" className="legal-link" onClick={() => openLegal("terms")}>Terms of Use</button> and <button type="button" className="legal-link" onClick={() => openLegal("privacy")}>Privacy Policy</button></span>
+            </label>
+            <button className="btn bg bfw" onClick={submitSignup} disabled={checking || !turnstileToken || !agreeTerms}>
               {checking ? "Checking…" : "Create Account →"}
             </button>
           </>
@@ -4944,6 +5166,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
         <div style={{ flex: 1 }}>
           <h2 style={{ margin: 0 }}>{user.name}</h2>
           <p className="sub" style={{ margin: "2px 0 0" }}>{user.userId ? `@${user.userId}` : user.email}</p>
+          {user.foundingTester && <span className="ft-badge" title="Helped test Quranic Vocab before launch">🌟 Founding Tester</span>}
         </div>
         <div className="phub-actions">
           <button className="phub-logout-btn" onClick={onLogout}>↪ Log Out</button>
@@ -5044,6 +5267,7 @@ function ProfileHub({ user, saveUser, setView, toast_, onRequestReceipt, onLogou
           <div className="instr-credits" dir="ltr">
             <div className="phub-section-label">{instrTr ? instrTr.credits : "Credits"}</div>
           <div className="credits-list">
+            <div>📜 <button className="legal-link" onClick={() => openLegal("terms")}>Terms of Use</button> · <button className="legal-link" onClick={() => openLegal("privacy")}>Privacy Policy</button> · © 2026 Awami Baitulmaal Committee (Reg.)</div>
             <div><ThanksLine icon /></div>
             <div>📊 Word-frequency and grammar data: <a href="https://corpus.quran.com" target="_blank" rel="noopener noreferrer">The Quranic Arabic Corpus</a> — Kais Dukes, University of Leeds; maintained by the Quran.com team; used under the GNU GPL.</div>
             <div>📜 Qur'an text: <a href="https://tanzil.net" target="_blank" rel="noopener noreferrer">Tanzil.net</a> (Uthmani text).</div>
@@ -5431,6 +5655,10 @@ function VerifyEmailPage({ token, onVerify, setView }) {
 // Ayah-level audio/image: Al Quran Cloud (islamic.network) — also free/no-key.
 const AYAH_RECITER = "ar.alafasy"; // Mishary Rashid Alafasy — Murattal style
 function pad3(n) { return String(n).padStart(3, "0"); }
+function wordAudioUrl(w) {
+  const r = w.audioRef;
+  return r ? getWordAudioUrl(r.s, r.a, r.pos) : getWordAudioUrl(w.surahNumber, w.ayahNumber, w.wordPosition);
+}
 function getWordAudioUrl(surahNumber, ayahNumber, wordPosition) {
   return `https://audio.qurancdn.com/wbw/${pad3(surahNumber)}_${pad3(ayahNumber)}_${pad3(wordPosition)}.mp3`;
 }
@@ -5465,18 +5693,28 @@ async function fetchAyahText(surahNumber, ayahNumber) {
   const key = `${surahNumber}:${ayahNumber}`;
   if (_ayahTextCache[key] !== undefined) return _ayahTextCache[key];
   // Translations live in optional columns; if they are not added yet, fall back to the Arabic text alone.
-  let res = await supabase.from("ayah_texts").select("arabic_text, translation_en, translation_ur")
+  let res = await supabase.from("ayah_texts").select("arabic_text, translation_en, translation_ur, wbw_ur, wbw_en")
     .eq("surah_number", surahNumber).eq("ayah_number", ayahNumber).maybeSingle();
+  if (res.error) {
+    res = await supabase.from("ayah_texts").select("arabic_text, translation_en, translation_ur")
+      .eq("surah_number", surahNumber).eq("ayah_number", ayahNumber).maybeSingle();
+  }
   if (res.error) {
     res = await supabase.from("ayah_texts").select("arabic_text")
       .eq("surah_number", surahNumber).eq("ayah_number", ayahNumber).maybeSingle();
   }
   if (res.error) { console.error("fetchAyahText error:", res.error.message); return null; }
   const d = res.data;
-  const out = d?.arabic_text ? { ar: d.arabic_text, en: d.translation_en || "", ur: d.translation_ur || "" } : null;
+  const out = d?.arabic_text ? {
+    ar: d.arabic_text, en: d.translation_en || "", ur: d.translation_ur || "",
+    wbwUr: Array.isArray(d.wbw_ur) ? d.wbw_ur : null, wbwEn: Array.isArray(d.wbw_en) ? d.wbw_en : null,
+  } : null;
   _ayahTextCache[key] = out;
   return out;
 }
+// The Review page edits word-by-word meanings, so its saves drop the cached copy.
+function clearAyahTextCache(surahNumber, ayahNumber) { delete _ayahTextCache[`${surahNumber}:${ayahNumber}`]; }
+function _ayahTextCacheClearAll() { Object.keys(_ayahTextCache).forEach(k => delete _ayahTextCache[k]); }
 // Finds where a word's meaning appears inside an ayah's translation, so it can
 // be highlighted in gold. Translations are sentence-level (not word-aligned),
 // so this is a best-effort text match: it tries each meaning variant (split on
@@ -5743,6 +5981,330 @@ function GateWarningModal({ message, onClose }) {
 // and the specific word this card was opened from is highlighted inline.
 // Falls back to the legacy custom-upload / CDN image path automatically for
 // any ayah not yet in ayah_texts, so nothing breaks for older words.
+// ═══ Reviewer access from learner mode ═════════════════════════════════════
+// A reviewer account is a normal learner account too (full test-user
+// experience). When signed in as one, word cards show a ✎ button that opens
+// Content Review on that exact word.
+const ReviewAccessContext = React.createContext(null); // { openReview(wordDbId) } or null
+
+function ReviewerGate({ onLogin, signedInNonReviewer, onGoHome }) {
+  const [uid, setUid] = useState("");
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async () => {
+    if (!uid || !pw) return;
+    setBusy(true); setError("");
+    const result = await onLogin(uid.trim().toLowerCase(), pw);
+    setBusy(false);
+    if (!result || !result.ok) { setError("Incorrect User ID or password."); setPw(""); }
+  };
+  return (
+    <div className="page psm" style={{ paddingTop: 80 }}>
+      <div className="lbl" style={{ justifyContent: "center" }}>Restricted Area</div>
+      <h2 style={{ textAlign: "center" }}>📝 Content Review</h2>
+      {signedInNonReviewer ? (
+        <div className="card" style={{ textAlign: "center" }}>
+          <p className="sub">This account doesn't have reviewer access.</p>
+          <button className="btn bh" onClick={onGoHome}>← Back to the app</button>
+        </div>
+      ) : (
+        <>
+          <p className="sub" style={{ textAlign: "center", marginBottom: 26 }}>For content reviewers only. Sign in with your usual app account.</p>
+          <div className="card">
+            <div className="field"><label>User ID</label><input value={uid} onChange={e => { setUid(e.target.value); setError(""); }} placeholder="Your User ID" autoFocus /></div>
+            <div className="field"><label>Password</label><PasswordInput value={pw} onChange={e => { setPw(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && submit()} placeholder="Your password" /></div>
+            {error && <div className="enroll-error">⚠ {error}</div>}
+            <button className="btn bg bfw" onClick={submit} disabled={!uid || !pw || busy}>{busy ? "Checking…" : "Sign in →"}</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══ Word-by-word grid (shared by the learner flashcard and the Review page) ═══
+// One cell per Arabic word, right-to-left, wrapping to the screen width. The
+// word being learned is the gold cell. `glosses` is a list aligned 1:1 with the
+// ayah's space-separated words; missing glosses simply render empty.
+function WbwGrid({ tokens, glosses, lang, targetPos }) {
+  return (
+    <div className="wbw-grid" dir="rtl">
+      {tokens.map((t, i) => (
+        <div key={i} className={`wbw-cell ${i + 1 === targetPos ? "target" : ""}`}>
+          <div className="wbw-ar">{t}</div>
+          <div className={`wbw-gl ${lang === "ur" ? "ur" : ""}`} dir={lang === "ur" ? "rtl" : "ltr"}>{(glosses && glosses[i]) || " "}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ═══ Content Review (Alim) ═════════════════════════════════════════════════
+// Reviewers (users.role = 'reviewer') and Admin verify/correct every word here.
+// All writes go through the review_save() database function, which checks the
+// role server-side, only allows the agreed fields, and logs every change to
+// content_audit. The app stays live while this happens: learners see all words,
+// and review_status only tracks the Alim's progress (Draft / Verified / Needs
+// attention). The Arabic text and the Tanzil translations are shown read-only.
+const REVIEW_STATUS_LABEL = { draft: "Draft", verified: "Verified", flagged: "Needs attention" };
+
+async function fetchAyahRow(s, a) {
+  const { data, error } = await supabase.from("ayah_texts")
+    .select("arabic_text, translation_en, translation_ur, wbw_ur, wbw_en")
+    .eq("surah_number", s).eq("ayah_number", a).maybeSingle();
+  if (error) { console.error("fetchAyahRow error:", error.message); return null; }
+  return data;
+}
+
+function ContentReviewPage({ isAdmin, reviewerName, onExit, toast_, initialWordId, exitLabel }) {
+  const [tab, setTab] = useState("review"); // review | log (admin)
+  const [words, setWords] = useState(null);
+  const [filter, setFilter] = useState("todo"); // todo | draft | flagged | verified | all
+  const [idx, setIdx] = useState(0);
+  const [form, setForm] = useState(null);       // editable fields for the current word
+  const [ayah, setAyah] = useState(undefined);  // row for the selected ayah option
+  const [glossLang, setGlossLang] = useState("ur");
+  const [busy, setBusy] = useState(false);
+  const [log, setLog] = useState(null);
+
+  const loadWords = async () => {
+    const { data, error } = await supabase.from("words").select("*")
+      .order("set_number", { ascending: true }).order("order_in_set", { ascending: true });
+    if (error) { toast_("Couldn't load words — " + error.message); return; }
+    setWords((data || []).map(r => ({ ...mapWordRow(r), reviewStatus: r.review_status || "draft", reviewNote: r.review_note || "", ayahOptions: Array.isArray(r.ayah_options) ? r.ayah_options : [] })));
+  };
+  useEffect(() => { loadWords(); }, []);
+  // Opened from a word card's ✎ button: jump straight to that word.
+  const jumpedRef = useRef(false);
+  useEffect(() => {
+    if (!words || !initialWordId || jumpedRef.current) return;
+    const i = words.findIndex(w => w.dbId === initialWordId);
+    if (i >= 0) { jumpedRef.current = true; setFilter("all"); setIdx(i); }
+  }, [words, initialWordId]);
+
+  const list = (words || []).filter(w =>
+    filter === "all" ? true : filter === "todo" ? w.reviewStatus !== "verified" : w.reviewStatus === filter);
+  const word = list[Math.min(idx, Math.max(list.length - 1, 0))] || null;
+  const counts = (words || []).reduce((c, w) => { c[w.reviewStatus] = (c[w.reviewStatus] || 0) + 1; return c; }, {});
+
+  const currentOptionIndex = (w) => {
+    const i = (w.ayahOptions || []).findIndex(o => o.s === w.surahNumber && o.a === w.ayahNumber && o.pos === w.wordPosition);
+    return i >= 0 ? i : 0;
+  };
+
+  // Load the editable copy whenever the word changes.
+  useEffect(() => {
+    if (!word) { setForm(null); return; }
+    setForm({ english: word.english || "", urdu: word.urdu || "", note: word.reviewNote || "", opt: currentOptionIndex(word) });
+  }, [word?.dbId]);
+
+  // The ayah being shown/edited = the selected option (or the word's current ayah if it has no options).
+  const selected = word && form ? (word.ayahOptions[form.opt] || (word.surahNumber ? { s: word.surahNumber, a: word.ayahNumber, pos: word.wordPosition, ref: word.ayahRef } : null)) : null;
+  useEffect(() => {
+    if (!selected) { setAyah(null); return; }
+    let cancelled = false;
+    setAyah(undefined);
+    fetchAyahRow(selected.s, selected.a).then(d => {
+      if (cancelled) return;
+      const n = d?.arabic_text ? d.arabic_text.split(/\s+/).length : 0;
+      const fit = (arr) => Array.from({ length: n }, (_, i) => (Array.isArray(arr) && arr[i]) || "");
+      setAyah(d ? { ...d, tokens: d.arabic_text ? d.arabic_text.split(/\s+/) : [], ur: fit(d.wbw_ur), en: fit(d.wbw_en), origUr: d.wbw_ur, origEn: d.wbw_en } : null);
+    });
+    return () => { cancelled = true; };
+  }, [word?.dbId, selected?.s, selected?.a]);
+
+  const setGloss = (lang, i, v) => setAyah(a => ({ ...a, [lang]: a[lang].map((x, j) => (j === i ? v : x)) }));
+
+  const save = async (status) => {
+    if (!word || !form || busy) return;
+    if (status === "flagged" && !form.note.trim()) { toast_("Please write a note explaining what needs attention."); return; }
+    const changes = {};
+    if (form.urdu !== (word.urdu || "")) changes.urdu = form.urdu;
+    if (form.note !== (word.reviewNote || "")) changes.review_note = form.note;
+    if (word.ayahOptions.length && form.opt !== currentOptionIndex(word)) changes.ayah_option = form.opt;
+    if (ayah && ayah.tokens.length) {
+      if (JSON.stringify(ayah.ur) !== JSON.stringify(ayah.origUr || ayah.ur.map(() => ""))) changes.wbw_ur = ayah.ur;
+      if (JSON.stringify(ayah.en) !== JSON.stringify(ayah.origEn || ayah.en.map(() => ""))) changes.wbw_en = ayah.en;
+    }
+    if (status) changes.review_status = status;
+    if (!Object.keys(changes).length) { toast_("No changes to save."); return; }
+    setBusy(true);
+    const { data, error } = await supabase.rpc("review_save", { p_word_id: word.dbId, p_changes: changes });
+    setBusy(false);
+    if (error) { toast_("⚠ Not saved — " + error.message); return; }
+    if (selected) clearAyahTextCache(selected.s, selected.a);
+    setWords(ws => ws.map(w => (w.dbId === word.dbId
+      ? { ...mapWordRow(data), reviewStatus: data.review_status, reviewNote: data.review_note || "", ayahOptions: Array.isArray(data.ayah_options) ? data.ayah_options : [] }
+      : w)));
+    setAyah(a => (a ? { ...a, origUr: changes.wbw_ur || a.origUr, origEn: changes.wbw_en || a.origEn } : a));
+    toast_(status === "verified" ? "✅ Approved" : status === "flagged" ? "⚑ Flagged for attention" : "💾 Saved");
+    // In the "To review" list an approved word drops out, so the same position
+    // automatically shows the next word.
+  };
+
+  const loadLog = async () => {
+    const { data, error } = await supabase.from("content_audit").select("*").order("id", { ascending: false }).limit(300);
+    if (error) { toast_("Couldn't load the change log — " + error.message); return; }
+    setLog(data || []);
+  };
+  useEffect(() => { if (tab === "log" && isAdmin) loadLog(); }, [tab]);
+  const undo = async (id) => {
+    const { error } = await supabase.rpc("review_undo", { p_audit_id: id });
+    if (error) { toast_("⚠ Undo failed — " + error.message); return; }
+    toast_("↩ Change undone");
+    _ayahTextCacheClearAll();
+    loadLog(); loadWords();
+  };
+  const fmtVal = (v) => {
+    if (v === null || v === undefined) return "—";
+    if (Array.isArray(v)) return v.join(" · ");
+    if (typeof v === "object") return v.ref || JSON.stringify(v);
+    return String(v);
+  };
+  const wordById = Object.fromEntries((words || []).map(w => [w.dbId, w]));
+
+  return (
+    <div className="page pmd rv-page">
+      <div className="rv-head">
+        <div>
+          <h2 style={{ margin: 0 }}>📝 Content Review</h2>
+          <div className="rv-sub">{reviewerName ? `Signed in as ${reviewerName}` : ""}</div>
+        </div>
+        <div className="rv-progress">
+          <b>{counts.verified || 0}</b> / {(words || []).length} verified
+          {counts.flagged ? <span className="rv-chip flagged">{counts.flagged} need attention</span> : null}
+        </div>
+      </div>
+
+      {isAdmin && (
+        <div className="rv-tabs">
+          <button className={tab === "review" ? "on" : ""} onClick={() => setTab("review")}>Review</button>
+          <button className={tab === "log" ? "on" : ""} onClick={() => setTab("log")}>Change log</button>
+        </div>
+      )}
+
+      {tab === "log" && isAdmin ? (
+        <div className="card">
+          {!log ? <p className="sub">Loading…</p> : log.length === 0 ? <p className="sub">No changes yet.</p> : (
+            <div className="rv-log">
+              {log.map(r => (
+                <div key={r.id} className={`rv-log-row ${r.undone ? "undone" : ""}`}>
+                  <div className="rv-log-meta">
+                    {new Date(r.changed_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {r.changed_by_name || "—"}
+                    {" · "}<span className="rv-log-word">{wordById[r.word_id]?.arabic || ""}</span> · <b>{r.field}</b>
+                    {r.surah_number ? ` (${r.surah_number}:${r.ayah_number})` : ""}
+                  </div>
+                  <div className="rv-log-vals"><span className="old">{fmtVal(r.old_value)}</span> → <span className="new">{fmtVal(r.new_value)}</span></div>
+                  {!r.undone && !String(r.field).startsWith("undo:") && <button className="btn bh bsm" onClick={() => undo(r.id)}>↩ Undo</button>}
+                  {r.undone && <span className="rv-chip">undone</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="rv-filters">
+            {[["todo", "To review"], ["flagged", "Needs attention"], ["verified", "Verified"], ["all", "All"]].map(([k, l]) => (
+              <button key={k} className={filter === k ? "on" : ""} onClick={() => { setFilter(k); setIdx(0); }}>{l}</button>
+            ))}
+          </div>
+
+          {!words ? <p className="sub" style={{ textAlign: "center" }}>Loading words…</p> : !word ? (
+            <div className="card" style={{ textAlign: "center" }}><p className="sub">Nothing here — {filter === "todo" ? "every word is verified. ✅" : "no words in this list."}</p></div>
+          ) : (
+            <div className="card rv-card">
+              <div className="rv-nav">
+                <button className="btn bh bsm" disabled={idx <= 0} onClick={() => setIdx(i => Math.max(0, i - 1))}>‹ Prev</button>
+                <select value={Math.min(idx, list.length - 1)} onChange={e => setIdx(Number(e.target.value))}>
+                  {list.map((w, i) => <option key={w.dbId} value={i}>{i + 1}. {w.arabic} — {w.english} [{REVIEW_STATUS_LABEL[w.reviewStatus] || w.reviewStatus}]</option>)}
+                </select>
+                <button className="btn bh bsm" disabled={idx >= list.length - 1} onClick={() => setIdx(i => Math.min(list.length - 1, i + 1))}>Next ›</button>
+              </div>
+
+              <div className="rv-word">
+                <div className="fc-word-ar">{word.arabic}</div>
+                <div className="fc-word-tr">{word.translit}</div>
+                <span className={`rv-chip ${word.reviewStatus}`}>{REVIEW_STATUS_LABEL[word.reviewStatus] || word.reviewStatus}</span>
+              </div>
+
+              {form && (
+                <div className="rv-fields">
+                  <div className="field"><label>English meaning (fixed)</label><input value={form.english} readOnly title="Learners' progress is linked to this — suggest a change in the note" style={{ opacity: .7 }} /></div>
+                  <div className="field"><label>Urdu meaning</label><input dir="rtl" className="rv-ur" value={form.urdu} onChange={e => setForm(f => ({ ...f, urdu: e.target.value }))} /></div>
+                </div>
+              )}
+
+              {word.ayahOptions.length > 1 && form && (
+                <div className="rv-opts">
+                  <div className="rv-label">Choose the ayah for this word</div>
+                  {word.ayahOptions.map((o, i) => (
+                    <label key={i} className={`rv-opt ${form.opt === i ? "on" : ""}`}>
+                      <input type="radio" checked={form.opt === i} onChange={() => setForm(f => ({ ...f, opt: i }))} />
+                      <span>{o.ref || `${o.s}:${o.a}`}</span>
+                      {o.form && <span className="rv-opt-form">{o.form}</span>}
+                      {i === currentOptionIndex(word) && <span className="rv-chip">current</span>}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {selected && (ayah === undefined ? <p className="sub" style={{ textAlign: "center" }}>Loading ayah…</p> : !ayah ? (
+                <p className="sub" style={{ textAlign: "center" }}>This ayah isn't in the database yet.</p>
+              ) : (
+                <>
+                  <div className="rv-label" style={{ marginTop: 14 }}>
+                    How learners will see it · {selected.ref || `${selected.s}:${selected.a}`}
+                    <span className="fc-trans-toggle" style={{ marginInlineStart: 10, marginBottom: 0 }}>
+                      <button className={glossLang === "ur" ? "on" : ""} onClick={() => setGlossLang("ur")}>اردو</button>
+                      <button className={glossLang === "en" ? "on" : ""} onClick={() => setGlossLang("en")}>English</button>
+                    </span>
+                  </div>
+                  <WbwGrid tokens={ayah.tokens} glosses={ayah[glossLang]} lang={glossLang} targetPos={selected.pos} />
+
+                  <div className="rv-label" style={{ marginTop: 16 }}>Word-by-word meanings (edit as needed)</div>
+                  <div className="rv-wbw">
+                    {ayah.tokens.map((t, i) => (
+                      <div key={i} className={`rv-wbw-row ${i + 1 === selected.pos ? "target" : ""}`}>
+                        <div className="rv-wbw-ar">{t}</div>
+                        <input dir="rtl" className="rv-ur" placeholder="اردو" value={ayah.ur[i]} onChange={e => setGloss("ur", i, e.target.value)} />
+                        <input placeholder="English" value={ayah.en[i]} onChange={e => setGloss("en", i, e.target.value)} />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rv-label" style={{ marginTop: 16 }}>Full translation (Tanzil — read-only)</div>
+                  {ayah.translation_ur && <div className="fc-trans-text ur" dir="rtl">{ayah.translation_ur}</div>}
+                  {ayah.translation_en && <div className="fc-trans-text" style={{ marginTop: 6 }}>{ayah.translation_en}</div>}
+                  <div className="fc-trans-credit">Saheeh International · Fateh Muhammad Jalandhry · via Tanzil.net — if something is wrong here, flag it with a note.</div>
+                </>
+              ))}
+
+              {form && (
+                <div className="field" style={{ marginTop: 16 }}>
+                  <label>Note (required to flag)</label>
+                  <textarea className="rv-note" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="Anything that needs attention…" />
+                </div>
+              )}
+
+              <div className="rv-actions">
+                <button className="btn bh" disabled={busy} onClick={() => save(null)}>💾 Save</button>
+                <button className="btn bh rv-flag" disabled={busy} onClick={() => save("flagged")}>⚑ Needs attention</button>
+                <button className="btn bg" disabled={busy} onClick={() => save("verified")}>✓ Approve</button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      <div style={{ textAlign: "center", marginTop: 18 }}>
+        <button className="btn bh bsm" onClick={() => onExit(false)}>{exitLabel || (isAdmin ? "← Back to Admin" : "← Back to the app")}</button>
+      </div>
+    </div>
+  );
+}
+
 function AyahFlashCard({ word, onClose }) {
   const { dbId: wordId, surahNumber, ayahNumber, wordPosition } = word;
   const hasAyah = !!(surahNumber && ayahNumber);
@@ -5764,6 +6326,9 @@ function AyahFlashCard({ word, onClose }) {
   const imageSrc = imgStage === "custom" ? getCustomAyahImageUrl(wordId) : getAyahImageUrl(surahNumber, ayahNumber);
   const handleImgError = () => setImgStage(s => (s === "custom" ? "cdn" : "failed"));
   const words = ayahText ? ayahText.split(/\s+/) : [];
+  // Word-by-word grid: used whenever this ayah has glosses for every word.
+  const hasWbw = !!(ayahData && ((ayahData.wbwUr && ayahData.wbwUr.length === words.length) || (ayahData.wbwEn && ayahData.wbwEn.length === words.length)));
+  const wbwLang = trPref === "en" ? (ayahData?.wbwEn ? "en" : "ur") : (ayahData?.wbwUr ? "ur" : "en");
 
   // Rendered via portal straight into document.body — this modal is normally
   // mounted inside a word-card, and word-card has a :hover transform, which
@@ -5788,6 +6353,8 @@ function AyahFlashCard({ word, onClose }) {
           </div>
           {hasAyah && (ayahText === undefined ? (
             <div style={{ padding: "40px 0", color: "var(--muted)", fontSize: 13 }}>Loading ayah…</div>
+          ) : ayahText && hasWbw ? (
+            <WbwGrid tokens={words} glosses={wbwLang === "ur" ? ayahData.wbwUr : ayahData.wbwEn} lang={wbwLang} targetPos={wordPosition} />
           ) : ayahText ? (
             <div className="ayah-flashcard-text" dir="rtl">
               {words.map((w, i) => (
@@ -5818,7 +6385,7 @@ function AyahFlashCard({ word, onClose }) {
                 {ayahData.en && <button className={trLang === "en" ? "on" : ""} onClick={() => { setTrPref("en"); storageSet("qv_ayah_tr", "en"); }}>English</button>}
                 {ayahData.ur && <button className={trLang === "ur" ? "on" : ""} onClick={() => { setTrPref("ur"); storageSet("qv_ayah_tr", "ur"); }}>اردو</button>}
               </div>
-              <div className={`fc-trans-text ${trLang === "ur" ? "ur" : ""}`} dir={trLang === "ur" ? "rtl" : "ltr"}>{renderTranslationWithHighlight(ayahData[trLang], trLang === "ur" ? word.urdu : word.english, trLang, trLang === "ur" ? word.trHlUr : word.trHlEn)}</div>
+              <div className={`fc-trans-text ${trLang === "ur" ? "ur" : ""}`} dir={trLang === "ur" ? "rtl" : "ltr"}>{hasWbw ? ayahData[trLang] : renderTranslationWithHighlight(ayahData[trLang], trLang === "ur" ? word.urdu : word.english, trLang, trLang === "ur" ? word.trHlUr : word.trHlEn)}</div>
               <div className="fc-trans-credit">{AYAH_TR_CREDIT[trLang]}</div>
             </div>
           )}
@@ -5876,12 +6443,13 @@ function OtherFormsList({ forms }) {
   );
 }
 
-function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false, allWords }) {
+function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false, allWords, progressTag = null }) {
   const [showAyahPopup, setShowAyahPopup] = useState(false);
   const forms = parseOtherForms(word.otherForms);
   const hasDetails = !!word.ayahRef || forms.length > 0;
   const hasAyahRef = !!(word.surahNumber && word.ayahNumber);
   const hasWordAudio = !!(word.surahNumber && word.ayahNumber && word.wordPosition);
+  const reviewAccess = React.useContext(ReviewAccessContext);
 
   return (
     <div className={`word-card ${highlight ? "word-card-unmastered" : ""}`}>
@@ -5896,16 +6464,21 @@ function WordDetailCard({ word, isOpen, onToggle, badge, highlight = false, allW
           <div className="wtr">{word.translit}</div>
           <div className="wen">{word.english}</div>
           <div className="word-urdu">{word.urdu || "—"}</div>
+          {progressTag === "nearly" && <div className="mtag mtag-nearly" title="2 correct in a row — the next correct answer masters this word">🔥 One more correct to master</div>}
+          {progressTag === "atrisk" && <div className="mtag mtag-risk" title="Mastered, but the last answer was wrong — another wrong answer in a row un-masters it">⚠ Slipping — answer it right next time</div>}
         </div>
         <div className="word-actions-col">
           {hasWordAudio && (
             <PlayPauseButton
-              resolveUrl={() => Promise.resolve(getWordAudioUrl(word.surahNumber, word.ayahNumber, word.wordPosition))}
+              resolveUrl={() => Promise.resolve(wordAudioUrl(word))}
               title="Play word pronunciation"
             />
           )}
           {hasDetails && (
             <button className="word-toggle" onClick={() => setShowAyahPopup(true)}>Details</button>
+          )}
+          {reviewAccess && word.dbId && (
+            <button className="word-toggle rv-edit-btn" title="Review / correct this word" onClick={() => reviewAccess.openReview(word.dbId)}>✎ Edit</button>
           )}
         </div>
       </div>
@@ -5979,9 +6552,12 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
   // mastery is counted everywhere else (Leaderboard, Home, set-unlock gate).
   let setMastery = null;
   let setMasteredKeys = null;
+  let setNearly = null, setAtRisk = null;
   if (selectedDay) {
     const setWordKeys = new Set((words || []).map(w => w.english));
-    const { masteredSet } = buildStrictMastery(user.scores || []);
+    const { masteredSet, nearlySet, atRiskSet } = buildMasteryProgress(user.scores || []);
+    setNearly = new Set([...nearlySet].filter(key => setWordKeys.has(key)));
+    setAtRisk = new Set([...atRiskSet].filter(key => setWordKeys.has(key)));
     // Only count mastery for words that actually belong to this set — an
     // All Sets Quiz attempt covers many sets' words at once, so we filter
     // its contribution down to just the words shown on this page.
@@ -6065,6 +6641,12 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
               {setMastery.mastered >= setMastery.totalInSet
                 ? <> — all words mastered! 🎉</>
                 : <> — highlighted words still need {MASTERY_STREAK_REQUIRED} correct answers in a row.</>}
+              {(setNearly.size > 0 || setAtRisk.size > 0) && (
+                <div className="mtag-summary">
+                  {setNearly.size > 0 && <span className="mtag mtag-nearly">🔥 {setNearly.size} one correct answer from mastery</span>}
+                  {setAtRisk.size > 0 && <span className="mtag mtag-risk">⚠ {setAtRisk.size} slipping</span>}
+                </div>
+              )}
             </div>
           )}
           <div className="wlist" style={{ marginTop: 16 }}>
@@ -6078,6 +6660,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
                   isOpen={isOpen}
                   onToggle={() => setExpandedWord(isOpen ? null : `${selectedDay}-${i}`)}
                   highlight={!isMastered}
+                  progressTag={setNearly?.has(w.english) ? "nearly" : setAtRisk?.has(w.english) ? "atrisk" : null}
                   allWords={allWords}
                 />
               );
@@ -6109,7 +6692,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
           )}
           {/* Show all unlocked words — same layout as individual set words, with mastery highlight */}
           {(() => {
-            const { masteredSet: allMastered } = buildStrictMastery(user.scores || []);
+            const { masteredSet: allMastered, nearlySet: allNearly, atRiskSet: allAtRisk } = buildMasteryProgress(user.scores || []);
             const allMasteredCount = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).filter(w => allMastered.has(w.english)).length;
             const allUnlocked = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords);
             return (
@@ -6131,6 +6714,7 @@ function LearnPage({ user, allWords, onQuiz, setView, selectedDay, setSelectedDa
                         isOpen={isOpen}
                         onToggle={() => setExpandedWord(isOpen ? null : `allsets-${i}`)}
                         highlight={!isMastered}
+                        progressTag={allNearly.has(w.english) ? "nearly" : allAtRisk.has(w.english) ? "atrisk" : null}
                         allWords={allWords}
                       />
                     );
@@ -6175,7 +6759,7 @@ function QuizPage({ quiz, onAnswer, onCancel, onTimeUp, optsVisible = true }) {
   useEffect(() => {
     const w = q.word;
     if (!(w.surahNumber && w.ayahNumber && w.wordPosition)) return;
-    const audio = new Audio(getWordAudioUrl(w.surahNumber, w.ayahNumber, w.wordPosition));
+    const audio = new Audio(wordAudioUrl(w));
     audio.play().catch(() => {});
     return () => audio.pause();
   }, [cur]);
@@ -6288,8 +6872,15 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview, setSele
     : { t: "More practice needed — صبر", c: "var(--err)" };
 
   // Count words now mastered (3 consecutive correct across all sessions)
-  const { masteredSet } = buildStrictMastery(user?.scores || []);
+  const { masteredSet, nearlySet, atRiskSet } = buildMasteryProgress(user?.scores || []);
   const masteredCount = masteredSet.size;
+  // Nudges for the words in THIS quiz: one correct away from mastery, and
+  // mastered words that one more wrong answer would un-master.
+  const sessionWords = [];
+  const seenKeys = new Set();
+  for (const d of (result.detail || [])) { if (!seenKeys.has(d.english)) { seenKeys.add(d.english); sessionWords.push(d); } }
+  const nearlyWords = sessionWords.filter(d => nearlySet.has(d.english));
+  const atRiskWords = sessionWords.filter(d => atRiskSet.has(d.english));
 
   return (
     <div className="page psm" style={{ textAlign: "center" }}>
@@ -6326,6 +6917,24 @@ function ResultsPage({ quiz, user, onRetry, setView, onDonate, onReview, setSele
             <strong style={{ color: "var(--cyan2)", fontWeight: 700 }}>{masteredCount}</strong>
             <span style={{ color: "var(--muted)" }}> word{masteredCount !== 1 ? "s" : ""} mastered (3 correct in a row)</span>
           </span>
+        </div>
+      )}
+      {nearlyWords.length > 0 && (
+        <div className="mnudge mnudge-nearly">
+          <div className="mnudge-head">🔥 So close! One more correct answer masters {nearlyWords.length === 1 ? "this word" : `these ${nearlyWords.length} words`}</div>
+          <div className="mnudge-sub">You've answered {nearlyWords.length === 1 ? "it" : "them"} correctly twice in a row.</div>
+          <div className="mnudge-list">
+            {nearlyWords.map((d, i) => <span className="mnudge-chip" key={i}><span className="arabic">{d.arabic}</span> {d.english}</span>)}
+          </div>
+        </div>
+      )}
+      {atRiskWords.length > 0 && (
+        <div className="mnudge mnudge-risk">
+          <div className="mnudge-head">⚠ Careful! {atRiskWords.length === 1 ? "This mastered word is" : `These ${atRiskWords.length} mastered words are`} slipping</div>
+          <div className="mnudge-sub">You missed {atRiskWords.length === 1 ? "it" : "them"} once. One more wrong answer in a row and {atRiskWords.length === 1 ? "it goes" : "they go"} back to practice; a correct answer keeps {atRiskWords.length === 1 ? "it" : "them"} mastered.</div>
+          <div className="mnudge-list">
+            {atRiskWords.map((d, i) => <span className="mnudge-chip" key={i}><span className="arabic">{d.arabic}</span> {d.english}</span>)}
+          </div>
         </div>
       )}
       {missed.length > 0 && (
@@ -8027,7 +8636,7 @@ function RewardsTab({ participants, toast_, allWords }) {
   );
 }
 
-function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWord, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData, onClearAllReceipts, passwordChangeRequests, onApprovePasswordChange, onRejectPasswordChange }) {
+function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWord, participants, toast_, onSendResetLink, messages, onMarkRead, onMarkResolved, onUpdateParticipant, onDeleteParticipant, onResendVerification, onResetAllTestData, onFinishReset, onClearAllReceipts, passwordChangeRequests, onApprovePasswordChange, onRejectPasswordChange }) {
   const [resetTarget, setResetTarget] = useState(null); // userId being reset, or null
   const [resetMessageId, setResetMessageId] = useState(null); // linked message, if reset was triggered from Messages tab
   const [resetSending, setResetSending] = useState(false);
@@ -8089,10 +8698,12 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
     }
   };
 
-  const submitDelete = () => {
-    onDeleteParticipant(deleteConfirmTarget);
-    toast_(`Account ${deleteConfirmTarget} deleted.`);
+  const submitDelete = async () => {
+    const target = deleteConfirmTarget;
     setDeleteConfirmTarget(null);
+    const res = await onDeleteParticipant(target);
+    if (res && res.ok === false) toast_(res.reason === "protected" ? `${target} is a protected account and can't be deleted.` : `⚠ Couldn't delete ${target} — please try again.`);
+    else toast_(`Account ${target} deleted (profile, progress and login).`);
   };
 
   const handleResendVerify = async (userId) => {
@@ -8208,7 +8819,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
       {tab === "rewards" && (
         <RewardsTab participants={participants} toast_={toast_} allWords={allWords} />
       )}
-      {tab === "settings" && <ResetTestDataPanel onResetAllTestData={onResetAllTestData} />}
+      {tab === "settings" && <ResetTestDataPanel onResetAllTestData={onResetAllTestData} onFinishReset={onFinishReset} />}
       {tab === "settings" && <ClearReceiptsPanel onClearAllReceipts={onClearAllReceipts} />}
       {/* Finance password change requests moved to the top-level 🔔 notification center */}
 
@@ -8304,25 +8915,69 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
 // Destructive, irreversible action — wipes every participant, score, message,
 // and token accumulated during QA. Requires typing a literal confirmation
 // phrase (not just a click) given how severe and unrecoverable this is.
-function ResetTestDataPanel({ onResetAllTestData }) {
+function ResetTestDataPanel({ onResetAllTestData, onFinishReset }) {
   const [open, setOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  const [preview, setPreview] = useState(null);   // counts from admin_reset_preview
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);     // summary after the reset
   const CONFIRM_PHRASE = "DELETE ALL TEST DATA";
 
-  const close = () => { setOpen(false); setConfirmText(""); };
+  const openPanel = async () => {
+    setOpen(true); setPreview(null);
+    const { data, error } = await supabase.rpc("admin_reset_preview");
+    setPreview(error ? { error: error.message } : data);
+  };
+  const close = () => { setOpen(false); setConfirmText(""); setPreview(null); };
+  const run = async () => {
+    setRunning(true);
+    const res = await onResetAllTestData();
+    setRunning(false);
+    setResult(res);
+  };
+
+  if (result) {
+    return (
+      <div className="card" style={{ maxWidth: 440, marginTop: 16, borderColor: result.ok ? "rgba(34,197,94,.35)" : "rgba(192,80,74,.3)" }}>
+        {result.ok ? (
+          <>
+            <div className="lbl" style={{ color: "var(--ok)" }}>✓ Test data reset</div>
+            <ul style={{ fontSize: 13, lineHeight: 1.8, margin: "6px 0 12px", paddingLeft: 18 }}>
+              <li><strong>{result.archived}</strong> testers' progress archived for 90 days (restore offer)</li>
+              <li><strong>{result.profiles_deleted}</strong> learner profiles deleted</li>
+              <li><strong>{result.logins_deleted}</strong> learner logins deleted</li>
+            </ul>
+            {Array.isArray(result.logins_failed) && result.logins_failed.length > 0 && (
+              <div className="enroll-error" style={{ marginBottom: 12 }}>
+                ⚠ {result.logins_failed.length} login(s) couldn't be deleted — remove them in Supabase → Authentication → Users: {result.logins_failed.join(", ")}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="enroll-error" style={{ marginBottom: 12 }}>⚠ Reset failed — nothing was deleted. {result.message}</div>
+        )}
+        <button className="btn bg" onClick={result.ok ? onFinishReset : () => setResult(null)}>{result.ok ? "Finish & sign out" : "Back"}</button>
+      </div>
+    );
+  }
 
   return (
     <div className="card" style={{ maxWidth: 440, marginTop: 16, borderColor: "rgba(192,80,74,.3)" }}>
       <div className="lbl" style={{ color: "var(--err)" }}>⚠ Danger Zone</div>
       <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
-        Permanently erases <strong style={{ color: "var(--text)" }}>every participant, score, and day progress</strong> created so far. Use this once, right before going live, to start with a clean slate. Words (built-in and custom, however added) are never touched — Admin/Finance accounts and passwords are untouched too. Donation receipts are handled separately below.
+        Use this once, right before going live. It first <strong style={{ color: "var(--text)" }}>archives every tester's progress</strong> (kept 90 days, so returning testers can restore it), then permanently erases <strong style={{ color: "var(--text)" }}>every learner profile, score, day progress, message and learner login</strong>. Admin, Finance and Reviewer accounts are kept. Words are never touched. Donation receipts are handled separately below.
       </p>
       {!open ? (
-        <button className="btn" style={{ background: "var(--err)", color: "#fff" }} onClick={() => setOpen(true)}>
+        <button className="btn" style={{ background: "var(--err)", color: "#fff" }} onClick={openPanel}>
           🧹 Reset All Test Data
         </button>
       ) : (
         <div style={{ background: "rgba(192,80,74,.06)", border: "1px solid rgba(192,80,74,.25)", borderRadius: 8, padding: "14px 16px" }}>
+          <div style={{ fontSize: 13, color: "var(--text)", marginBottom: 10, lineHeight: 1.7 }}>
+            {!preview ? "Counting…" : preview.error ? <span style={{ color: "var(--err)" }}>⚠ Couldn't load the preview ({preview.error}). Has beta_restore_setup.sql been run?</span> : (
+              <>This will delete <strong>{preview.learners}</strong> learner profile(s) and <strong>{preview.logins}</strong> learner login(s){preview.orphan_logins > 0 ? <> (incl. {preview.orphan_logins} unfinished sign-up{preview.orphan_logins !== 1 ? "s" : ""})</> : null}, after archiving <strong>{preview.archivable}</strong> tester(s)' progress. Admin, Finance and Reviewer accounts are kept.</>
+            )}
+          </div>
           <p style={{ fontSize: 13, color: "var(--text)", marginBottom: 10, lineHeight: 1.6 }}>
             This cannot be undone. Type <strong style={{ color: "var(--err)", fontFamily: "monospace" }}>{CONFIRM_PHRASE}</strong> below to confirm.
           </p>
@@ -8336,15 +8991,178 @@ function ResetTestDataPanel({ onResetAllTestData }) {
             <button
               className="btn"
               style={{ background: "var(--err)", color: "#fff" }}
-              disabled={confirmText !== CONFIRM_PHRASE}
-              onClick={onResetAllTestData}
+              disabled={confirmText !== CONFIRM_PHRASE || running || !preview || !!preview.error}
+              onClick={run}
             >
-              Permanently Delete Everything
+              {running ? "Resetting…" : "Permanently Delete Everything"}
             </button>
-            <button className="btn bh" onClick={close}>Cancel</button>
+            <button className="btn bh" onClick={close} disabled={running}>Cancel</button>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══ Terms of Use & Privacy Policy ══════════════════════════════════════════
+// Bump TERMS_VERSION whenever either text changes materially — every learner is
+// then asked to review and accept again at their next login.
+const TERMS_VERSION = "2026-10";
+const TERMS_UPDATED = "October 2026";
+const LEGAL_DOCS = {
+  terms: {
+    title: "Terms of Use",
+    sections: [
+      ["About Quranic Vocab", "Quranic Vocab is a free, non-commercial app by the Awami Baitulmaal Committee (Reg.) that helps learners build a vocabulary of the most frequent words of the Qur'an. By creating an account or using the app you agree to these Terms and to our Privacy Policy."],
+      ["Your account", "Please give your real name and an email address that belongs to you, keep one account per person, and keep your password private. You are responsible for activity on your account. Tell us at support@awamibaitulmaal.org.in if you think someone else has used it."],
+      ["Fair use", "Use the app for your own learning. Please don't use automated tools or bots, try to access other people's accounts or our systems, interfere with the app, or copy its content in bulk."],
+      ["Learning content", "The app teaches word recognition — it is not tafsir, a fatwa or a complete course in Arabic. Meanings and example ayahs are reviewed by a scholar, but mistakes are possible; please report anything that looks wrong. The Qur'an text and translations are shown unmodified, with their sources credited."],
+      ["Ownership", "© 2026 Awami Baitulmaal Committee (Reg.). The app, its design and its original content (such as the Urdu meanings, word-by-word meanings and guides) belong to the Committee. You may use them for personal, non-commercial learning, but please don't republish, sell or copy the app or its content without our written permission. Third-party material keeps its own terms: Qur'an text from Tanzil.net; translations by Saheeh International and Fateh Muhammad Jalandhry via Tanzil.net; word data from the Quranic Arabic Corpus (GNU GPL); recitation audio from Al Quran Cloud and Quran.com."],
+      ["Test phase", "During testing, features may change and accounts, progress and data may be reset or deleted before the public launch. How test progress is kept is explained in the Privacy Policy."],
+      ["Donations", "Donations are voluntary and are arranged directly with our admin team. The app itself does not take payments."],
+      ["Closing accounts", "You can ask us to delete your account at any time. We may suspend or close accounts that break these Terms."],
+      ["No warranty", "The app is provided free and \"as is\". We work to keep it accurate and available, but we can't promise it will always be error-free or uninterrupted, and we aren't liable for losses arising from its use, to the extent the law allows."],
+      ["Changes", "We may update these Terms. If the changes are significant, we'll ask you to review and accept them again in the app."],
+      ["Contact", "support@awamibaitulmaal.org.in"],
+    ],
+  },
+  privacy: {
+    title: "Privacy Policy",
+    sections: [
+      ["Who we are", "Quranic Vocab is run by the Awami Baitulmaal Committee (Reg.), a registered non-profit. We collect only what the app needs, we never sell your data, and the app shows no advertising."],
+      ["What we collect", "• Account details: your name, User ID and email address. Your password is stored securely (encrypted) by our login provider — we never see it.\n• Learning data: your quiz answers and scores, completed sets, words mastered, streaks and monthly targets.\n• Profile picture, if you choose to upload one.\n• Messages you send us, and donation receipt details (name, amount, date and reference) if you donate.\n• Technical data needed for security: your current login session (so an account is used on one device at a time) and a one-time bot check at sign-up.\n• Settings such as theme and language are kept on your own device."],
+      ["How we use it", "To run your account and save your progress; to show your progress to you; to show your name and progress figures (such as words mastered) on the leaderboard to other learners; to send account emails (verification, password reset, receipts, and up to three gentle reminders if you've been inactive for a while); and to improve the app."],
+      ["Who helps us", "Your data is stored and processed by the services that run the app: Supabase (database and login), Vercel (hosting), Titan (email), EmailJS (receipt and invitation emails) and Cloudflare Turnstile (bot check). Recitation audio is loaded from Al Quran Cloud and Quran.com. We don't share your data with anyone for marketing."],
+      ["Invite a Friend", "If you invite someone, we use their name and email only to send that one invitation."],
+      ["How long we keep it", "We keep your data while your account is active and delete it when you ask us to. Before the public launch, test accounts are deleted; a copy of each tester's progress is kept for up to 90 days so that returning testers can choose to restore it, and is then deleted. Donation receipts are kept as financial records."],
+      ["Your choices", "You can see and correct your details in Profile Settings. To get a copy of your data, or to have your account and data deleted, write to support@awamibaitulmaal.org.in."],
+      ["Security", "Data is sent over encrypted connections and protected by access rules so that learners can only see their own private data. No system is perfectly secure, but we take care to protect yours."],
+      ["Children", "If you are under 18, please use the app with the permission of a parent or guardian."],
+      ["Changes", "We may update this policy. If the changes are significant, we'll ask you to review and accept them again in the app."],
+      ["Contact", "support@awamibaitulmaal.org.in"],
+    ],
+  },
+};
+// Open a policy from anywhere (sign-up form, footer, Profile) without prop drilling.
+function openLegal(doc) { window.dispatchEvent(new CustomEvent("qv-legal", { detail: doc })); }
+
+function LegalModal({ doc, onClose, onSwitch }) {
+  const d = LEGAL_DOCS[doc];
+  if (!d) return null;
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal legal-modal" style={{ maxWidth: 620 }}>
+        <div className="modal-head">
+          <h3>{d.title}</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body legal-body">
+          <p className="legal-meta">Quranic Vocab · Awami Baitulmaal Committee (Reg.) · Last updated {TERMS_UPDATED}</p>
+          {d.sections.map(([h, t], i) => (
+            <div key={i} className="legal-sec">
+              <h4>{i + 1}. {h}</h4>
+              {t.split("\n").map((line, j) => <p key={j}>{line}</p>)}
+            </div>
+          ))}
+          <p className="legal-meta" style={{ marginTop: 14 }}>
+            See also: <button className="legal-link" onClick={() => onSwitch(doc === "terms" ? "privacy" : "terms")}>{doc === "terms" ? "Privacy Policy" : "Terms of Use"}</button>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Shown once to learners whose account has no (or an older) acceptance on record.
+function TermsAcceptModal({ onAccept, onLogout }) {
+  const [agree, setAgree] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const accept = async () => {
+    setBusy(true); setError("");
+    const ok = await onAccept();
+    if (!ok) { setBusy(false); setError("Couldn't save — please check your connection and try again."); }
+  };
+  return (
+    <div className="modal-overlay">
+      <div className="modal" style={{ maxWidth: 440 }}>
+        <div className="modal-head"><h3>📜 Terms &amp; Privacy</h3></div>
+        <div className="modal-body">
+          <p style={{ fontSize: 14, lineHeight: 1.65, marginBottom: 12 }}>
+            We've added a <button className="legal-link" onClick={() => openLegal("terms")}>Terms of Use</button> and a <button className="legal-link" onClick={() => openLegal("privacy")}>Privacy Policy</button> explaining how Quranic Vocab works and how your data is looked after. Please take a moment to read them.
+          </p>
+          <label className="terms-check">
+            <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} />
+            <span>I agree to the Terms of Use and Privacy Policy</span>
+          </label>
+          {error && <div className="enroll-error">⚠ {error}</div>}
+          <button className="btn bg bfw" onClick={accept} disabled={!agree || busy} style={{ marginTop: 6 }}>{busy ? "Saving…" : "Continue →"}</button>
+          <button className="beta-later" onClick={onLogout} disabled={busy}>Not now — log out</button>
+          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 10, textAlign: "center" }}>Unclear wording? Tell us at support@awamibaitulmaal.org.in — it helps us improve.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Small copyright + policy links line under the learner pages.
+function LegalFooter() {
+  return (
+    <footer className="legal-foot">
+      © 2026 Awami Baitulmaal Committee (Reg.) · <button className="legal-link" onClick={() => openLegal("terms")}>Terms</button> · <button className="legal-link" onClick={() => openLegal("privacy")}>Privacy</button>
+    </footer>
+  );
+}
+
+// ─── Welcome-back offer for former test users ────────────────────────────────
+// Shown once after a verified login when beta_archive_check() finds progress
+// archived from the test phase under this email. Choosing either option is
+// final (the archive is deleted) and adds the Founding Tester badge.
+function BetaWelcomeModal({ offer, onClaim, onLater }) {
+  const [busy, setBusy] = useState(null);       // "restore" | "fresh"
+  const [confirmFresh, setConfirmFresh] = useState(false);
+  const [error, setError] = useState("");
+  const scores = (offer.scores || []).map(mapScoreRow);
+  const mastered = buildStrictMastery(scores).masteredSet.size;
+  const sets = Object.keys(offer.day_progress || {}).filter(k => /^\d+$/.test(k)).length;
+  const expires = offer.expires_at ? new Date(offer.expires_at).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) : null;
+  const go = async (restore) => {
+    setBusy(restore ? "restore" : "fresh"); setError("");
+    const ok = await onClaim(restore);
+    if (!ok) { setBusy(null); setError("Something went wrong — please try again in a moment."); }
+  };
+  return (
+    <div className="modal-overlay">
+      <div className="modal beta-modal" style={{ maxWidth: 440 }}>
+        <div className="modal-head"><h3>🌟 Welcome back, Founding Tester!</h3></div>
+        <div className="modal-body">
+          <p style={{ fontSize: 14, lineHeight: 1.65, marginBottom: 14 }}>
+            JazakAllahu khairan for helping us test Quranic Vocab. As a thank-you, we kept the progress you made during testing:
+          </p>
+          <div className="beta-stats">
+            <div><b>{mastered}</b><span>words mastered</span></div>
+            <div><b>{sets}</b><span>set{sets !== 1 ? "s" : ""} completed</span></div>
+            <div><b>{scores.length}</b><span>quiz{scores.length !== 1 ? "zes" : ""} taken</span></div>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, margin: "14px 0" }}>
+            Restore it to carry on where you left off, or start afresh from Set 1. Either way you'll get the <span style={{ color: "var(--gold2)" }}>Founding Tester</span> badge. This choice can only be made once.
+          </p>
+          {error && <div className="enroll-error">⚠ {error}</div>}
+          {!confirmFresh ? (
+            <>
+              <button className="btn bg bfw" onClick={() => go(true)} disabled={!!busy}>{busy === "restore" ? "Restoring…" : "Restore my progress"}</button>
+              <button className="btn bh bfw" style={{ marginTop: 8 }} onClick={() => setConfirmFresh(true)} disabled={!!busy}>Start afresh</button>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.6, marginBottom: 10 }}>Your test progress will be permanently deleted. Start afresh?</p>
+              <button className="btn bh bfw" onClick={() => go(false)} disabled={!!busy}>{busy === "fresh" ? "Starting…" : "Yes, start afresh"}</button>
+              <button className="btn bg bfw" style={{ marginTop: 8 }} onClick={() => setConfirmFresh(false)} disabled={!!busy}>← Back</button>
+            </>
+          )}
+          <button className="beta-later" onClick={onLater} disabled={!!busy}>Decide later{expires ? ` (available until ${expires})` : ""}</button>
+        </div>
+      </div>
     </div>
   );
 }
