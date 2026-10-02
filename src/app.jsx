@@ -2189,6 +2189,13 @@ input[type="password"]::-ms-clear{display:none;}
 .modal-close{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:var(--muted);font-size:21px;cursor:pointer;line-height:1;padding:3px 8px;border-radius:6px;transition:all .15s;}
 .modal-close:hover{color:var(--text);background:rgba(255,255,255,.1);}
 .modal-body{padding:22px 24px 26px;}
+.invite-status{font-size:13px;line-height:1.6;border-radius:8px;padding:10px 12px;margin:4px 0 10px;border:1px solid;}
+.invite-status.on{background:rgba(255,217,107,.08);border-color:rgba(255,217,107,.4);}
+.invite-status.off{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.4);}
+.tester-list{display:flex;flex-direction:column;gap:6px;max-height:360px;overflow-y:auto;}
+.tester-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid rgba(var(--cyan-rgb),.15);border-radius:8px;}
+.tester-email{font-size:13.5px;color:var(--text);word-break:break-all;}
+.tester-meta{font-size:11.5px;color:var(--muted);}
 .terms-check{display:flex;align-items:flex-start;gap:9px;font-size:13px;line-height:1.5;color:var(--text);margin:12px 0 12px;cursor:pointer;text-align:left;}
 .terms-check input{margin-top:3px;width:16px;height:16px;flex:0 0 auto;accent-color:var(--cyan);}
 .legal-link{background:none;border:none;padding:0;color:var(--cyan2);font:inherit;text-decoration:underline;cursor:pointer;}
@@ -2695,10 +2702,13 @@ export default function App() {
     return path === "/terms" ? "terms" : path === "/privacy" ? "privacy" : null;
   });
   const [needTerms, setNeedTerms] = useState(false);
+  const [testingOnly, setTestingOnly] = useState(false);
   useEffect(() => {
     const h = (e) => setLegalDoc(e.detail || null);
+    const t = () => setTestingOnly(true);
     window.addEventListener("qv-legal", h);
-    return () => window.removeEventListener("qv-legal", h);
+    window.addEventListener("qv-testing-only", t);
+    return () => { window.removeEventListener("qv-legal", h); window.removeEventListener("qv-testing-only", t); };
   }, []);
   // allWords: instant-painted from the last successful Supabase fetch (cached
   // in qv_words_cache, same pattern as qv_user), then reconciled for real via
@@ -2975,7 +2985,13 @@ export default function App() {
       .from("users").select("*").eq("auth_id", authId).maybeSingle();
 
     if (error) { console.error("loadUserProfile error:", error.message); return; }
-    if (!profile) { console.warn("No profile found for auth_id:", authId); return; }
+    if (!profile) {
+      console.warn("No profile found for auth_id:", authId);
+      // An uninvited sign-up during private testing never gets a profile.
+      const { data: okNoProfile, error: gateErr } = await supabase.rpc("am_i_allowed");
+      if (!gateErr && okNoProfile === false) { await supabase.auth.signOut(); setUser(null); storageRemove("qv_user"); showTestingOnly(); }
+      return;
+    }
 
     // Admin/Finance are real Supabase accounts (as of the session-security fix)
     // but don't behave like learner accounts — no quiz state, routed to their
@@ -3073,6 +3089,16 @@ export default function App() {
     setUser(u);
     setNeedTerms(profile.terms_version !== TERMS_VERSION && "terms_version" in profile);
     storageSet("qv_user", u);
+    // Private testing: a learner whose email isn't on the tester list is signed out.
+    if (!["admin", "finance", "reviewer"].includes(profile.role)) {
+      const { data: allowedNow, error: gateErr } = await supabase.rpc("am_i_allowed");
+      if (!gateErr && allowedNow === false) {
+        await supabase.auth.signOut();
+        setUser(null); storageRemove("qv_user"); setView("home");
+        showTestingOnly();
+        return;
+      }
+    }
     // Former test user signing up again after launch? Offer their test progress
     // back (matched server-side to their VERIFIED login email; null otherwise).
     supabase.rpc("beta_archive_check").then(({ data, error: archErr }) => {
@@ -3197,6 +3223,13 @@ export default function App() {
       return { ok: false, reason: "id-taken" };
     }
 
+    // Private testing: only emails on the tester list may sign up.
+    const { data: signupAllowed, error: allowErr } = await supabase.rpc("is_signup_allowed", { p_email: emailLower });
+    if (!allowErr && signupAllowed === false) {
+      showTestingOnly();
+      return { ok: false, reason: "invite-only" };
+    }
+
     // Sign up via Supabase Auth — sends verification email via Titan SMTP
     const { data, error } = await supabase.auth.signUp({
       email: emailLower,
@@ -3238,6 +3271,11 @@ export default function App() {
         terms_version: TERMS_VERSION,
         terms_accepted_at: new Date().toISOString(),
       });
+      if (profileErr && /invite_only/.test(profileErr.message || "")) {
+        await supabase.auth.signOut();
+        showTestingOnly();
+        return { ok: false, reason: "invite-only" };
+      }
       if (profileErr) {
         console.error("Profile insert error:", profileErr.message);
         // If the terms columns aren't in the database yet, don't lose the
@@ -4090,6 +4128,7 @@ export default function App() {
         )}
 
         {!isAdminRoute && !isFinanceRoute && showDonate && <DonateContactModal onClose={() => setShowDonate(false)} toast_={toast_} />}
+        {testingOnly && <TestingOnlyModal onClose={() => setTestingOnly(false)} />}
         {needTerms && user && !sessionPrompt && <TermsAcceptModal onAccept={acceptTerms} onLogout={() => { setNeedTerms(false); logout(); }} />}
         {legalDoc && <LegalModal doc={legalDoc} onClose={() => { setLegalDoc(null); if (/^\/(terms|privacy)\/?$/.test(window.location.pathname)) window.history.replaceState(null, "", "/"); }} onSwitch={setLegalDoc} />}
         {betaOffer && user && !sessionPrompt && !needTerms && <BetaWelcomeModal offer={betaOffer} onClaim={claimBetaArchive} onLater={() => setBetaOffer(null)} />}
@@ -4727,6 +4766,9 @@ function EnrollPage({ onRegister, onLogin, participants, onForgotPassword, onRes
       setTurnstileToken(null); setTurnstileKey(k => k + 1);
     } else if (regResult.reason === "email-taken") {
       setError("That email address is already registered. Please log in instead, or use a different email.");
+      setTurnstileToken(null); setTurnstileKey(k => k + 1);
+    } else if (regResult.reason === "invite-only") {
+      setError("Quranic Vocab is open to invited testers only for now.");
       setTurnstileToken(null); setTurnstileKey(k => k + 1);
     } else {
       setError("Could not create account. Please try again.");
@@ -8822,6 +8864,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
       {tab === "rewards" && (
         <RewardsTab participants={participants} toast_={toast_} allWords={allWords} />
       )}
+      {tab === "settings" && <TestersPanel toast_={toast_} />}
       {tab === "settings" && <ResetTestDataPanel onResetAllTestData={onResetAllTestData} onFinishReset={onFinishReset} />}
       {tab === "settings" && <ClearReceiptsPanel onClearAllReceipts={onClearAllReceipts} />}
       {/* Finance password change requests moved to the top-level 🔔 notification center */}
@@ -8918,6 +8961,129 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
 // Destructive, irreversible action — wipes every participant, score, message,
 // and token accumulated during QA. Requires typing a literal confirmation
 // phrase (not just a click) given how severe and unrecoverable this is.
+// ─── Invite-only testing: tester list + on/off switch ────────────────────────
+function TestersPanel({ toast_ }) {
+  const [inviteOnly, setInviteOnly] = useState(null);  // true/false, null = loading
+  const [list, setList] = useState([]);
+  const [loadError, setLoadError] = useState("");
+  const [entry, setEntry] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState(null);
+  const [filter, setFilter] = useState("");
+
+  const load = async () => {
+    const [{ data: setting, error: e1 }, { data: rows, error: e2 }] = await Promise.all([
+      supabase.from("app_settings").select("value").eq("key", "invite_only").maybeSingle(),
+      supabase.from("tester_allowlist").select("*").order("added_at", { ascending: false }),
+    ]);
+    if (e1 || e2) { setLoadError((e1 || e2).message); return; }
+    setLoadError("");
+    setInviteOnly(setting ? setting.value === true : false);
+    setList(rows || []);
+  };
+  useEffect(() => { load(); }, []);
+
+  // Accepts one per line or comma-separated; "Name <email>" or "email, Name" both work.
+  const add = async () => {
+    const items = entry.split(/[\n;]+/).map(x => x.trim()).filter(Boolean).map(line => {
+      const m = line.match(/[^\s<>,]+@[^\s<>,]+\.[^\s<>,]+/);
+      if (!m) return null;
+      const email = m[0].toLowerCase();
+      const name = line.replace(m[0], "").replace(/[<>,]/g, " ").trim() || null;
+      return { email, name, note: "added by admin" };
+    });
+    const valid = items.filter(Boolean);
+    if (!valid.length) { toast_("No valid email address found."); return; }
+    setBusy(true);
+    const { error } = await supabase.from("tester_allowlist").upsert(valid, { onConflict: "email", ignoreDuplicates: true });
+    setBusy(false);
+    if (error) { toast_(`⚠ Couldn't add: ${error.message}`); return; }
+    toast_(`✅ ${valid.length} tester${valid.length !== 1 ? "s" : ""} added${items.length > valid.length ? ` (${items.length - valid.length} line(s) skipped — no email found)` : ""}.`);
+    setEntry("");
+    load();
+  };
+  const remove = async (email) => {
+    setRemoveTarget(null);
+    const { error } = await supabase.from("tester_allowlist").delete().eq("email", email);
+    if (error) { toast_(`⚠ Couldn't remove: ${error.message}`); return; }
+    toast_(`Removed ${email}. They can no longer sign up or log in while testing is invite-only.`);
+    load();
+  };
+  const setSwitch = async (on) => {
+    setConfirmOff(false);
+    const { error } = await supabase.rpc("set_invite_only", { p_on: on });
+    if (error) { toast_(`⚠ ${error.message}`); return; }
+    toast_(on ? "🔒 Invite-only testing is ON." : "🔓 Invite-only is OFF — anyone can sign up now.");
+    load();
+  };
+
+  const shown = list.filter(r => !filter || r.email.includes(filter.toLowerCase()) || (r.name || "").toLowerCase().includes(filter.toLowerCase()));
+
+  return (
+    <div className="card" style={{ maxWidth: 560, marginTop: 16 }}>
+      <div className="lbl">🧪 Testers (invite-only access)</div>
+      {loadError ? (
+        <div className="enroll-error">⚠ Couldn't load the tester list ({loadError}). Has tester_access_setup.sql been run?</div>
+      ) : inviteOnly === null ? (
+        <p className="sub">Loading…</p>
+      ) : (
+        <>
+          <div className={`invite-status ${inviteOnly ? "on" : "off"}`}>
+            {inviteOnly
+              ? <>🔒 <strong>Invite-only is ON.</strong> Only the emails below can sign up or use the app as learners. Everyone else sees a "private testing" notice.</>
+              : <>🔓 <strong>Invite-only is OFF.</strong> Anyone can sign up.</>}
+          </div>
+          {inviteOnly ? (
+            !confirmOff
+              ? <button className="btn bh bsm" onClick={() => setConfirmOff(true)}>Open the app to everyone…</button>
+              : <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 13 }}>Turn invite-only OFF? Do this on launch day.</span>
+                  <button className="btn bsm" style={{ background: "var(--err)", color: "#fff" }} onClick={() => setSwitch(false)}>Yes, open to everyone</button>
+                  <button className="btn bh bsm" onClick={() => setConfirmOff(false)}>Cancel</button>
+                </div>
+          ) : (
+            <button className="btn bg bsm" onClick={() => setSwitch(true)}>Turn invite-only back ON</button>
+          )}
+
+          <div className="field" style={{ marginTop: 16 }}>
+            <label>Add testers — one per line (email, optional name)</label>
+            <textarea value={entry} onChange={e => setEntry(e.target.value)} rows={3}
+              placeholder={"ahmed@example.com, Ahmed\nfatima@example.com"}
+              style={{ width: "100%", boxSizing: "border-box", background: "var(--s2)", border: "1px solid rgba(var(--cyan-rgb),.25)", color: "var(--text)", padding: "9px 12px", borderRadius: 8, fontSize: 13.5, fontFamily: "inherit" }} />
+          </div>
+          <button className="btn bg bsm" onClick={add} disabled={busy || !entry.trim()}>{busy ? "Adding…" : "Add to tester list"}</button>
+          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8, lineHeight: 1.6 }}>
+            Add the Alim here too before he signs up. Testers must sign up with exactly this email.
+          </p>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "16px 0 8px", gap: 8, flexWrap: "wrap" }}>
+            <strong style={{ fontSize: 14 }}>{list.length} on the list</strong>
+            {list.length > 6 && <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search…" style={{ background: "var(--s2)", border: "1px solid rgba(var(--cyan-rgb),.25)", color: "var(--text)", padding: "5px 10px", borderRadius: 7, fontSize: 13 }} />}
+          </div>
+          <div className="tester-list">
+            {shown.map(r => (
+              <div key={r.email} className="tester-row">
+                <div style={{ minWidth: 0 }}>
+                  <div className="tester-email">{r.email}</div>
+                  <div className="tester-meta">{r.name || "—"} · {r.note || ""} · {new Date(r.added_at).toLocaleDateString()}</div>
+                </div>
+                {removeTarget === r.email
+                  ? <span style={{ display: "flex", gap: 6 }}>
+                      <button className="btn bsm" style={{ background: "var(--err)", color: "#fff" }} onClick={() => remove(r.email)}>Remove</button>
+                      <button className="btn bh bsm" onClick={() => setRemoveTarget(null)}>Keep</button>
+                    </span>
+                  : <button className="btn bh bsm" onClick={() => setRemoveTarget(r.email)}>✕</button>}
+              </div>
+            ))}
+            {shown.length === 0 && <p className="sub" style={{ margin: 0 }}>No testers yet.</p>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ResetTestDataPanel({ onResetAllTestData, onFinishReset }) {
   const [open, setOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -9046,6 +9212,28 @@ const LEGAL_DOCS = {
     ],
   },
 };
+// "Private testing" notice — shown when an uninvited email tries to sign up or log in.
+function showTestingOnly() { window.dispatchEvent(new CustomEvent("qv-testing-only")); }
+function TestingOnlyModal({ onClose }) {
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 420 }}>
+        <div className="modal-head"><h3>🧪 Private testing</h3><button className="modal-close" onClick={onClose}>✕</button></div>
+        <div className="modal-body" style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🌙</div>
+          <p style={{ fontSize: 14.5, lineHeight: 1.7, marginBottom: 12 }}>
+            Quranic Vocab is currently being tested by a small group of invited testers. It will be open to everyone soon, <span style={{ color: "var(--gold2)" }}>in shā' Allāh</span>.
+          </p>
+          <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, marginBottom: 16 }}>
+            Were you invited? Please use the same email address your invitation was sent to. For anything else, write to <strong style={{ color: "var(--text)" }}>support@awamibaitulmaal.org.in</strong>.
+          </p>
+          <button className="btn bg bfw" onClick={onClose}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Open a policy from anywhere (sign-up form, footer, Profile) without prop drilling.
 function openLegal(doc) { window.dispatchEvent(new CustomEvent("qv-legal", { detail: doc })); }
 
