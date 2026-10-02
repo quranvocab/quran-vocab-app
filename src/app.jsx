@@ -199,6 +199,8 @@ function buildWordStrengthBreakdown(scores, allWords = []) {
 //    answers IN A ROW reset it — it is no longer mastered and needs 3 correct
 //    answers in a row again.
 //  • While not mastered, any wrong answer sets the streak back to zero.
+// All Sets Quiz timer: total time = words × this many seconds.
+const ALL_SETS_SEC_PER_WORD = 2;
 const MASTERY_STREAK_REQUIRED = 3;
 const MASTERY_RESET_WRONGS = 2;
 
@@ -3632,7 +3634,7 @@ export default function App() {
         chosen: null,
       };
     });
-    const timerSeconds = isAllSetsQuiz ? Math.round(questions.length * 1.5) : null;
+    const timerSeconds = isAllSetsQuiz ? Math.round(questions.length * ALL_SETS_SEC_PER_WORD) : null;
     const quizLabel = customPool ? "weak-practice" : day;
     setQuiz({ questions, cur: 0, score: 0, day: quizLabel, done: false, missed: [], timerSeconds, timeUp: false, startedAt: Date.now() });
     setView("quiz");
@@ -4430,7 +4432,7 @@ function HomePage({ user, allWords, totalWordCount, participants, onStart, setVi
               </p>
               <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 20, lineHeight: 1.7 }}>
                 The timer starts as soon as you begin.<br/>
-                You have <strong style={{ color: "var(--gold2)" }}>~{Math.round(completedWordsCount * 1.5)}s</strong> total — about 1.5s per word.<br/>
+                You have <strong style={{ color: "var(--gold2)" }}>~{Math.round(completedWordsCount * ALL_SETS_SEC_PER_WORD)}s</strong> total — about {ALL_SETS_SEC_PER_WORD}s per word.<br/>
                 Find a quiet moment and stay focused.
               </p>
               <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
@@ -7343,7 +7345,7 @@ function HistoryPage({ user, setView, onReview, allWords, onStart }) {
               </div>
               {allSetsBarData.length > 0 && (() => {
                 const totalUnlockedWords = getUnlockedWords(user.enrolledAt, user.dayProgress, allWords).length;
-                const timeAvailable = Math.round(totalUnlockedWords * 1.5);
+                const timeAvailable = Math.round(totalUnlockedWords * ALL_SETS_SEC_PER_WORD);
                 return (
                   <div style={{ display: "flex", gap: 14, fontSize: 11, color: "var(--muted)", marginTop: 8, justifyContent: "center", flexWrap: "wrap" }}>
                     <span>📚 <strong style={{ color: "var(--gold2)" }}>{totalUnlockedWords}</strong> total words</span>
