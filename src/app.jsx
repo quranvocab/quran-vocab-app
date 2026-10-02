@@ -867,41 +867,24 @@ async function clearAllReceiptsRows() {
   return true;
 }
 
-// ── EmailJS configuration ──────────────────────────────────────────────────────
-// Sends transactional emails via Titan SMTP (support@awamibaitulmaal.org.in),
-// connected through EmailJS. No backend server needed — EmailJS's public key is
-// safe to expose client-side by design (see EmailJS docs); their free tier caps
-// abuse at 200 emails/month.
-const EMAILJS_SERVICE_ID    = "service_u97pazt"; // support@ — invites, certificates, misc.
-const EMAILJS_RECEIPT_SERVICE_ID = "service_jdrpzb6"; // admin@ — receipts only
-const EMAILJS_RECEIPT_TEMPLATE_ID = "template_hbjl6yv"; // dedicated receipt/invoice template
-const EMAILJS_INVITE_TEMPLATE_ID  = "template_1hfqxef"; // "Invite a Friend" template
-const EMAILJS_PUBLIC_KEY    = "lVfbS-yLSA3hkGGT5";
-// Supabase now handles verification + password reset emails via Titan SMTP.
-// EmailJS is used for donation receipts (template_hbjl6yv, sent via the
-// separate admin@ service — see EMAILJS_RECEIPT_SERVICE_ID) and, as of this
-// change, "invite a friend" emails (a separate dedicated template, still on
-// the original support@ service) — an intentional, agreed exception to the
-// "receipts + certificates only" rule.
-
-let _emailjsLoaded = null;
-async function loadEmailJS() {
-  if (_emailjsLoaded) return _emailjsLoaded;
-  _emailjsLoaded = new Promise((resolve, reject) => {
-    if (window.emailjs) { resolve(window.emailjs); return; }
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js";
-    script.onload = () => {
-      window.emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
-      resolve(window.emailjs);
-    };
-    script.onerror = () => reject(new Error("Failed to load EmailJS"));
-    document.head.appendChild(script);
-  });
-  return _emailjsLoaded;
+// ── App emails (receipts, certificates, invites, security notice) ────────────
+// Sent by the Supabase Edge Function "send-app-email" through Titan SMTP, so no
+// email keys live in this (public) file. The function checks who is calling:
+// receipts/certificates need an Admin/Finance login; invites and the security
+// notice are built server-side from a few fields, with daily limits.
+// (Verification and password-reset emails are sent by Supabase Auth itself.)
+async function sendAppEmail(payload) {
+  const { data, error } = await supabase.functions.invoke("send-app-email", { body: payload });
+  if (error || !data || !data.ok) {
+    let reason = data?.error || "send-failed";
+    try { const ctx = error?.context; if (ctx && typeof ctx.json === "function") { const j = await ctx.json(); reason = j?.error || reason; } } catch (_) {}
+    const err = new Error(reason); err.reason = reason;
+    throw err;
+  }
+  return data;
 }
 
-// ── jsPDF (lazy-loaded, same pattern as EmailJS above) — used only for the
+// ── jsPDF (lazy-loaded on first use) — used only for the
 // client-side "Download PDF Receipt" button. No server involved, no cost.
 let _jsPDFLoaded = null;
 async function loadJsPDF() {
@@ -918,7 +901,7 @@ async function loadJsPDF() {
 }
 
 // ── HTML-escape user-supplied text before it goes into any email template.
-// EmailJS templates use {{{email_body_html}}} (triple-mustache = unescaped)
+// Staff-built email HTML goes out verbatim,
 // so whatever we build here goes out verbatim — donor names, notes, and
 // even a learner's registered display name are all free text a person
 // typed in, so without this a crafted name/note could inject links or
@@ -955,14 +938,13 @@ function amountInWordsIndian(num) {
 }
 
 // ── All auth emails (verification + password reset) handled by Supabase ───────
-// EmailJS is now used ONLY for donation receipts (sendReceiptEmail below).
+// Receipts below are sent through sendAppEmail (Edge Function).
 
 // Formal donation-receipt document format — mirrors the layout of a
 // standard 80G-style trust receipt (reg numbers up top, donor details block,
 // amount in figures + words, signatory block at the bottom), rendered in
 // the app's dark ocean / cyan / gold theme rather than a plain white page.
 async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donationDate, purpose, note, donorAddress, donorPan, paymentMode, utrReference }) {
-  const emailjs = await loadEmailJS();
 
   const charityName = DONATE.charityName && DONATE.charityName !== "Your Charity Name Here"
     ? DONATE.charityName
@@ -1061,19 +1043,17 @@ async function sendReceiptEmail({ toEmail, donorName, receiptNo, amount, donatio
 
   </div>`;
 
-  return emailjs.send(EMAILJS_RECEIPT_SERVICE_ID, EMAILJS_RECEIPT_TEMPLATE_ID, {
-    to_email: toEmail,
-    recipient_name: donorName,
-    receipt_no: receiptNo,
-    from_email: "admin@awamibaitulmaal.org.in", // must match the admin@ Titan SMTP auth user on EMAILJS_RECEIPT_SERVICE_ID (see deploy notes)
-    reply_to: "finance@awamibaitulmaal.org.in", // alias forwarding to admin@ — replies land in the same inbox either way
-    email_heading: `Donation Receipt ${receiptNo} — ${charityName}`,
-    email_body_html: invoiceHtml,
+  return sendAppEmail({
+    type: "staff_html",
+    to: toEmail,
+    subject: `Donation Receipt ${receiptNo} — ${charityName}`,
+    html: invoiceHtml,
+    replyTo: "finance@awamibaitulmaal.org.in", // alias forwarding to admin@
   });
 }
 
-// Client-side PDF version of the same receipt — free, no EmailJS attachment
-// plan needed. Triggers a browser download; doesn't touch email at all.
+// Client-side PDF version of the same receipt — free, no email attachment
+// needed. Triggers a browser download; doesn't touch email at all.
 async function generateReceiptPDF(receipt) {
   const jsPDF = await loadJsPDF();
   const doc = new jsPDF({ unit: "pt", format: "a4" });
@@ -1136,51 +1116,10 @@ async function generateReceiptPDF(receipt) {
   doc.save(`${receipt.receiptNo}.pdf`);
 }
 
-// ── Invite a Friend (EmailJS, dedicated template — see EMAILJS_INVITE_TEMPLATE_ID) ─
-async function sendInviteEmail({ toEmail, friendName, inviterName }) {
-  const emailjs = await loadEmailJS();
-  const appUrl = window.location.origin;
-
-  const inviteHtml = `
-  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(0,200,230,.25);">
-
-    <!-- Header -->
-    <div style="background-color:#0d2d40;padding:32px 24px;text-align:center;border-bottom:1px solid rgba(0,200,230,.2);">
-      <div style="font-size:36px;margin-bottom:8px">📖</div>
-      <div style="font-size:20px;color:#ffd96b;margin-bottom:8px;line-height:1.6">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
-      <div style="font-size:21px;font-weight:700;color:#f0f8ff">You're Invited to Learn Qur'anic Vocabulary</div>
-    </div>
-
-    <!-- Body -->
-    <div style="padding:28px 24px;background:#0d1f2d;text-align:center;">
-      <p style="font-size:15px;color:#f0f8ff;line-height:1.7;margin:0 0 16px">
-        Assalamu Alaikum${friendName ? " " + escapeHtml(friendName) : ""},
-      </p>
-      <p style="font-size:14px;color:#a9c9dc;line-height:1.8;margin:0 0 22px">
-        <strong style="color:#ffd96b">${escapeHtml(inviterName)}</strong> thought you'd love to join them on a journey to understand the words of the Qur'an — learning its most frequently used vocabulary, one set of 10 words at a time, at your own pace.
-      </p>
-      <p style="font-size:13px;color:#7ab8d4;line-height:1.7;margin:0 0 26px;font-style:italic">
-        "Whoever follows a path in pursuit of knowledge, Allah will make easy for him a path to Paradise." — Sahih Muslim
-      </p>
-      <a href="${appUrl}" style="display:inline-block;padding:14px 34px;background-color:#00c8e6;color:#071c2a;font-weight:700;font-size:14px;text-decoration:none;border-radius:10px">
-        Begin Your Journey →
-      </a>
-    </div>
-
-    <!-- Footer -->
-    <div style="padding:14px 24px;text-align:center;background:rgba(0,0,0,.2);border-top:1px solid rgba(0,200,230,.12)">
-      <p style="margin:0;font-size:11px;color:rgba(122,184,212,.5)">Awami Baitulmaal Committee (Reg.) &nbsp;·&nbsp; support@awamibaitulmaal.org.in</p>
-    </div>
-
-  </div>`;
-
-  return emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_INVITE_TEMPLATE_ID, {
-    to_email: toEmail,
-    recipient_name: friendName || "there",
-    from_email: "support@awamibaitulmaal.org.in",
-    email_heading: `${inviterName} invited you to learn Qur'anic vocabulary`,
-    email_body_html: inviteHtml,
-  });
+// ── Invite a Friend — the email itself is built by the Edge Function, so a
+// learner can't put their own content into an email sent in our name.
+async function sendInviteEmail({ toEmail, friendName }) {
+  return sendAppEmail({ type: "invite", toEmail, friendName });
 }
 
 // ── Email domain validation ──────────────────────────────────────────────────
@@ -3363,7 +3302,7 @@ export default function App() {
 
   // Admin-only: reset a learner's password to a new temporary one they provide
   // Admin-triggered reset: generates a one-time reset link and emails it to
-  // the learner via EmailJS (Titan SMTP, support@awamibaitulmaal.org.in).
+  // the learner via Supabase Auth (Titan SMTP, support@awamibaitulmaal.org.in).
   // The actual new password is never set by admin and never appears in the
   // email — the learner sets it themselves by opening the link.
   const sendResetLinkToUser = async (userId, messageId = null) => {
@@ -5382,17 +5321,10 @@ function ProfilePage({ user, saveUser, setView, toast_, onBack }) {
     const oldEmail = user.email;
     const { error: err } = await supabase.auth.updateUser({ email: newEmail });
     if (err) { setError("Failed to update email: " + err.message); setSaving(false); return; }
-    // Send a courtesy notice to the OLD email so the owner is aware.
+    // Send a courtesy notice to the OLD (current) email so the owner is aware.
+    // Built and addressed server-side — the address comes from the account itself.
     try {
-      const emailjs = await loadEmailJS();
-      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_RECEIPT_TEMPLATE_ID, {
-        to_email: oldEmail,
-        recipient_name: user.name,
-        from_email: "support@awamibaitulmaal.org.in",
-        reply_to: "support@awamibaitulmaal.org.in",
-        email_heading: "Security notice — email change requested on your Quranic Vocab account",
-        email_body_html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0d1f2d;border-radius:12px;overflow:hidden;border:1px solid rgba(0,200,230,.25);"><div style="padding:28px 24px;text-align:center;"><div style="font-size:34px;margin-bottom:10px">🔔</div><h2 style="color:#00c8e6;font-size:20px;margin:0 0 12px">Email Change Requested</h2><p style="color:#7ab8d4;font-size:14px;line-height:1.8;margin:0">A request was made to change the email on your Quranic Vocab account from <strong style="color:#f0f8ff">${oldEmail}</strong> to <strong style="color:#f0f8ff">${newEmail}</strong>.<br/><br/>If this was you, enter the code sent to your new address to confirm it.<br/><br/>If this was NOT you, contact <a href="mailto:support@awamibaitulmaal.org.in" style="color:#00c8e6">support@awamibaitulmaal.org.in</a> immediately.</p></div></div>`,
-      });
+      await sendAppEmail({ type: "email_change_notice", newEmail });
     } catch (e) { console.warn("Old-email notice failed:", e); }
     toast_("✅ A 6-digit code was sent to your new email — enter it below to confirm.");
     setPendingEmail(newEmail);
@@ -8276,7 +8208,7 @@ function ReceiptManager({ receipts, receiptRequests = [], onIssueReceipt, onDism
         {rcptSuccess && (
           <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 7, background: "rgba(74,158,92,.08)", border: "1px solid rgba(74,158,92,.25)" }}>
             <div style={{ fontSize: 13, color: "var(--ok)" }}>✅ Receipt {rcptSuccess.receiptNo} issued.</div>
-            {rcptSuccess.emailFailed && <div style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>⚠ Email failed to send — check EmailJS connection and resend manually if needed.</div>}
+            {rcptSuccess.emailFailed && <div style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>⚠ Email failed to send — check the send-app-email function in Supabase and resend manually if needed.</div>}
           </div>
         )}
       </div>
@@ -8627,19 +8559,17 @@ function RewardsTab({ participants, toast_, allWords }) {
     </div>`;
 
     try {
-      const emailjs = await loadEmailJS();
-      await emailjs.send(EMAILJS_RECEIPT_SERVICE_ID, EMAILJS_RECEIPT_TEMPLATE_ID, {
-        to_email: p.email,
-        recipient_name: p.name,
-        from_email: "admin@awamibaitulmaal.org.in", // must match the admin@ Titan SMTP auth user on EMAILJS_RECEIPT_SERVICE_ID (see deploy notes)
-        reply_to: "admin@awamibaitulmaal.org.in",
-        email_heading: `🏆 Certificate of Achievement — Quranic Vocab`,
-        email_body_html: certHtml,
+      await sendAppEmail({
+        type: "staff_html",
+        to: p.email,
+        subject: "🏆 Certificate of Achievement — Quranic Vocab",
+        html: certHtml,
+        replyTo: "admin@awamibaitulmaal.org.in",
       });
       setSent(prev => ({ ...prev, [p.userId]: true }));
       toast_(`✅ Certificate sent to ${p.name}!`);
     } catch (err) {
-      toast_("⚠ Failed to send certificate — check EmailJS connection.");
+      toast_("⚠ Failed to send certificate — check the send-app-email function in Supabase.");
     }
     setSending(false);
   };
@@ -8712,7 +8642,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
     } else if (result.reason === "no-email") {
       setResetError("This learner has no registered email on file — can't send a link.");
     } else if (result.reason === "send-failed") {
-      setResetError("Email failed to send. Check the EmailJS/Titan connection and try again.");
+      setResetError("Email failed to send. Check the Supabase email (Titan SMTP) settings and try again.");
     } else {
       setResetError("Could not find that user.");
     }
@@ -8755,7 +8685,7 @@ function AdminPage({ allWords, onAddWord, onBulkAddWords, onEditWord, onDeleteWo
     const result = await onResendVerification(userId);
     if (result.ok) toast_(`Verification email resent to ${userId}.`);
     else if (result.reason === "already-verified") toast_(`${userId}'s email is already verified — no need to resend.`);
-    else toast_("Failed to resend — check EmailJS connection.");
+    else toast_("Failed to resend — check the Supabase email (Titan SMTP) settings.");
   };
 
   const add = async () => {
@@ -9201,7 +9131,7 @@ const LEGAL_DOCS = {
       ["Who we are", "Quranic Vocab is run by the Awami Baitulmaal Committee (Reg.), a registered non-profit. We collect only what the app needs, we never sell your data, and the app shows no advertising."],
       ["What we collect", "• Account details: your name, User ID and email address. Your password is stored securely (encrypted) by our login provider — we never see it.\n• Learning data: your quiz answers and scores, completed sets, words mastered, streaks and monthly targets.\n• Profile picture, if you choose to upload one.\n• Messages you send us, and donation receipt details (name, amount, date and reference) if you donate.\n• Technical data needed for security: your current login session (so an account is used on one device at a time) and a one-time bot check at sign-up.\n• Settings such as theme and language are kept on your own device."],
       ["How we use it", "To run your account and save your progress; to show your progress to you; to show your name and progress figures (such as words mastered) on the leaderboard to other learners; to send account emails (verification, password reset, receipts, and up to three gentle reminders if you've been inactive for a while); and to improve the app."],
-      ["Who helps us", "Your data is stored and processed by the services that run the app: Supabase (database and login), Vercel (hosting), Titan (email), EmailJS (receipt and invitation emails) and Cloudflare Turnstile (bot check). Recitation audio is loaded from Al Quran Cloud and Quran.com. We don't share your data with anyone for marketing."],
+      ["Who helps us", "Your data is stored and processed by the services that run the app: Supabase (database and login), Vercel (hosting), Titan (email) and Cloudflare Turnstile (bot check). Recitation audio is loaded from Al Quran Cloud and Quran.com. We don't share your data with anyone for marketing."],
       ["Invite a Friend", "If you invite someone, we use their name and email only to send that one invitation."],
       ["How long we keep it", "We keep your data while your account is active and delete it when you ask us to. Before the public launch, test accounts are deleted; a copy of each tester's progress is kept for up to 90 days so that returning testers can choose to restore it, and is then deleted. Donation receipts are kept as financial records."],
       ["Your choices", "You can see and correct your details in Profile Settings. To get a copy of your data, or to have your account and data deleted, write to support@awamibaitulmaal.org.in."],
@@ -9559,13 +9489,16 @@ function InviteModal({ onClose, toast_, user }) {
     const emailTrim = friendEmail.trim();
     if (!friendName.trim()) { setError("Please enter your friend's name."); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) { setError("Please enter a valid email address."); return; }
+    if (!user) { setError("Please log in to invite a friend."); return; }
     setSending(true);
     try {
-      await sendInviteEmail({ toEmail: emailTrim, friendName: friendName.trim(), inviterName: user?.name || "A fellow learner" });
+      await sendInviteEmail({ toEmail: emailTrim, friendName: friendName.trim() });
       setSent(true);
     } catch (err) {
       console.error("sendInviteEmail error:", err);
-      setError("Couldn't send the invite right now — please try again in a moment.");
+      setError(err.reason === "limit" ? "You've sent the maximum number of invites for today — please try again tomorrow."
+        : err.reason === "not-signed-in" || err.reason === "no-profile" ? "Please log in to invite a friend."
+        : "Couldn't send the invite right now — please try again in a moment.");
     }
     setSending(false);
   };
